@@ -446,7 +446,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     val floats = FloatArray(n) { buf[it] / 32768f }
                     stream.acceptWaveform(floats, rate)
                     total += n
-
                     if (total - lastDecode >= rate / 2) {
                         engine.decode(stream)
                         val partial = engine.result(stream)
