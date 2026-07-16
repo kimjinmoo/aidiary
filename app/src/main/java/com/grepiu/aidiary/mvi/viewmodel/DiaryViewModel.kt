@@ -439,7 +439,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
                     var sum = 0L
                     for (i in 0 until n) { val s = buf[i].toInt(); sum += s * s }
-                    val vol = (Math.sqrt(sum.toDouble() / n).toFloat() / 32768f * 8f).coerceIn(0f, 1f)
+                    val rms = Math.sqrt(sum.toDouble() / n)
+                    val db = if (rms > 1.0) 20.0 * Math.log10(rms / 32768.0) else -60.0
+                    val vol = ((db + 60.0) / 60.0).toFloat().coerceIn(0f, 1f)
 
                     val floats = FloatArray(n) { buf[it] / 32768f }
                     stream.acceptWaveform(floats, rate)
