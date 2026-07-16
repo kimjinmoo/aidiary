@@ -35,6 +35,9 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        noCompress += listOf("gguf", "bin", "task", "litertlm")
+    }
 }
 
 dependencies {
@@ -53,6 +56,11 @@ dependencies {
     implementation(libs.androidx.runtime)
     implementation(libs.androidx.scenecore)
     implementation(libs.extensions1.xr)
+    
+    // On-Device LLM & Download support
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
