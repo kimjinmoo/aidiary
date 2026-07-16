@@ -26,4 +26,4 @@ target_include_directories(whisper_jni PRIVATE
 target_link_libraries(whisper_jni whisper ggml-base ggml-cpu)
 
 find_library(log-lib log)
-target_link_libraries(whisper_jni ${log-lib})
+target_link_libraries(whisper_jni ${log-lib} atomic)
