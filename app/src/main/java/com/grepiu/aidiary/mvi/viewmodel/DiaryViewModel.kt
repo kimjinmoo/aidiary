@@ -463,20 +463,23 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private fun convertPcmToWav(pcmFile: File, sampleRate: Int): File {
         val wavFile = File(getApplication<Application>().cacheDir, "recording.wav")
         val pcmData = pcmFile.readBytes()
-        val totalDataLen = pcmData.size + 36; val byteRate = sampleRate * 2
-        val header = ByteArray(44).apply {
-            "RIFF".toByteArray().copyInto(this, 0); "WAVE".toByteArray().copyInto(this, 8); "fmt ".toByteArray().copyInto(this, 12)
-            this[16] = 16; this[20] = 1; this[22] = 1
-            this[24] = (sampleRate and 0xFF).toByte(); this[25] = ((sampleRate shr 8) and 0xFF).toByte()
-            this[26] = ((sampleRate shr 16) and 0xFF).toByte(); this[27] = ((sampleRate shr 24) and 0xFF).toByte()
-            this[28] = (byteRate and 0xFF).toByte(); this[29] = ((byteRate shr 8) and 0xFF).toByte()
-            this[30] = ((byteRate shr 16) and 0xFF).toByte(); this[31] = ((byteRate shr 24) and 0xFF).toByte()
-            this[32] = 2; this[34] = 16; "data".toByteArray().copyInto(this, 36)
-            this[40] = (pcmData.size and 0xFF).toByte(); this[41] = ((pcmData.size shr 8) and 0xFF).toByte()
-            this[42] = ((pcmData.size shr 16) and 0xFF).toByte(); this[43] = ((pcmData.size shr 24) and 0xFF).toByte()
-        }
-        this[4] = (totalDataLen and 0xFF).toByte(); this[5] = ((totalDataLen shr 8) and 0xFF).toByte()
-        this[6] = ((totalDataLen shr 16) and 0xFF).toByte(); this[7] = ((totalDataLen shr 24) and 0xFF).toByte()
+        val totalDataLen = pcmData.size + 36
+        val byteRate = sampleRate * 2
+        val header = ByteArray(44)
+        "RIFF".toByteArray().copyInto(header, 0)
+        "WAVE".toByteArray().copyInto(header, 8)
+        "fmt ".toByteArray().copyInto(header, 12)
+        header.set(16, 16); header.set(20, 1); header.set(22, 1)
+        header.set(24, (sampleRate and 0xFF).toByte()); header.set(25, ((sampleRate shr 8) and 0xFF).toByte())
+        header.set(26, ((sampleRate shr 16) and 0xFF).toByte()); header.set(27, ((sampleRate shr 24) and 0xFF).toByte())
+        header.set(28, (byteRate and 0xFF).toByte()); header.set(29, ((byteRate shr 8) and 0xFF).toByte())
+        header.set(30, ((byteRate shr 16) and 0xFF).toByte()); header.set(31, ((byteRate shr 24) and 0xFF).toByte())
+        header.set(32, 2); header.set(34, 16)
+        "data".toByteArray().copyInto(header, 36)
+        header.set(40, (pcmData.size and 0xFF).toByte()); header.set(41, ((pcmData.size shr 8) and 0xFF).toByte())
+        header.set(42, ((pcmData.size shr 16) and 0xFF).toByte()); header.set(43, ((pcmData.size shr 24) and 0xFF).toByte())
+        header.set(4, (totalDataLen and 0xFF).toByte()); header.set(5, ((totalDataLen shr 8) and 0xFF).toByte())
+        header.set(6, ((totalDataLen shr 16) and 0xFF).toByte()); header.set(7, ((totalDataLen shr 24) and 0xFF).toByte())
         FileOutputStream(wavFile).use { it.write(header); it.write(pcmData) }
         return wavFile
     }
