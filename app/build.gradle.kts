@@ -46,6 +46,10 @@ android {
 }
 
 dependencies {
+    // Kotlin Coroutines (LiteRT-LM과 호환되는 최신 버전)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose)
