@@ -18,7 +18,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AIDiary">
 
-        <!-- Android 12+ 벤더 OpenCL 라이브러리 접근 허용 (LiteRT-LM GPU 가속) -->
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
 
         <activity
