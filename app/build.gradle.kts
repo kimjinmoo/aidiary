@@ -19,9 +19,6 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
     }
 
     buildTypes {
@@ -44,12 +41,7 @@ android {
         compose = true
     }
     androidResources {
-        noCompress += listOf("gguf", "bin", "task", "litertlm")
-    }
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-        }
+        noCompress += listOf("gguf", "bin", "task", "litertlm", "onnx", "txt")
     }
 }
 
@@ -78,6 +70,10 @@ dependencies {
     // On-Device LLM & Download support
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+
+    // Sherpa-Onnx (온디바이스 음성인식)
+    implementation(files("libs/sherpa-onnx-android.aar"))
+    implementation("org.apache.commons:commons-compress:1.27.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

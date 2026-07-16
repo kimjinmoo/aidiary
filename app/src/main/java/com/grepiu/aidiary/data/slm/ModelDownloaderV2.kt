@@ -7,10 +7,13 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
+import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.json.JSONObject
 import android.app.ActivityManager
 import android.net.ConnectivityManager
@@ -25,20 +28,68 @@ class ModelDownloaderV2(private val context: Context) {
     companion object {
         private const val TAG = "ModelDownloaderV2"
         const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
-        const val WHISPER_FILENAME = "ggml-tiny-q5_1.bin"
+        const val SHERPA_ARCHIVE = "sherpa-korean.tar.bz2"
+        const val SHERPA_MODEL_DIR = "sherpa-korean"
         private const val MODEL_ASSET_PATH = "model/$MODEL_FILENAME"
     }
 
-    // --- Whisper model ---
+    // --- Sherpa-Onnx model ---
 
-    fun getWhisperModelFile(): File = File(modelDir, WHISPER_FILENAME)
+    fun getSherpaModelDir(): File = File(modelDir, SHERPA_MODEL_DIR)
 
-    fun isWhisperModelDownloaded(): Boolean = getWhisperModelFile().exists()
+    fun isSherpaModelDownloaded(): Boolean {
+        val dir = getSherpaModelDir()
+        return dir.exists() && File(dir, "tokens.txt").exists()
+    }
 
-    suspend fun downloadWhisperModel(
+    suspend fun downloadSherpaModel(
         url: String,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit
-    ): Result<File> = downloadModelTo(url, WHISPER_FILENAME, 10L * 1024 * 1024, onProgress)
+    ): Result<File> {
+        // 1. tar.bz2 다운로드
+        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 10L * 1024 * 1024, onProgress)
+        if (archiveResult.isFailure) return archiveResult
+
+        // 2. 압축 해제
+        return withContext(Dispatchers.IO) {
+            try {
+                val archiveFile = File(modelDir, SHERPA_ARCHIVE)
+                val extractDir = getSherpaModelDir()
+                if (extractDir.exists()) extractDir.deleteRecursively()
+                extractDir.mkdirs()
+
+                extractTarBz2(archiveFile, extractDir)
+                archiveFile.delete() // 압축 파일 삭제
+                Log.d(TAG, "Sherpa model extracted to $extractDir")
+                Result.success(extractDir)
+            } catch (e: Exception) {
+                Log.e(TAG, "Sherpa model extraction failed", e)
+                Result.failure(e)
+            }
+        }
+    }
+
+    private fun extractTarBz2(archiveFile: File, destDir: File) {
+        FileInputStream(archiveFile).use { fis ->
+            BufferedInputStream(fis).use { bis ->
+                BZip2CompressorInputStream(bis).use { bz2 ->
+                    TarArchiveInputStream(bz2).use { tar ->
+                        var entry = tar.nextEntry
+                        while (entry != null) {
+                            if (!entry.isDirectory) {
+                                val outFile = File(destDir, entry.name)
+                                outFile.parentFile?.mkdirs()
+                                FileOutputStream(outFile).use { fos ->
+                                    tar.copyTo(fos)
+                                }
+                            }
+                            entry = tar.nextEntry
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // --- Common ---
 

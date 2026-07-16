@@ -356,14 +356,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     // ===== Whisper =====
 
     private suspend fun ensureWhisperModelReady() {
-        if (downloader.isWhisperModelDownloaded()) {
+        if (downloader.isSherpaModelDownloaded()) {
             initWhisper()
             return
         }
-        // Whisper 모델은 용량이 작으므로 별도 다운로드 안내 없이 자동 다운로드
         try {
-            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "Whisper 모델 다운로드 중...") }
-            downloader.downloadWhisperModel(WHISPER_DOWNLOAD_URL) { bytesRead, totalBytes ->
+            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "음성인식 모델 다운로드 중...") }
+            downloader.downloadSherpaModel(SHERPA_DOWNLOAD_URL) { bytesRead, totalBytes ->
                 val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
                 val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
                 _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = sizeText) }
@@ -372,20 +371,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 initWhisper()
             }.onFailure { e ->
                 _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
-                Log.e("DiaryViewModel", "Whisper model download failed: ${e.message}")
+                Log.e("DiaryViewModel", "Sherpa model download failed: ${e.message}")
             }
         } catch (_: Exception) {}
     }
 
     private fun initWhisper() {
         try {
-            val modelFile = downloader.getWhisperModelFile()
-            if (!modelFile.exists()) return
-            whisperEngine = WhisperEngine.create(getApplication(), modelFile.absolutePath)
+            val modelDir = downloader.getSherpaModelDir()
+            if (!modelDir.exists()) return
+            whisperEngine = WhisperEngine.create(getApplication(), modelDir.absolutePath)
             _state.update { it.copy(isWhisperModelReady = true) }
-            Log.d("DiaryViewModel", "Whisper engine ready")
+            Log.d("DiaryViewModel", "Sherpa engine ready")
         } catch (e: Exception) {
-            Log.e("DiaryViewModel", "Whisper init failed: ${e.message}")
+            Log.e("DiaryViewModel", "Sherpa init failed: ${e.message}")
         }
     }
 
@@ -526,7 +525,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val text = engine.transcribe(wavFile.absolutePath, "auto")
+                val text = engine.transcribe(wavFile.absolutePath)
                 withContext(Dispatchers.Main) {
                     val currentContent = _state.value.draftContent
                     val appended = if (currentContent.isBlank()) text else "$currentContent\n$text"
@@ -611,7 +610,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
-        private const val WHISPER_DOWNLOAD_URL =
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
+        private const val SHERPA_DOWNLOAD_URL =
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-small-korean-2024-09-18.tar.bz2"
     }
 }
