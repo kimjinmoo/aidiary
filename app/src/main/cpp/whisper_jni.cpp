@@ -58,8 +58,13 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(JNIEnv* env, jclass, j
         LOGD("Model file: %s (%ld MB)", path, size / 1024 / 1024);
     }
     
-    // NUMA 비활성화 (Android에서 문제 유발 가능)
+    // GPU 가속 완전 비활성화 (드라이버 프리즈 방지)
     setenv("GGML_NUMA", "0", 1);
+    setenv("GGML_OPENCL", "0", 1);
+    setenv("GGML_CUDA", "0", 1);
+    setenv("GGML_METAL", "0", 1);
+    setenv("GGML_VULKAN", "0", 1);
+    setenv("GGML_CPU_ALL", "1", 1);
     
     // 단순 init (기본 파라미터)
     struct whisper_context_params cparams = whisper_context_default_params();
