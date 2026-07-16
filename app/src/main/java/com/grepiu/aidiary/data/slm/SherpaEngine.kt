@@ -40,6 +40,7 @@ class SherpaEngine private constructor(
                 tokens = tokensFile.absolutePath,
                 modelingUnit = if (bpeFile.exists()) "bpe" else "",
                 bpeVocab = if (bpeFile.exists()) bpeFile.absolutePath else "",
+                modelType = "zipformer2",
                 numThreads = 4,
                 debug = false,
                 provider = "cpu"
