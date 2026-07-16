@@ -20,7 +20,7 @@ class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
                 modelConfig = OfflineModelConfig(
                     senseVoice = OfflineSenseVoiceModelConfig(
                         model = modelFile.absolutePath,
-                        language = "auto",
+                        language = "ko",
                         useInverseTextNormalization = true
                     ),
                     tokens = tok.absolutePath,
