@@ -52,7 +52,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     
     LOGD("Transcribing: %s (lang=%s)", wavPath, lang);
     
-    if (whisper_full(ctx, params, wavPath) != 0) {
+    if (whisper_full(ctx, params, wavPath, 0) != 0) {
         LOGE("whisper_full failed");
         env->ReleaseStringUTFChars(wavPathJ, wavPath);
         env->ReleaseStringUTFChars(languageJ, lang);
