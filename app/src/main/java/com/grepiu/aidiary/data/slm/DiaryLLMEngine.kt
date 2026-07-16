@@ -16,32 +16,38 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     // 스트리밍 방식으로 텍스트 토큰이 도착할 때마다 호출될 실시간 콜백
     var onTokenReceived: ((String, Boolean) -> Unit)? = null
 
+    // 현재 사용 중인 백엔드 (GPU 또는 CPU)
+    var backendType: String = "Unknown"
+        private set
+
     companion object {
         private const val TAG = "DiaryLLMEngine"
 
         /**
          * 지정된 로컬 모델 파일 경로(.litertlm)를 읽어와 LiteRT-LM Engine 인스턴스를 빌드하고 엔진을 생성합니다.
+         * GPU(OpenCL) 초기화 실패 시 CPU 백엔드로 자동 폴백합니다.
          */
         fun create(context: Context, modelPath: String): DiaryLLMEngine {
-            val engine: Engine = try {
+            return tryCreate(context, modelPath, Backend.GPU(), "GPU")
+                ?: tryCreate(context, modelPath, Backend.CPU(), "CPU")
+                ?: throw IllegalStateException("Failed to initialize LiteRT-LM engine with both GPU and CPU backends")
+        }
+
+        private fun tryCreate(context: Context, modelPath: String, backend: Backend, label: String): DiaryLLMEngine? {
+            return try {
                 val config = EngineConfig(
                     modelPath = modelPath,
-                    backend = Backend.GPU(),
+                    backend = backend,
                     maxNumTokens = 1024
                 )
-                Engine(config).also { it.initialize() }
-                Log.d(TAG, "LiteRT-LM Engine initialized with GPU backend")
+                val engine = Engine(config)
+                engine.initialize()
+                Log.d(TAG, "LiteRT-LM Engine initialized with $label backend")
+                DiaryLLMEngine(engine).apply { backendType = label }
             } catch (e: Exception) {
-                Log.w(TAG, "GPU(OpenCL) 초기화 실패, CPU 백엔드로 폴백합니다: ${e.message}")
-                val config = EngineConfig(
-                    modelPath = modelPath,
-                    backend = Backend.CPU(),
-                    maxNumTokens = 1024
-                )
-                Engine(config).also { it.initialize() }
-                Log.d(TAG, "LiteRT-LM Engine initialized with CPU backend")
+                Log.w(TAG, "$label backend init failed: ${e.message}")
+                null
             }
-            return DiaryLLMEngine(engine)
         }
     }
 
@@ -83,9 +89,9 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
             conversation.close()
             finalResult
         } catch (e: Exception) {
-            Log.e(TAG, "Error generating analysis", e)
+            Log.e(TAG, "Error generating analysis (backend=$backendType)", e)
             onTokenReceived?.invoke("", true)
-            "[AI 분석을 생성할 수 없습니다]\n이 기기는 온디바이스 AI에 필요한 GPU 라이브러리(OpenCL)를 지원하지 않거나 모델 파일이 손상되었습니다."
+            "[AI 분석을 생성할 수 없습니다]\n현재 백엔드: $backendType\n오류: ${e.message?.take(80)}"
         }
     }
 
