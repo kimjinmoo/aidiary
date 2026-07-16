@@ -37,18 +37,14 @@ object DeviceCapabilityChecker {
 
         val gpuRenderer = getGpuRenderer()
         val isRealGpu = isRealGpu(gpuRenderer)
-        val hasOpenCL = isRealGpu && hasOpenCL()
+        val hasOpenCL = hasOpenCL()
 
+        // GPU 확인만 하고 OpenCL 미검출 시에도 일반 기기 다운로드 허용 (LiteRT-LM이 CPU 폴백 가능)
+        if (!isRealGpu) {
+            Log.w(TAG, "Not a real GPU: $gpuRenderer. Allowing download anyway.")
+        }
         if (!hasOpenCL) {
-            return DeviceCapability(
-                isSupported = false,
-                totalRamGB = ramGB,
-                gpuRenderer = gpuRenderer,
-                reason = "죄송합니다. 이 기기는 온디바이스 AI 추론에\n" +
-                        "필요한 GPU 가속(OpenCL)을 지원하지 않습니다.\n" +
-                        "($gpuRenderer)\n\n" +
-                        "Android XR 지원 실기기에서 이용해 주세요."
-            )
+            Log.w(TAG, "OpenCL not detected but download allowed. GPU: $gpuRenderer")
         }
 
         return DeviceCapability(
