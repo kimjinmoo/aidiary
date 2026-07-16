@@ -144,14 +144,29 @@ fun DiaryWriteScreen(
                             fontSize = 14.sp,
                             color = Color(0xFFE53935)
                         )
-                        LinearProgressIndicator(
-                            progress = { 1f },
+                        // 볼륨 레벨 미터
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
                             modifier = Modifier
                                 .width(120.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = Color(0xFFE53935)
-                        )
+                                .height(6.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(Color(0xFF333333))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(state.recordingVolume)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(
+                                        when {
+                                            state.recordingVolume < 0.3f -> Color(0xFF4CAF50)
+                                            state.recordingVolume < 0.7f -> Color(0xFFFFC107)
+                                            else -> Color(0xFFE53935)
+                                        }
+                                    )
+                            )
+                        }
                     }
                 } else if (state.isTranscribing) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

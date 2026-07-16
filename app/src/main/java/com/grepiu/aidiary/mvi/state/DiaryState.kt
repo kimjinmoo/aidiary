@@ -40,9 +40,10 @@ data class DiaryState(
     val aiAnalysisText: String? = null,                      // 실시간 스트리밍 분석 텍스트
     val isGeneratingAnalysis: Boolean = false,               // AI 분석 추론 진행 여부
     
-    // Whisper 음성 녹음 및 변환 상태
-    val isSherpaModelReady: Boolean = false,                // Whisper 모델 사용 가능 여부
-    val isRecording: Boolean = false,                        // 녹음 진행 중 여부
-    val recordingSeconds: Int = 0,                           // 녹음 경과 시간 (초)
-    val isTranscribing: Boolean = false                      // 음성→텍스트 변환 중 여부
+    // Sherpa 음성 녹음 및 변환 상태
+    val isSherpaModelReady: Boolean = false,
+    val isRecording: Boolean = false,
+    val recordingSeconds: Int = 0,
+    val recordingVolume: Float = 0f,
+    val isTranscribing: Boolean = false
 )
