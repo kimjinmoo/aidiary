@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +43,9 @@ fun DiaryWriteScreen(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val view = LocalView.current
+    // 녹음 중 화면 꺼짐 방지
+    view.keepScreenOn = state.isRecording
 
     Scaffold(
         topBar = {
