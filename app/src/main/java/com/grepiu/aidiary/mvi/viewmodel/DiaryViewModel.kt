@@ -16,7 +16,7 @@ import com.grepiu.aidiary.data.repository.DiaryRepository
 import com.grepiu.aidiary.data.slm.DeviceCapabilityChecker
 import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
-import com.grepiu.aidiary.data.slm.WhisperEngine
+import com.grepiu.aidiary.data.slm.SherpaEngine
 import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
@@ -48,7 +48,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private val downloader = ModelDownloaderV2(application)
     private val repository = DiaryRepository(application)
     private var llmEngine: DiaryLLMEngine? = null
-    private var whisperEngine: WhisperEngine? = null
+    private var sherpaEngine: SherpaEngine? = null
 
     private var downloadJob: Job? = null
     private var analysisJob: Job? = null
@@ -357,7 +357,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun ensureWhisperModelReady() {
         if (downloader.isSherpaModelDownloaded()) {
-            initWhisper()
+            initSherpa()
             return
         }
         try {
@@ -369,7 +369,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "$label $sizeText") }
             }.onSuccess {
                 _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
-                initWhisper()
+                initSherpa()
             }.onFailure { e ->
                 _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
                 Log.e("DiaryViewModel", "Sherpa model download failed: ${e.message}")
@@ -377,7 +377,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {}
     }
 
-    private fun initWhisper() {
+    private fun initSherpa() {
         try {
             val modelDir = downloader.getSherpaModelDir()
             if (!modelDir.exists()) return
@@ -385,8 +385,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             val actualDir = modelDir.listFiles()
                 ?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }
                 ?: modelDir
-            whisperEngine = WhisperEngine.create(actualDir.absolutePath)
-            _state.update { it.copy(isWhisperModelReady = true) }
+            sherpaEngine = SherpaEngine.create(actualDir.absolutePath)
+            _state.update { it.copy(isSherpaModelReady = true) }
             Log.d("DiaryViewModel", "Sherpa engine ready")
         } catch (e: Exception) {
             Log.e("DiaryViewModel", "Sherpa init failed: ${e.message}")
@@ -395,7 +395,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startRecording() {
         if (_state.value.isRecording) return
-        if (!_state.value.isWhisperModelReady) {
+        if (!_state.value.isSherpaModelReady) {
             sendEffect(DiaryEffect.ShowToast("음성 인식 모델이 준비되지 않았습니다."))
             return
         }
@@ -521,7 +521,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun transcribeAudio(wavFile: File) {
-        val engine = whisperEngine ?: return
+        val engine = sherpaEngine ?: return
         val fileSizeMB = wavFile.length() / 1024 / 1024
         _state.update { it.copy(isTranscribing = true) }
         // 긴 녹음(5분 이상)은 변환 시간이 오래 걸릴 수 있음을 안내
@@ -608,7 +608,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         audioRecord?.release()
         wakeLock?.let { if (it.isHeld) it.release() }
         llmEngine?.dispose()
-        whisperEngine?.dispose()
+        sherpaEngine?.dispose()
         super.onCleared()
     }
 

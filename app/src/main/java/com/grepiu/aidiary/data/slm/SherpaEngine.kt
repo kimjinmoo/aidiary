@@ -7,11 +7,11 @@ import java.io.File
 /**
  * Sherpa-Onnx 기반 온디바이스 음성→텍스트 변환 엔진입니다.
  */
-class WhisperEngine private constructor(
+class SherpaEngine private constructor(
     private val recognizer: OfflineRecognizer
 ) {
     companion object {
-        private const val TAG = "WhisperEngine"
+        private const val TAG = "SherpaEngine"
 
         fun create(modelDir: String): WhisperEngine {
             var dir = File(modelDir)

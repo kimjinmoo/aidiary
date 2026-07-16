@@ -162,7 +162,7 @@ fun DiaryWriteScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("음성 변환 중...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                } else if (state.isWhisperModelReady) {
+                } else if (state.isSherpaModelReady) {
                     FilledTonalIconButton(
                         onClick = onStartRecording,
                         modifier = Modifier.size(44.dp)
