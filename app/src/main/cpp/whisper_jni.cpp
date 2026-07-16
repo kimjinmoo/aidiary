@@ -12,161 +12,96 @@
 
 static std::vector<float> read_wav(const char* path) {
     std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        LOGE("read_wav: cannot open file: %s", path);
-        return {};
-    }
-
+    if (!file) { LOGE("Cannot open: %s", path); return {}; }
     char header[44];
     file.read(header, 44);
-    if (std::strncmp(header, "RIFF", 4) != 0 || std::strncmp(header + 8, "WAVE", 4) != 0) {
-        LOGE("read_wav: invalid WAV header");
-        return {};
-    }
-
-    int bitsPerSample = *(short*)(header + 34);
+    if (std::strncmp(header, "RIFF", 4) || std::strncmp(header + 8, "WAVE", 4)) { LOGE("Bad WAV header"); return {}; }
+    int bits = *(short*)(header + 34);
     int dataSize = *(int*)(header + 40);
-
-    LOGD("read_wav: bits=%d, dataSize=%d bytes", bitsPerSample, dataSize);
-
+    LOGD("WAV: bits=%d, data=%d", bits, dataSize);
     std::vector<float> samples;
-    if (bitsPerSample == 16) {
+    if (bits == 16) {
         std::vector<short> pcm(dataSize / 2);
         file.read((char*)pcm.data(), dataSize);
         samples.reserve(pcm.size());
-        for (short s : pcm) {
-            samples.push_back(s / 32768.0f);
-        }
-    } else if (bitsPerSample == 8) {
-        std::vector<char> pcm(dataSize);
-        file.read(pcm.data(), dataSize);
-        samples.reserve(pcm.size());
-        for (char s : pcm) {
-            samples.push_back(s / 128.0f);
-        }
+        for (short s : pcm) samples.push_back(s / 32768.0f);
     }
-    LOGD("read_wav: %zu float samples loaded", samples.size());
+    LOGD("Loaded %zu samples", samples.size());
     return samples;
 }
 
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(
-    JNIEnv* env, jclass, jstring modelPathJ) {
-
-    const char* modelPath = env->GetStringUTFChars(modelPathJ, nullptr);
-    LOGD("nativeInit: loading model from %s", modelPath);
-
+Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(JNIEnv* env, jclass, jstring pathJ) {
+    const char* path = env->GetStringUTFChars(pathJ, nullptr);
+    LOGD("Loading model: %s", path);
     struct whisper_context_params cparams = whisper_context_default_params();
-    cparams.use_gpu = false;
-    cparams.flash_attn = false;
-    struct whisper_context* ctx = whisper_init_from_file_with_params(modelPath, cparams);
-
-    env->ReleaseStringUTFChars(modelPathJ, modelPath);
-
-    if (!ctx) {
-        LOGE("nativeInit: failed");
-        return 0;
-    }
-    LOGD("nativeInit: success, ptr=%p", ctx);
+    struct whisper_context* ctx = whisper_init_from_file_with_params(path, cparams);
+    env->ReleaseStringUTFChars(pathJ, path);
+    LOGD("Model loaded: %p", ctx);
     return reinterpret_cast<jlong>(ctx);
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
-    JNIEnv* env, jclass, jlong ptr, jstring wavPathJ, jstring languageJ) {
-
+Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(JNIEnv* env, jclass, jlong ptr, jstring wavJ, jstring langJ) {
     auto* ctx = reinterpret_cast<struct whisper_context*>(ptr);
     if (!ctx) return env->NewStringUTF("");
 
-    const char* wavPath = env->GetStringUTFChars(wavPathJ, nullptr);
-    const char* lang = env->GetStringUTFChars(languageJ, nullptr);
+    const char* wavPath = env->GetStringUTFChars(wavJ, nullptr);
+    const char* lang = env->GetStringUTFChars(langJ, nullptr);
 
-    LOGD("nativeTranscribe: reading WAV from %s", wavPath);
     std::vector<float> samples = read_wav(wavPath);
     if (samples.empty()) {
-        LOGE("nativeTranscribe: empty samples, returning empty");
-        env->ReleaseStringUTFChars(wavPathJ, wavPath);
-        env->ReleaseStringUTFChars(languageJ, lang);
+        env->ReleaseStringUTFChars(wavJ, wavPath);
+        env->ReleaseStringUTFChars(langJ, lang);
         return env->NewStringUTF("");
     }
 
-    float durationSec = (float)samples.size() / 16000.0f;
-    LOGD("nativeTranscribe: samples=%zu, duration=%.1fs, starting whisper_full", samples.size(), durationSec);
-
+    // 최소한의 파라미터만 설정하고 나머지는 기본값 사용
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    params.language         = lang;
-    params.print_progress   = false;
-    params.print_realtime   = false;
+    params.language = lang;
+    params.n_threads = 1;  // 싱글스레드로 데드락 방지
+    params.translate = false;
+    params.no_context = true;
+    params.single_segment = false;
+    params.print_progress = false;
+    params.print_realtime = false;
     params.print_timestamps = false;
-    params.no_context       = true;
-    params.tdrz_enable      = false;
-    if (params.n_threads <= 0) {
-        params.n_threads = 4;
-    }
+    params.tdrz_enable = false;  // 화자 구분 비활성화 (안정성)
+
+    LOGD("whisper_full start: %zu samples, lang=%s, threads=%d", samples.size(), lang, params.n_threads);
 
     int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
-    LOGD("nativeTranscribe: whisper_full returned %d", ret);
+    LOGD("whisper_full done: ret=%d", ret);
 
-    if (ret != 0) {
-        LOGE("nativeTranscribe: whisper_full failed with code %d", ret);
-        env->ReleaseStringUTFChars(wavPathJ, wavPath);
-        env->ReleaseStringUTFChars(languageJ, lang);
-        return env->NewStringUTF("");
-    }
+    env->ReleaseStringUTFChars(wavJ, wavPath);
+    env->ReleaseStringUTFChars(langJ, lang);
 
-    const int n_segments = whisper_full_n_segments(ctx);
-    LOGD("nativeTranscribe: %d segments", n_segments);
+    if (ret != 0) return env->NewStringUTF("");
 
+    int n = whisper_full_n_segments(ctx);
     std::string result;
-    int speakerIdx = 0;
-    const char* speakerLabels[] = {"화자A", "화자B", "화자C", "화자D"};
-
-    for (int i = 0; i < n_segments; i++) {
+    for (int i = 0; i < n; i++) {
         const char* text = whisper_full_get_segment_text(ctx, i);
         if (text && strlen(text) > 0) {
-            if (params.tdrz_enable) {
-                // 화자 전환 감지 (TDRZ 활성화 시에만 동작)
-                if (i > 0 && whisper_full_get_segment_speaker_turn_next(ctx, i - 1)) {
-                    speakerIdx = (speakerIdx + 1) % 4;
-                }
-                int64_t t0 = whisper_full_get_segment_t0(ctx, i);
-                int64_t t1 = whisper_full_get_segment_t1(ctx, i);
-                int sec0 = (int)(t0 / 100);
-                int min0 = sec0 / 60; sec0 %= 60;
-                int sec1 = (int)(t1 / 100);
-                int min1 = sec1 / 60; sec1 %= 60;
-                
-                char ts[64];
-                snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] %s: ", min0, sec0, min1, sec1, speakerLabels[speakerIdx]);
-                
-                if (!result.empty()) result += "\n";
-                result += ts;
-                result += text;
-            } else {
-                // TDRZ 비활성화 시에는 타임스탬프와 화자 구분 없이 깨끗한 텍스트만 합쳐서 반환
-                if (!result.empty()) result += " ";
-                result += text;
-            }
+            int64_t t0 = whisper_full_get_segment_t0(ctx, i);
+            int64_t t1 = whisper_full_get_segment_t1(ctx, i);
+            char ts[48];
+            snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] ", (int)(t0/100/60), (int)(t0/100%60), (int)(t1/100/60), (int)(t1/100%60));
+            if (!result.empty()) result += "\n";
+            result += ts;
+            result += text;
         }
     }
-
-    env->ReleaseStringUTFChars(wavPathJ, wavPath);
-    env->ReleaseStringUTFChars(languageJ, lang);
-
-    LOGD("nativeTranscribe: result length=%zu, result=%s", result.size(), result.c_str());
+    LOGD("Result: %zu chars", result.size());
     return env->NewStringUTF(result.c_str());
 }
 
 JNIEXPORT void JNICALL
-Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeFree(
-    JNIEnv*, jclass, jlong ptr) {
+Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeFree(JNIEnv*, jclass, jlong ptr) {
     auto* ctx = reinterpret_cast<struct whisper_context*>(ptr);
-    if (ctx) {
-        whisper_free(ctx);
-        LOGD("nativeFree: done");
-    }
+    if (ctx) { whisper_free(ctx); LOGD("Freed"); }
 }
 
-} // extern "C"
+}

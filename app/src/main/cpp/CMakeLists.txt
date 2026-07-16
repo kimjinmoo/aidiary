@@ -12,7 +12,6 @@ set(GGML_CUDA OFF)
 set(GGML_METAL OFF)
 set(GGML_VULKAN OFF)
 set(GGML_BLAS OFF)
-set(GGML_OPENCL OFF)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp ${CMAKE_CURRENT_BINARY_DIR}/whisper_build)
 
