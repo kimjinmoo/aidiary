@@ -186,7 +186,7 @@ class ModelDownloaderV2(private val context: Context) {
      * 중계 API 또는 직접 URL로부터 모델 파일을 다운로드하여 로컬 내부 저장소에 저장합니다.
      */
     suspend fun downloadModel(apiUrl: String, onProgress: (bytesRead: Long, totalBytes: Long) -> Unit): Result<File> =
-        downloadModelTo(apiUrl, MODEL_FILENAME, 2.3 * 1024 * 1024 * 1024, onProgress)
+        downloadModelTo(apiUrl, MODEL_FILENAME, (2.3 * 1024 * 1024 * 1024).toLong(), onProgress)
 
     /**
      * 지정된 파일명으로 URL에서 모델을 다운로드합니다.

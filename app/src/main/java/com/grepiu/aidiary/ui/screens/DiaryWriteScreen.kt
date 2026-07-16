@@ -130,7 +130,7 @@ fun DiaryWriteScreen(
                     ) {
                         IconButton(onClick = onStopRecording) {
                             Icon(
-                                imageVector = Icons.Default.Stop,
+                                imageVector = Icons.Filled.Stop,
                                 contentDescription = "녹음 중지",
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp)
@@ -168,7 +168,7 @@ fun DiaryWriteScreen(
                         modifier = Modifier.size(44.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Mic,
+                            imageVector = Icons.Filled.Mic,
                             contentDescription = "음성 녹음",
                             modifier = Modifier.size(22.dp)
                         )

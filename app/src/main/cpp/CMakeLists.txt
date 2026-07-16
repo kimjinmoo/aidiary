@@ -3,28 +3,28 @@ project("whisper_jni")
 
 set(CMAKE_CXX_STANDARD 17)
 
+# whisper.cpp 옵션 설정 (안드로이드 최적화)
+set(WHISPER_BUILD_EXAMPLES OFF)
+set(WHISPER_BUILD_TESTS OFF)
+set(WHISPER_BUILD_SERVER OFF)
+set(GGML_BUILD_EXAMPLES OFF)
+set(GGML_BUILD_TESTS OFF)
+set(GGML_CUDA OFF)
+set(GGML_METAL OFF)
+set(GGML_VULKAN OFF)
+set(GGML_BLAS OFF)
+set(GGML_OPENCL OFF)
+
+# whisper.cpp 서브디렉토리 추가 (자체 CMakeLists.txt 사용)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp ${CMAKE_CURRENT_BINARY_DIR}/whisper_build)
+
+# JNI 브릿지 라이브러리
 add_library(whisper_jni SHARED whisper_jni.cpp)
-
-# whisper.cpp 및 ggml 소스 경로 (git submodule 또는 복사)
-# git clone https://github.com/ggerganov/whisper.cpp.git app/src/main/cpp/whisper.cpp
-set(WHISPER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp)
-set(GGML_DIR ${WHISPER_DIR}/ggml)
-
-add_library(ggml OBJECT
-    ${GGML_DIR}/src/ggml.c
-    ${GGML_DIR}/src/ggml-alloc.c
-    ${GGML_DIR}/src/ggml-backend.c
-    ${GGML_DIR}/src/ggml-quants.c
+target_include_directories(whisper_jni PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp/ggml/include
 )
-target_include_directories(ggml PUBLIC ${GGML_DIR}/include)
-target_compile_definitions(ggml PRIVATE GGML_USE_CPU)
-
-add_library(whisper OBJECT
-    ${WHISPER_DIR}/src/whisper.cpp
-)
-target_include_directories(whisper PUBLIC ${WHISPER_DIR}/include ${GGML_DIR}/include)
-
-target_link_libraries(whisper_jni whisper ggml)
+target_link_libraries(whisper_jni whisper ggml-base ggml-cpu)
 
 find_library(log-lib log)
 target_link_libraries(whisper_jni ${log-lib})

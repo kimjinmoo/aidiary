@@ -79,6 +79,9 @@ class MainActivity : ComponentActivity() {
                             is DiaryEffect.AnalysisComplete -> {
                                 Toast.makeText(context, "AI 일기 분석이 완료되었습니다.", Toast.LENGTH_SHORT).show()
                             }
+                            is DiaryEffect.TranscriptionResult -> {
+                                Toast.makeText(context, "음성 변환 완료!", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
