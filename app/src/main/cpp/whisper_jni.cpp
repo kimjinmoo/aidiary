@@ -94,17 +94,12 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     LOGD("nativeTranscribe: samples=%zu, duration=%.1fs, starting whisper_full", samples.size(), durationSec);
 
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    params.language         = lang;
+    params.tdrz_enable      = true;
     params.print_progress   = false;
-    params.print_special    = false;
     params.print_realtime   = false;
     params.print_timestamps = false;
-    params.language         = lang;
-    params.n_threads        = 2;
-    params.offset_ms        = 0;
     params.no_context       = true;
-    params.single_segment   = false;
-    params.translate        = false;
-    params.tdrz_enable      = true;  // tinydiarize: 화자 전환 감지
 
     int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
     LOGD("nativeTranscribe: whisper_full returned %d", ret);
