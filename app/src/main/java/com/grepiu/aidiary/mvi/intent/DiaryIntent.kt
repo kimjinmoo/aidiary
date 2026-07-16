@@ -17,4 +17,6 @@ sealed interface DiaryIntent {
     data object AnalyzeDiary : DiaryIntent
     data class ShowDownloadNotice(val show: Boolean) : DiaryIntent
     data class ShowWifiWarning(val show: Boolean) : DiaryIntent
+    data object StartRecording : DiaryIntent
+    data object StopRecording : DiaryIntent
 }

@@ -212,6 +212,12 @@ fun DiaryAppNavigationRouter(
                 onBack = {
                     viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
                 },
+                onStartRecording = {
+                    viewModel.processIntent(DiaryIntent.StartRecording)
+                },
+                onStopRecording = {
+                    viewModel.processIntent(DiaryIntent.StopRecording)
+                },
                 modifier = modifier
             )
         }

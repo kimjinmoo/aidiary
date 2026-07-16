@@ -6,4 +6,5 @@ package com.grepiu.aidiary.mvi.effect
 sealed interface DiaryEffect {
     data class ShowToast(val message: String) : DiaryEffect
     data class AnalysisComplete(val result: String) : DiaryEffect
+    data class TranscriptionResult(val text: String) : DiaryEffect
 }

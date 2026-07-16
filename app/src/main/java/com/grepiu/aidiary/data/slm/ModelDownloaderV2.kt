@@ -24,9 +24,23 @@ class ModelDownloaderV2(private val context: Context) {
 
     companion object {
         private const val TAG = "ModelDownloaderV2"
-        const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"         // 로컬 저장소에 저장될 모델 파일명
-        private const val MODEL_ASSET_PATH = "model/$MODEL_FILENAME" // 에셋 폴더 내 모델 경로
+        const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
+        const val WHISPER_FILENAME = "ggml-small-q8_0.bin"
+        private const val MODEL_ASSET_PATH = "model/$MODEL_FILENAME"
     }
+
+    // --- Whisper model ---
+
+    fun getWhisperModelFile(): File = File(modelDir, WHISPER_FILENAME)
+
+    fun isWhisperModelDownloaded(): Boolean = getWhisperModelFile().exists()
+
+    suspend fun downloadWhisperModel(
+        url: String,
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit
+    ): Result<File> = downloadModelTo(url, WHISPER_FILENAME, 100L * 1024 * 1024, onProgress)
+
+    // --- Common ---
 
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
@@ -172,11 +186,26 @@ class ModelDownloaderV2(private val context: Context) {
      * 중계 API 또는 직접 URL로부터 모델 파일을 다운로드하여 로컬 내부 저장소에 저장합니다.
      */
     suspend fun downloadModel(apiUrl: String, onProgress: (bytesRead: Long, totalBytes: Long) -> Unit): Result<File> =
+        downloadModelTo(apiUrl, MODEL_FILENAME, 2.3 * 1024 * 1024 * 1024, onProgress)
+
+    /**
+     * 지정된 파일명으로 URL에서 모델을 다운로드합니다.
+     * @param url 다운로드 URL
+     * @param filename 저장할 파일명
+     * @param minSize 최소 파일 크기 (bytes)
+     * @param onProgress 진행률 콜백
+     */
+    private suspend fun downloadModelTo(
+        url: String,
+        filename: String,
+        minSize: Long,
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit
+    ): Result<File> =
         withContext(Dispatchers.IO) {
-            val modelFile = getModelFile()
-            val tempFile = File(modelDir, "$MODEL_FILENAME.tmp")
+            val targetFile = File(modelDir, filename)
+            val tempFile = File(modelDir, "$filename.tmp")
             try {
-                if (modelFile.exists()) modelFile.delete()
+                if (targetFile.exists()) targetFile.delete()
                 
                 // 기존 다운로드 진행 중이던 임시 파일의 크기를 확인 (이어받기 기준점)
                 val existingLength = if (tempFile.exists()) tempFile.length() else 0L
@@ -186,7 +215,7 @@ class ModelDownloaderV2(private val context: Context) {
                 // val downloadUrl = presignedUrl
 
                 // Hugging Face 직접 다운로드 URL 사용
-                val downloadUrl = apiUrl
+                val downloadUrl = url
                 Log.d(TAG, "Starting stream download from: $downloadUrl, existingLength: $existingLength")
 
                 // 2단계: 실제 모델 파일 스트림 다운로드 (이어받기 요청 헤더 추가)
@@ -238,11 +267,10 @@ class ModelDownloaderV2(private val context: Context) {
                     }
                 }
 
-                // 크기 검사 (2.3GB 미만은 모델 깨짐으로 판정)
-                if (tempFile.length() < 2.3 * 1024 * 1024 * 1024) {
+                if (tempFile.length() < minSize) {
                     tempFile.delete()
                     return@withContext Result.failure(
-                        IOException("Download incomplete or corrupt: file size is too small (${tempFile.length()} bytes)")
+                        IOException("Download incomplete or corrupt: file size too small (${tempFile.length()} / min $minSize bytes)")
                     )
                 }
                 if (contentLength > 0 && tempFile.length() != contentLength) {
@@ -257,10 +285,10 @@ class ModelDownloaderV2(private val context: Context) {
                 }
 
                 // 최종 모델 경로로 이동 (rename 실패 시 복사 후 삭제로 폴백)
-                if (!tempFile.renameTo(modelFile)) {
+                if (!tempFile.renameTo(targetFile)) {
                     try {
                         tempFile.inputStream().use { input ->
-                            modelFile.outputStream().use { output ->
+                            targetFile.outputStream().use { output ->
                                 input.copyTo(output)
                             }
                         }
@@ -270,7 +298,7 @@ class ModelDownloaderV2(private val context: Context) {
                         return@withContext Result.failure(IOException("Failed to copy temp file to final location: ${e.message}"))
                     }
                 }
-                Result.success(modelFile)
+                Result.success(targetFile)
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during downloadModel", e)
                 tempFile.delete()

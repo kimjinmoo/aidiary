@@ -24,22 +24,20 @@ Android XR 기반 온디바이스 AI 일기 애플리케이션
 이 앱은 Google의 Gemma 4 (gemma-4-E2B-it, 2B 파라미터) 모델을 LiteRT-LM 형식으로 변환하여 기기 내부에서 실행합니다.
 모든 일기 데이터와 AI 분석은 **완전히 오프라인**으로 처리되어 개인정보가 외부로 유출되지 않습니다.
 
+### Whisper 음성 인식
+
+whisper.cpp의 `ggml-small-q8_0` 모델을 사용하여 일기 작성 시 음성 녹음 → 텍스트 변환 기능을 제공합니다.
+녹음된 음성은 기기 내부에서 Whisper 모델을 통해 100% 온디바이스로 텍스트로 변환됩니다.
+
 ### 모델 다운로드 흐름
 
-1. 앱 최초 실행 시 모델 파일(`gemma-4-E2B-it.litertlm`, 약 2.3GB)의 존재 여부를 확인
+1. 앱 최초 실행 시 모델 파일 존재 여부를 확인
 2. 다음 순서로 모델을 확보:
-   - 이미 다운로드된 모델이 있는지 확인
-   - APK 에셋에 번들된 모델이 있는지 확인 후 복사
-   - `/sdcard/Download/`에 수동 복사된 모델 파일 확인
-   - Hugging Face에서 직접 다운로드 (`litert-community/gemma-4-E2B-it-litert-lm`)
-3. 다운로드 전 디바이스 사양 체크 (RAM 6GB 이상, GPU OpenCL 지원 필수)
-4. Wi-Fi 미연결 시 모바일 데이터 경고 표시
-
-### 모델 다운로드 URL
-
-```
-https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm
-```
+   - 이미 다운로드된 모델 확인 (Gemma: ~2.3GB, Whisper: ~466MB)
+   - APK 에셋에 번들된 모델 확인 후 복사
+   - `/sdcard/Download/` 수동 복사 확인
+   - Hugging Face에서 직접 다운로드
+3. 디바이스 사양 체크 (RAM 6GB 이상, GPU OpenCL 권장)
 
 ## 디바이스 요구사항
 

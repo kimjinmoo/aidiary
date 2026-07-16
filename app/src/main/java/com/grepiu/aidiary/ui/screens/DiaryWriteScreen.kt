@@ -5,11 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -34,6 +37,8 @@ fun DiaryWriteScreen(
     onAnalyzeDiary: () -> Unit,
     onSaveDiary: () -> Unit,
     onBack: () -> Unit,
+    onStartRecording: () -> Unit = {},
+    onStopRecording: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -105,6 +110,82 @@ fun DiaryWriteScreen(
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 2.5. 음성 녹음 버튼
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (state.isRecording) {
+                    // 녹음 중 UI
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFE53935))
+                    ) {
+                        IconButton(onClick = onStopRecording) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "녹음 중지",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.padding(start = 4.dp)) {
+                        Text(
+                            text = "녹음 중... ${state.recordingSeconds}초",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = Color(0xFFE53935)
+                        )
+                        LinearProgressIndicator(
+                            progress = { 1f },
+                            modifier = Modifier
+                                .width(120.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = Color(0xFFE53935)
+                        )
+                    }
+                } else if (state.isTranscribing) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("음성 변환 중...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else if (state.isWhisperModelReady) {
+                    FilledTonalIconButton(
+                        onClick = onStartRecording,
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "음성 녹음",
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Text(
+                        text = "음성으로 일기 쓰기",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (state.isDownloadingModel) {
+                    Text(
+                        text = "음성 인식 모델 다운로드 중...",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 

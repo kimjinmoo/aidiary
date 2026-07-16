@@ -1,6 +1,9 @@
 package com.grepiu.aidiary.mvi.viewmodel
 
 import android.app.Application
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,6 +28,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,9 +43,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private val downloader = ModelDownloaderV2(application)
     private val repository = DiaryRepository(application)
     private var llmEngine: DiaryLLMEngine? = null
-    
+    private var whisperEngine: WhisperEngine? = null
+
     private var downloadJob: Job? = null
     private var analysisJob: Job? = null
+    private var recordingJob: Job? = null
+    private var audioRecord: AudioRecord? = null
 
     // MVI 상태 데이터 홀더
     private val _state = MutableStateFlow(DiaryState())
@@ -54,6 +63,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         processIntent(DiaryIntent.LoadDiaries)
         viewModelScope.launch {
             ensureModelReady()
+        }
+        viewModelScope.launch {
+            ensureWhisperModelReady()
         }
     }
 
@@ -113,6 +125,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.ShowWifiWarning -> {
                 _state.update { it.copy(showWifiWarning = intent.show) }
+            }
+            is DiaryIntent.StartRecording -> {
+                startRecording()
+            }
+            is DiaryIntent.StopRecording -> {
+                stopRecording()
             }
         }
     }
@@ -329,6 +347,173 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ===== Whisper =====
+
+    private suspend fun ensureWhisperModelReady() {
+        if (downloader.isWhisperModelDownloaded()) {
+            initWhisper()
+            return
+        }
+        // Whisper 모델은 용량이 작으므로 별도 다운로드 안내 없이 자동 다운로드
+        try {
+            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "Whisper 모델 다운로드 중...") }
+            downloader.downloadWhisperModel(WHISPER_DOWNLOAD_URL) { bytesRead, totalBytes ->
+                val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
+                _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = sizeText) }
+            }.onSuccess {
+                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
+                initWhisper()
+            }.onFailure { e ->
+                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
+                Log.e("DiaryViewModel", "Whisper model download failed: ${e.message}")
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun initWhisper() {
+        try {
+            val modelFile = downloader.getWhisperModelFile()
+            if (!modelFile.exists()) return
+            whisperEngine = WhisperEngine.create(getApplication(), modelFile.absolutePath)
+            _state.update { it.copy(isWhisperModelReady = true) }
+            Log.d("DiaryViewModel", "Whisper engine ready")
+        } catch (e: Exception) {
+            Log.e("DiaryViewModel", "Whisper init failed: ${e.message}")
+        }
+    }
+
+    private fun startRecording() {
+        if (_state.value.isRecording) return
+        if (!_state.value.isWhisperModelReady) {
+            sendEffect(DiaryEffect.ShowToast("음성 인식 모델이 준비되지 않았습니다."))
+            return
+        }
+
+        recordingJob?.cancel()
+        _state.update { it.copy(isRecording = true, recordingSeconds = 0) }
+        recordingJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sampleRate = 16000
+                val bufferSize = AudioRecord.getMinBufferSize(sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+                val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
+                    sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, bufferSize * 2)
+                this@DiaryViewModel.audioRecord = audioRecord
+
+                val pcmFile = File(getApplication<Application>().cacheDir, "recording.pcm")
+                val fos = FileOutputStream(pcmFile)
+                val buffer = ShortArray(bufferSize)
+                audioRecord.startRecording()
+
+                val startTime = System.currentTimeMillis()
+                while (_state.value.isRecording) {
+                    val read = audioRecord.read(buffer, 0, buffer.size)
+                    if (read > 0) {
+                        fos.write(shortArrayToByteArray(buffer, read))
+                    }
+                    val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+                    if (elapsed != _state.value.recordingSeconds) {
+                        _state.update { it.copy(recordingSeconds = elapsed) }
+                    }
+                    // 최대 60초 제한
+                    if (elapsed >= 60) {
+                        launch(Dispatchers.Main) { stopRecording() }
+                        break
+                    }
+                }
+                audioRecord.stop()
+                audioRecord.release()
+                fos.close()
+
+                if (pcmFile.length() > 0) {
+                    val wavFile = convertPcmToWav(pcmFile, sampleRate)
+                    pcmFile.delete()
+                    transcribeAudio(wavFile)
+                }
+            } catch (e: Exception) {
+                Log.e("DiaryViewModel", "Recording error: ${e.message}")
+                _state.update { it.copy(isRecording = false) }
+            }
+        }
+    }
+
+    private fun stopRecording() {
+        _state.update { it.copy(isRecording = false) }
+        recordingJob?.cancel()
+    }
+
+    private fun shortArrayToByteArray(shorts: ShortArray, count: Int): ByteArray {
+        val bytes = ByteArray(count * 2)
+        for (i in 0 until count) {
+            val s = shorts[i]
+            bytes[i * 2] = (s.toInt() and 0xFF).toByte()
+            bytes[i * 2 + 1] = ((s.toInt() shr 8) and 0xFF).toByte()
+        }
+        return bytes
+    }
+
+    private fun convertPcmToWav(pcmFile: File, sampleRate: Int): File {
+        val wavFile = File(getApplication<Application>().cacheDir, "recording.wav")
+        val pcmData = pcmFile.readBytes()
+        val totalDataLen = pcmData.size + 36
+        val channels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * channels * bitsPerSample / 8
+
+        val header = ByteArray(44)
+        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+        header[4] = ((totalDataLen and 0xFF).toByte())
+        header[5] = ((totalDataLen shr 8) and 0xFF).toByte()
+        header[6] = ((totalDataLen shr 16) and 0xFF).toByte()
+        header[7] = ((totalDataLen shr 24) and 0xFF).toByte()
+        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0 // PCM
+        header[20] = 1; header[21] = 0 // PCM format
+        header[22] = channels.toByte(); header[23] = 0
+        header[24] = ((sampleRate and 0xFF).toByte())
+        header[25] = ((sampleRate shr 8) and 0xFF).toByte()
+        header[26] = ((sampleRate shr 16) and 0xFF).toByte()
+        header[27] = ((sampleRate shr 24) and 0xFF).toByte()
+        header[28] = ((byteRate and 0xFF).toByte())
+        header[29] = ((byteRate shr 8) and 0xFF).toByte()
+        header[30] = ((byteRate shr 16) and 0xFF).toByte()
+        header[31] = ((byteRate shr 24) and 0xFF).toByte()
+        header[32] = (channels * bitsPerSample / 8).toByte(); header[33] = 0
+        header[34] = bitsPerSample.toByte(); header[35] = 0
+        header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
+        header[40] = ((pcmData.size and 0xFF).toByte())
+        header[41] = ((pcmData.size shr 8) and 0xFF).toByte()
+        header[42] = ((pcmData.size shr 16) and 0xFF).toByte()
+        header[43] = ((pcmData.size shr 24) and 0xFF).toByte()
+
+        FileOutputStream(wavFile).use { it.write(header); it.write(pcmData) }
+        return wavFile
+    }
+
+    private fun transcribeAudio(wavFile: File) {
+        val engine = whisperEngine ?: return
+        _state.update { it.copy(isTranscribing = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val text = engine.transcribe(wavFile.absolutePath)
+                withContext(Dispatchers.Main) {
+                    val currentContent = _state.value.draftContent
+                    val appended = if (currentContent.isBlank()) text else "$currentContent\n$text"
+                    _state.update { it.copy(draftContent = appended, isTranscribing = false) }
+                    sendEffect(DiaryEffect.TranscriptionResult(text))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isTranscribing = false) }
+                sendEffect(DiaryEffect.ShowToast("음성 변환 실패: ${e.message}"))
+            } finally {
+                wavFile.delete()
+            }
+        }
+    }
+
     /**
      * 작성 완료한 일기 및 AI 분석 결과를 영구 보관합니다.
      */
@@ -387,13 +572,17 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         downloadJob?.cancel()
         analysisJob?.cancel()
+        recordingJob?.cancel()
+        audioRecord?.release()
         llmEngine?.dispose()
+        whisperEngine?.dispose()
         super.onCleared()
     }
 
     companion object {
-        // Hugging Face에서 다운받을 2B IT LiteRT-LM 모델
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+        private const val WHISPER_DOWNLOAD_URL =
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q8_0.bin"
     }
 }

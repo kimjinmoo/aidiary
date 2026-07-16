@@ -9,6 +9,7 @@
 /.idea/assetWizardSettings.xml
 /.idea/deploymentTargetSelector.xml
 /.idea/gradle.xml
+/.idea/
 .DS_Store
 /build
 /captures
