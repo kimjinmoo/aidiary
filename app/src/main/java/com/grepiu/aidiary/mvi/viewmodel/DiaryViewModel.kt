@@ -3,7 +3,10 @@ package com.grepiu.aidiary.mvi.viewmodel
 import android.Manifest
 import android.app.Application
 import android.content.pm.PackageManager
-import android.speech.SpeechRecognizer
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -49,7 +52,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private var downloadJob: Job? = null
     private var analysisJob: Job? = null
-    private var whisperEngine: WhisperEngine? = null
+    private var recordingJob: Job? = null
+    private var audioRecord: AudioRecord? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // MVI 상태 데이터 홀더
     private val _state = MutableStateFlow(DiaryState())
@@ -60,9 +65,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     val effect = _effect.receiveAsFlow()
 
     init {
+        // 앱 구동 시 일기 데이터 불러오기 및 AI 모델 검사 실행
         processIntent(DiaryIntent.LoadDiaries)
-        viewModelScope.launch { ensureModelReady() }
-        initWhisper()
+        viewModelScope.launch {
+            ensureModelReady()
+        }
+        viewModelScope.launch {
+            ensureWhisperModelReady()
+        }
     }
 
     /**
@@ -343,23 +353,46 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ===== Whisper (Android SpeechRecognizer) =====
+    // ===== Whisper =====
+
+    private suspend fun ensureWhisperModelReady() {
+        if (downloader.isWhisperModelDownloaded()) {
+            initWhisper()
+            return
+        }
+        // Whisper 모델은 용량이 작으므로 별도 다운로드 안내 없이 자동 다운로드
+        try {
+            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "Whisper 모델 다운로드 중...") }
+            downloader.downloadWhisperModel(WHISPER_DOWNLOAD_URL) { bytesRead, totalBytes ->
+                val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
+                _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = sizeText) }
+            }.onSuccess {
+                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
+                initWhisper()
+            }.onFailure { e ->
+                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
+                Log.e("DiaryViewModel", "Whisper model download failed: ${e.message}")
+            }
+        } catch (_: Exception) {}
+    }
 
     private fun initWhisper() {
         try {
-            whisperEngine = WhisperEngine.create(getApplication())
+            val modelFile = downloader.getWhisperModelFile()
+            if (!modelFile.exists()) return
+            whisperEngine = WhisperEngine.create(getApplication(), modelFile.absolutePath)
             _state.update { it.copy(isWhisperModelReady = true) }
-            Log.d("DiaryViewModel", "SpeechRecognizer ready")
+            Log.d("DiaryViewModel", "Whisper engine ready")
         } catch (e: Exception) {
-            Log.e("DiaryViewModel", "SpeechRecognizer init failed: ${e.message}")
+            Log.e("DiaryViewModel", "Whisper init failed: ${e.message}")
         }
     }
 
     private fun startRecording() {
         if (_state.value.isRecording) return
-        val engine = whisperEngine
-        if (engine == null) {
-            sendEffect(DiaryEffect.ShowToast("음성 인식기를 초기화할 수 없습니다."))
+        if (!_state.value.isWhisperModelReady) {
+            sendEffect(DiaryEffect.ShowToast("음성 인식 모델이 준비되지 않았습니다."))
             return
         }
         if (ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.RECORD_AUDIO)
@@ -368,26 +401,145 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        recordingJob?.cancel()
         _state.update { it.copy(isRecording = true, recordingSeconds = 0) }
-        engine.startListening(
-            language = "ko-KR",
-            onResult = { text ->
-                if (text.isNotBlank()) {
-                    val currentContent = _state.value.draftContent
-                    val appended = if (currentContent.isBlank()) text else "$currentContent $text"
-                    _state.update { it.copy(draftContent = appended) }
-                }
-            },
-            onError = { msg ->
-                _state.update { it.copy(isRecording = false) }
-                sendEffect(DiaryEffect.ShowToast("음성 인식 오류: $msg"))
+
+        // 화면이 꺼져도 CPU가 녹음을 계속할 수 있도록 WakeLock 획득
+        try {
+            val pm = getApplication<Application>().getSystemService(PowerManager::class.java)
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AIDiary:Recording").apply {
+                acquire(3600 * 1000L) // 최대 1시간
             }
-        )
+        } catch (e: Exception) {
+            Log.w("DiaryViewModel", "WakeLock 획득 실패: ${e.message}")
+        }
+
+        recordingJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sampleRate = 16000
+                val bufferSize = AudioRecord.getMinBufferSize(sampleRate,
+                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+                val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
+                    sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, bufferSize * 2)
+                this@DiaryViewModel.audioRecord = audioRecord
+
+                val pcmFile = File(getApplication<Application>().cacheDir, "recording.pcm")
+                val fos = FileOutputStream(pcmFile)
+                val buffer = ShortArray(bufferSize)
+                audioRecord.startRecording()
+
+                val startTime = System.currentTimeMillis()
+                while (_state.value.isRecording) {
+                    val read = audioRecord.read(buffer, 0, buffer.size)
+                    if (read > 0) {
+                        fos.write(shortArrayToByteArray(buffer, read))
+                    }
+                    val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+                    if (elapsed != _state.value.recordingSeconds) {
+                        _state.update { it.copy(recordingSeconds = elapsed) }
+                    }
+                    // 최대 3600초(1시간) 제한
+                    if (elapsed >= 3600) {
+                        launch(Dispatchers.Main) { stopRecording() }
+                        break
+                    }
+                }
+                audioRecord.stop()
+                audioRecord.release()
+                fos.close()
+
+                if (pcmFile.length() > 0) {
+                    val wavFile = convertPcmToWav(pcmFile, sampleRate)
+                    pcmFile.delete()
+                    transcribeAudio(wavFile)
+                }
+            } catch (e: Exception) {
+                Log.e("DiaryViewModel", "Recording error: ${e.message}")
+                _state.update { it.copy(isRecording = false) }
+            }
+        }
     }
 
     private fun stopRecording() {
-        whisperEngine?.stopListening()
         _state.update { it.copy(isRecording = false) }
+        recordingJob?.cancel()
+        wakeLock?.let { if (it.isHeld) it.release() }
+    }
+
+    private fun shortArrayToByteArray(shorts: ShortArray, count: Int): ByteArray {
+        val bytes = ByteArray(count * 2)
+        for (i in 0 until count) {
+            val s = shorts[i]
+            bytes[i * 2] = (s.toInt() and 0xFF).toByte()
+            bytes[i * 2 + 1] = ((s.toInt() shr 8) and 0xFF).toByte()
+        }
+        return bytes
+    }
+
+    private fun convertPcmToWav(pcmFile: File, sampleRate: Int): File {
+        val wavFile = File(getApplication<Application>().cacheDir, "recording.wav")
+        val pcmData = pcmFile.readBytes()
+        val totalDataLen = pcmData.size + 36
+        val channels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * channels * bitsPerSample / 8
+
+        val header = ByteArray(44)
+        header[0] = 'R'.code.toByte(); header[1] = 'I'.code.toByte(); header[2] = 'F'.code.toByte(); header[3] = 'F'.code.toByte()
+        header[4] = ((totalDataLen and 0xFF).toByte())
+        header[5] = ((totalDataLen shr 8) and 0xFF).toByte()
+        header[6] = ((totalDataLen shr 16) and 0xFF).toByte()
+        header[7] = ((totalDataLen shr 24) and 0xFF).toByte()
+        header[8] = 'W'.code.toByte(); header[9] = 'A'.code.toByte(); header[10] = 'V'.code.toByte(); header[11] = 'E'.code.toByte()
+        header[12] = 'f'.code.toByte(); header[13] = 'm'.code.toByte(); header[14] = 't'.code.toByte(); header[15] = ' '.code.toByte()
+        header[16] = 16; header[17] = 0; header[18] = 0; header[19] = 0 // PCM
+        header[20] = 1; header[21] = 0 // PCM format
+        header[22] = channels.toByte(); header[23] = 0
+        header[24] = ((sampleRate and 0xFF).toByte())
+        header[25] = ((sampleRate shr 8) and 0xFF).toByte()
+        header[26] = ((sampleRate shr 16) and 0xFF).toByte()
+        header[27] = ((sampleRate shr 24) and 0xFF).toByte()
+        header[28] = ((byteRate and 0xFF).toByte())
+        header[29] = ((byteRate shr 8) and 0xFF).toByte()
+        header[30] = ((byteRate shr 16) and 0xFF).toByte()
+        header[31] = ((byteRate shr 24) and 0xFF).toByte()
+        header[32] = (channels * bitsPerSample / 8).toByte(); header[33] = 0
+        header[34] = bitsPerSample.toByte(); header[35] = 0
+        header[36] = 'd'.code.toByte(); header[37] = 'a'.code.toByte(); header[38] = 't'.code.toByte(); header[39] = 'a'.code.toByte()
+        header[40] = ((pcmData.size and 0xFF).toByte())
+        header[41] = ((pcmData.size shr 8) and 0xFF).toByte()
+        header[42] = ((pcmData.size shr 16) and 0xFF).toByte()
+        header[43] = ((pcmData.size shr 24) and 0xFF).toByte()
+
+        FileOutputStream(wavFile).use { it.write(header); it.write(pcmData) }
+        return wavFile
+    }
+
+    private fun transcribeAudio(wavFile: File) {
+        val engine = whisperEngine ?: return
+        val fileSizeMB = wavFile.length() / 1024 / 1024
+        _state.update { it.copy(isTranscribing = true) }
+        // 긴 녹음(5분 이상)은 변환 시간이 오래 걸릴 수 있음을 안내
+        if (fileSizeMB > 10) {
+            sendEffect(DiaryEffect.ShowToast("긴 녹음 파일입니다. 변환에 수 분이 소요될 수 있습니다."))
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val text = engine.transcribe(wavFile.absolutePath, "auto")
+                withContext(Dispatchers.Main) {
+                    val currentContent = _state.value.draftContent
+                    val appended = if (currentContent.isBlank()) text else "$currentContent\n$text"
+                    _state.update { it.copy(draftContent = appended, isTranscribing = false) }
+                    sendEffect(DiaryEffect.TranscriptionResult(text))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isTranscribing = false) }
+                sendEffect(DiaryEffect.ShowToast("음성 변환 실패: ${e.message}"))
+            } finally {
+                wavFile.delete()
+            }
+        }
     }
 
     /**
@@ -448,13 +600,18 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         downloadJob?.cancel()
         analysisJob?.cancel()
-        whisperEngine?.dispose()
+        recordingJob?.cancel()
+        audioRecord?.release()
+        wakeLock?.let { if (it.isHeld) it.release() }
         llmEngine?.dispose()
+        whisperEngine?.dispose()
         super.onCleared()
     }
 
     companion object {
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+        private const val WHISPER_DOWNLOAD_URL =
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin"
     }
 }

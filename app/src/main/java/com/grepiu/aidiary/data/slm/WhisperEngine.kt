@@ -1,113 +1,65 @@
 package com.grepiu.aidiary.data.slm
 
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
 import android.util.Log
+import java.io.File
 
 /**
- * Android 내장 음성인식 기반 온디바이스 음성→텍스트 변환 엔진입니다.
- * Android 12+에서는 다운로드된 언어팩으로 오프라인에서도 동작합니다.
+ * whisper.cpp 기반 온디바이스 음성→텍스트 변환 엔진입니다.
+ *
+ * 의존성: com.github.adefresne:whisper-cpp-android (JitPack)
+ *         또는 프로젝트 내 JNI/CMake로 빌드된 libwhisper.so
  */
 class WhisperEngine private constructor(
-    private val speechRecognizer: SpeechRecognizer
+    private val nativePtr: Long,
+    private val modelPath: String
 ) {
     companion object {
         private const val TAG = "WhisperEngine"
 
-        fun create(context: Context): WhisperEngine {
-            val recognizer = if (SpeechRecognizer.isOnDeviceSpeechRecognizerAvailable(context)) {
-                Log.d(TAG, "On-device speech recognizer available")
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-            } else {
-                Log.d(TAG, "Using network-based speech recognizer")
-                SpeechRecognizer.createSpeechRecognizer(context)
-            }
-            return WhisperEngine(recognizer)
+        init {
+            System.loadLibrary("whisper_jni")
         }
+
+        /**
+         * whisper.cpp 모델 파일을 로드하여 엔진을 생성합니다.
+         * @param modelPath ggml-small-q8_0.bin 등 whisper.cpp 모델 경로
+         */
+        fun create(context: Context, modelPath: String): WhisperEngine {
+            val modelFile = File(modelPath)
+            require(modelFile.exists()) { "Whisper model not found: $modelPath" }
+            require(modelFile.length() > 10 * 1024 * 1024) { "Whisper model too small: ${modelFile.length()} bytes" }
+
+            val ptr = nativeInit(modelPath)
+            Log.d(TAG, "Whisper engine initialized, nativePtr=$ptr, model=${modelFile.length() / 1024 / 1024}MB")
+            return WhisperEngine(ptr, modelPath)
+        }
+
+        // JNI 네이티브 메서드 선언
+        @JvmStatic private external fun nativeInit(modelPath: String): Long
+        @JvmStatic private external fun nativeTranscribe(ptr: Long, wavPath: String, language: String): String
+        @JvmStatic private external fun nativeFree(ptr: Long)
     }
 
     /**
-     * 음성 인식을 시작하고 결과를 콜백으로 전달합니다.
+     * WAV 오디오 파일을 텍스트로 변환합니다.
+     * @param wavPath 16kHz 모노 PCM WAV 파일 경로
+     * @param language 언어 코드 (예: "ko", "auto")
+     * @return 변환된 텍스트
      */
-    fun startListening(
-        language: String = "ko-KR",
-        onResult: (String) -> Unit,
-        onError: (String) -> Unit
-    ) {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        }
-
-        speechRecognizer.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
-                Log.d(TAG, "Ready for speech")
-            }
-            override fun onBeginningOfSpeech() {
-                Log.d(TAG, "Speech started")
-            }
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-
-            override fun onEndOfSpeech() {
-                Log.d(TAG, "Speech ended")
-            }
-
-            override fun onError(error: Int) {
-                val msg = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "오디오 오류"
-                    SpeechRecognizer.ERROR_CLIENT -> "클라이언트 오류"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "권한 부족"
-                    SpeechRecognizer.ERROR_NETWORK -> "네트워크 오류"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "네트워크 타임아웃"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "음성 인식 결과 없음"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "인식기가 사용 중"
-                    SpeechRecognizer.ERROR_SERVER -> "서버 오류"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "음성 입력 시간 초과"
-                    else -> "알 수 없는 오류 ($error)"
-                }
-                Log.e(TAG, "Recognition error: $msg")
-                onError(msg)
-            }
-
-            override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val text = matches?.firstOrNull() ?: ""
-                Log.d(TAG, "Final result: $text")
-                onResult(text)
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val text = matches?.firstOrNull() ?: ""
-                if (text.isNotBlank()) {
-                    Log.d(TAG, "Partial: $text")
-                    onResult(text)
-                }
-            }
-
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
-
-        speechRecognizer.startListening(intent)
-    }
-
-    fun stopListening() {
-        speechRecognizer.stopListening()
+    fun transcribe(wavPath: String, language: String = "auto"): String {
+        Log.d(TAG, "Transcribing: $wavPath, language=$language")
+        val result = nativeTranscribe(nativePtr, wavPath, language)
+        Log.d(TAG, "Transcription result (${result.length} chars): ${result.take(80)}...")
+        return result.trim()
     }
 
     fun dispose() {
         try {
-            speechRecognizer.destroy()
-            Log.d(TAG, "Speech recognizer disposed")
+            nativeFree(nativePtr)
+            Log.d(TAG, "Whisper engine disposed")
         } catch (e: Exception) {
-            Log.e(TAG, "Error disposing", e)
+            Log.e(TAG, "Error disposing whisper engine", e)
         }
     }
 }
