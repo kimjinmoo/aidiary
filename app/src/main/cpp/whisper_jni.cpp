@@ -10,20 +10,24 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-// WAV 파일에서 PCM float 샘플을 읽어오는 헬퍼
 static std::vector<float> read_wav(const char* path) {
     std::ifstream file(path, std::ios::binary);
-    if (!file) return {};
+    if (!file) {
+        LOGE("read_wav: cannot open file: %s", path);
+        return {};
+    }
 
-    // WAV 헤더 파싱
     char header[44];
     file.read(header, 44);
     if (std::strncmp(header, "RIFF", 4) != 0 || std::strncmp(header + 8, "WAVE", 4) != 0) {
+        LOGE("read_wav: invalid WAV header");
         return {};
     }
 
     int bitsPerSample = *(short*)(header + 34);
     int dataSize = *(int*)(header + 40);
+
+    LOGD("read_wav: bits=%d, dataSize=%d bytes", bitsPerSample, dataSize);
 
     std::vector<float> samples;
     if (bitsPerSample == 16) {
@@ -41,6 +45,7 @@ static std::vector<float> read_wav(const char* path) {
             samples.push_back(s / 128.0f);
         }
     }
+    LOGD("read_wav: %zu float samples loaded", samples.size());
     return samples;
 }
 
@@ -51,6 +56,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(
     JNIEnv* env, jclass, jstring modelPathJ) {
 
     const char* modelPath = env->GetStringUTFChars(modelPathJ, nullptr);
+    LOGD("nativeInit: loading model from %s", modelPath);
 
     struct whisper_context_params cparams = whisper_context_default_params();
     struct whisper_context* ctx = whisper_init_from_file_with_params(modelPath, cparams);
@@ -58,10 +64,10 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(
     env->ReleaseStringUTFChars(modelPathJ, modelPath);
 
     if (!ctx) {
-        LOGE("Failed to initialize whisper context from: %s", modelPath);
+        LOGE("nativeInit: failed");
         return 0;
     }
-    LOGD("Whisper context initialized, ptr=%p", ctx);
+    LOGD("nativeInit: success, ptr=%p", ctx);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -75,41 +81,59 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     const char* wavPath = env->GetStringUTFChars(wavPathJ, nullptr);
     const char* lang = env->GetStringUTFChars(languageJ, nullptr);
 
-    // WAV 파일에서 float 샘플 읽기 (신규 API: whisper_full이 파일 경로 대신 샘플을 직접 받음)
+    LOGD("nativeTranscribe: reading WAV from %s", wavPath);
     std::vector<float> samples = read_wav(wavPath);
     if (samples.empty()) {
-        LOGE("Failed to read WAV file: %s", wavPath);
+        LOGE("nativeTranscribe: empty samples, returning empty");
         env->ReleaseStringUTFChars(wavPathJ, wavPath);
         env->ReleaseStringUTFChars(languageJ, lang);
         return env->NewStringUTF("");
     }
 
+    float durationSec = (float)samples.size() / 16000.0f;
+    LOGD("nativeTranscribe: samples=%zu, duration=%.1fs, starting whisper_full", samples.size(), durationSec);
+
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    params.print_progress = false;
-    params.print_special = false;
-    params.print_realtime = false;
+    params.print_progress   = false;
+    params.print_special    = false;
+    params.print_realtime   = false;
     params.print_timestamps = false;
-    params.language = lang;
-    params.n_threads = 4;
-    params.offset_ms = 0;
-    params.no_context = true;
-    params.single_segment = true;
+    params.language         = lang;
+    params.n_threads        = 2;
+    params.offset_ms        = 0;
+    params.no_context       = true;
+    params.single_segment   = false;
+    params.translate        = false;
 
-    LOGD("Transcribing: %s (lang=%s, samples=%zu)", wavPath, lang, samples.size());
+    int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
+    LOGD("nativeTranscribe: whisper_full returned %d", ret);
 
-    if (whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size())) != 0) {
-        LOGE("whisper_full failed");
+    if (ret != 0) {
+        LOGE("nativeTranscribe: whisper_full failed with code %d", ret);
         env->ReleaseStringUTFChars(wavPathJ, wavPath);
         env->ReleaseStringUTFChars(languageJ, lang);
         return env->NewStringUTF("");
     }
 
     const int n_segments = whisper_full_n_segments(ctx);
+    LOGD("nativeTranscribe: %d segments", n_segments);
+
     std::string result;
     for (int i = 0; i < n_segments; i++) {
         const char* text = whisper_full_get_segment_text(ctx, i);
         if (text && strlen(text) > 0) {
-            if (!result.empty()) result += " ";
+            int64_t t0 = whisper_full_get_segment_t0(ctx, i);
+            int64_t t1 = whisper_full_get_segment_t1(ctx, i);
+            int sec0 = (int)(t0 / 100);
+            int min0 = sec0 / 60; sec0 %= 60;
+            int sec1 = (int)(t1 / 100);
+            int min1 = sec1 / 60; sec1 %= 60;
+            
+            char ts[32];
+            snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] ", min0, sec0, min1, sec1);
+            
+            if (!result.empty()) result += "\n";
+            result += ts;
             result += text;
         }
     }
@@ -117,7 +141,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     env->ReleaseStringUTFChars(wavPathJ, wavPath);
     env->ReleaseStringUTFChars(languageJ, lang);
 
-    LOGD("Transcription result: %s", result.c_str());
+    LOGD("nativeTranscribe: result length=%zu, result=%s", result.size(), result.c_str());
     return env->NewStringUTF(result.c_str());
 }
 
@@ -127,7 +151,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeFree(
     auto* ctx = reinterpret_cast<struct whisper_context*>(ptr);
     if (ctx) {
         whisper_free(ctx);
-        LOGD("Whisper context freed");
+        LOGD("nativeFree: done");
     }
 }
 

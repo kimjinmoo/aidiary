@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -53,6 +54,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private var analysisJob: Job? = null
     private var recordingJob: Job? = null
     private var audioRecord: AudioRecord? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // MVI 상태 데이터 홀더
     private val _state = MutableStateFlow(DiaryState())
@@ -401,6 +403,17 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         recordingJob?.cancel()
         _state.update { it.copy(isRecording = true, recordingSeconds = 0) }
+
+        // 화면이 꺼져도 CPU가 녹음을 계속할 수 있도록 WakeLock 획득
+        try {
+            val pm = getApplication<Application>().getSystemService(PowerManager::class.java)
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AIDiary:Recording").apply {
+                acquire(3600 * 1000L) // 최대 1시간
+            }
+        } catch (e: Exception) {
+            Log.w("DiaryViewModel", "WakeLock 획득 실패: ${e.message}")
+        }
+
         recordingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val sampleRate = 16000
@@ -451,6 +464,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private fun stopRecording() {
         _state.update { it.copy(isRecording = false) }
         recordingJob?.cancel()
+        wakeLock?.let { if (it.isHeld) it.release() }
     }
 
     private fun shortArrayToByteArray(shorts: ShortArray, count: Int): ByteArray {
@@ -588,6 +602,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         analysisJob?.cancel()
         recordingJob?.cancel()
         audioRecord?.release()
+        wakeLock?.let { if (it.isHeld) it.release() }
         llmEngine?.dispose()
         whisperEngine?.dispose()
         super.onCleared()
