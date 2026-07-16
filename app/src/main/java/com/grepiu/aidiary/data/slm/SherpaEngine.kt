@@ -4,7 +4,7 @@ import android.util.Log
 import com.k2fsa.sherpa.onnx.*
 import java.io.File
 
-class SherpaEngine private constructor(val recognizer: OnlineRecognizer) {
+class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
     companion object {
         private const val TAG = "SherpaEngine"
 
@@ -19,28 +19,36 @@ class SherpaEngine private constructor(val recognizer: OnlineRecognizer) {
             val bpe = File(dir, "bpe.model")
             listOfNotNull(enc, dec, joi, tok).forEach { require(it.exists()) { "Missing: ${it.name}" } }
 
-            val cfg = OnlineRecognizerConfig(
-                modelConfig = OnlineModelConfig(
-                    transducer = OnlineTransducerModelConfig(enc!!.absolutePath, dec!!.absolutePath, joi!!.absolutePath),
+            val cfg = OfflineRecognizerConfig(
+                modelConfig = OfflineModelConfig(
+                    transducer = OfflineTransducerModelConfig(enc!!.absolutePath, dec!!.absolutePath, joi!!.absolutePath),
                     tokens = tok.absolutePath,
-                    modelingUnit = if (bpe.exists()) "bpe" else "cjkchar",
+                    modelingUnit = if (bpe.exists()) "bpe" else "",
                     bpeVocab = if (bpe.exists()) bpe.absolutePath else "",
                     numThreads = 4,
-                    debug = true,
-                    provider = "gpu"
+                    provider = "cpu"
                 ),
-                decodingMethod = "greedy_search",
-                enableEndpoint = false
+                decodingMethod = "greedy_search"
             )
-            Log.d(TAG, "OnlineRecognizer created, bpe=${bpe.exists()}")
-            return SherpaEngine(OnlineRecognizer(config = cfg))
+            return SherpaEngine(OfflineRecognizer(config = cfg))
         }
     }
 
-    fun createStream() = recognizer.createStream()
-    fun acceptWaveform(s: OnlineStream, samples: FloatArray, rate: Int) { s.acceptWaveform(samples, rate) }
-    fun decode(s: OnlineStream) { recognizer.decode(s) }
-    fun isReady(s: OnlineStream) = recognizer.isReady(s)
-    fun result(s: OnlineStream) = recognizer.getResult(s).text
+    fun transcribe(wavPath: String): String {
+        val bytes = File(wavPath).readBytes()
+        val rate = ((bytes[24].toInt() and 0xFF) or ((bytes[25].toInt() and 0xFF) shl 8) or ((bytes[26].toInt() and 0xFF) shl 16) or ((bytes[27].toInt() and 0xFF) shl 24))
+        val bits = (bytes[34].toInt() and 0xFF) or ((bytes[35].toInt() and 0xFF) shl 8)
+        val samples = FloatArray((bytes.size - 44) / (bits / 8)) { i ->
+            val idx = 44 + i * 2
+            (((bytes[idx].toInt() and 0xFF) or ((bytes[idx + 1].toInt() and 0xFF) shl 8)).toShort() / 32768f)
+        }
+        val s = recognizer.createStream()
+        s.acceptWaveform(samples, rate)
+        recognizer.decode(s)
+        val t = recognizer.getResult(s).text
+        s.release()
+        return t.trim()
+    }
+
     fun dispose() { try { recognizer.release() } catch (_: Exception) {} }
 }

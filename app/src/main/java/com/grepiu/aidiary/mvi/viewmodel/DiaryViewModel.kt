@@ -17,7 +17,6 @@ import com.grepiu.aidiary.data.slm.DeviceCapabilityChecker
 import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
 import com.grepiu.aidiary.data.slm.SherpaEngine
-import com.k2fsa.sherpa.onnx.OnlineStream
 import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
@@ -55,9 +54,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private var analysisJob: Job? = null
     private var recordingJob: Job? = null
     private var audioRecord: AudioRecord? = null
-    private var onlineStream: OnlineStream? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var accumulatedText: String = ""
 
     // MVI 상태 데이터 홀더
     private val _state = MutableStateFlow(DiaryState())
@@ -400,17 +397,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
     private fun startRecording() {
         if (_state.value.isRecording) return
-        val engine = sherpaEngine ?: return
-        if (!_state.value.isSherpaModelReady) {
-            sendEffect(DiaryEffect.ShowToast("모델 준비되지 않음")); return
-        }
+        if (!_state.value.isSherpaModelReady) { sendEffect(DiaryEffect.ShowToast("모델 준비되지 않음")); return }
         if (ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
-            sendEffect(DiaryEffect.RequestAudioPermission); return
-        }
+            != PackageManager.PERMISSION_GRANTED) { sendEffect(DiaryEffect.RequestAudioPermission); return }
 
         recordingJob?.cancel()
-        accumulatedText = _state.value.draftContent
         _state.update { it.copy(isRecording = true, recordingSeconds = 0, recordingVolume = 0f) }
 
         try {
@@ -418,24 +409,22 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AIDiary:Recording").apply { acquire(3600 * 1000L) }
         } catch (_: Exception) {}
 
-        val stream = engine.createStream()
-        onlineStream = stream
-
         recordingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val rate = 16000
                 val bufSize = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(512)
                 val rec = AudioRecord(MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize * 4)
                 audioRecord = rec
+                val pcmFile = File(getApplication<Application>().cacheDir, "recording.pcm")
+                val fos = FileOutputStream(pcmFile)
                 val buf = ShortArray(bufSize)
                 rec.startRecording()
-
-                var total = 0L; var lastDecode = 0L; val start = System.currentTimeMillis()
+                val start = System.currentTimeMillis()
 
                 while (_state.value.isRecording) {
                     val n = rec.read(buf, 0, buf.size)
                     if (n <= 0) continue
-                    val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt()
+                    fos.write(shortArrayToByteArray(buf, n))
 
                     var sum = 0L
                     for (i in 0 until n) { val s = buf[i].toInt(); sum += s * s }
@@ -443,34 +432,15 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     val db = if (rms > 1.0) 20.0 * Math.log10(rms / 32768.0) else -60.0
                     val vol = ((db + 60.0) / 60.0).toFloat().coerceIn(0f, 1f)
 
-                    val floats = FloatArray(n) { buf[it] / 32768f }
-                    stream.acceptWaveform(floats, rate)
-                    total += n
-                    if (total - lastDecode >= rate / 2) {
-                        val t0 = System.currentTimeMillis()
-                        engine.decode(stream)
-                        val partial = engine.result(stream)
-                        Log.d("DiaryViewModel", "decode+result took ${System.currentTimeMillis() - t0}ms, text=${partial.take(30)}")
-                        lastDecode = total
-                        launch(Dispatchers.Main) {
-                            _state.update { it.copy(draftContent = accumulatedText + partial, recordingSeconds = elapsed, recordingVolume = vol) }
-                        }
-                    } else {
-                        launch(Dispatchers.Main) { _state.update { it.copy(recordingSeconds = elapsed, recordingVolume = vol) } }
-                    }
+                    val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt()
+                    launch(Dispatchers.Main) { _state.update { it.copy(recordingSeconds = elapsed, recordingVolume = vol) } }
                     if (elapsed >= 3600) { launch(Dispatchers.Main) { stopRecording() }; break }
                 }
 
-                stream.inputFinished()
-                engine.decode(stream)
-                while (engine.isReady(stream)) { engine.decode(stream) }
-                val finalText = engine.result(stream)
-                stream.release()
-                rec.stop(); rec.release()
+                rec.stop(); rec.release(); fos.close()
 
-                launch(Dispatchers.Main) {
-                    _state.update { it.copy(draftContent = accumulatedText + finalText, isRecording = false, recordingVolume = 0f) }
-                    if (finalText.isNotBlank()) sendEffect(DiaryEffect.TranscriptionResult(finalText))
+                if (pcmFile.length() > 0) {
+                    val wavFile = convertPcmToWav(pcmFile, rate); pcmFile.delete(); transcribeAudio(wavFile)
                 }
             } catch (e: Exception) {
                 Log.e("DiaryViewModel", "Rec error", e)
@@ -484,6 +454,50 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         wakeLock?.let { if (it.isHeld) it.release() }
     }
 
+    private fun shortArrayToByteArray(shorts: ShortArray, count: Int): ByteArray {
+        val bytes = ByteArray(count * 2)
+        for (i in 0 until count) { val s = shorts[i]; bytes[i * 2] = (s.toInt() and 0xFF).toByte(); bytes[i * 2 + 1] = ((s.toInt() shr 8) and 0xFF).toByte() }
+        return bytes
+    }
+
+    private fun convertPcmToWav(pcmFile: File, sampleRate: Int): File {
+        val wavFile = File(getApplication<Application>().cacheDir, "recording.wav")
+        val pcmData = pcmFile.readBytes()
+        val totalDataLen = pcmData.size + 36; val byteRate = sampleRate * 2
+        val header = ByteArray(44).apply {
+            "RIFF".toByteArray().copyInto(this, 0); "WAVE".toByteArray().copyInto(this, 8); "fmt ".toByteArray().copyInto(this, 12)
+            this[16] = 16; this[20] = 1; this[22] = 1
+            this[24] = (sampleRate and 0xFF).toByte(); this[25] = ((sampleRate shr 8) and 0xFF).toByte()
+            this[26] = ((sampleRate shr 16) and 0xFF).toByte(); this[27] = ((sampleRate shr 24) and 0xFF).toByte()
+            this[28] = (byteRate and 0xFF).toByte(); this[29] = ((byteRate shr 8) and 0xFF).toByte()
+            this[30] = ((byteRate shr 16) and 0xFF).toByte(); this[31] = ((byteRate shr 24) and 0xFF).toByte()
+            this[32] = 2; this[34] = 16; "data".toByteArray().copyInto(this, 36)
+            this[40] = (pcmData.size and 0xFF).toByte(); this[41] = ((pcmData.size shr 8) and 0xFF).toByte()
+            this[42] = ((pcmData.size shr 16) and 0xFF).toByte(); this[43] = ((pcmData.size shr 24) and 0xFF).toByte()
+        }
+        this[4] = (totalDataLen and 0xFF).toByte(); this[5] = ((totalDataLen shr 8) and 0xFF).toByte()
+        this[6] = ((totalDataLen shr 16) and 0xFF).toByte(); this[7] = ((totalDataLen shr 24) and 0xFF).toByte()
+        FileOutputStream(wavFile).use { it.write(header); it.write(pcmData) }
+        return wavFile
+    }
+
+    private fun transcribeAudio(wavFile: File) {
+        val engine = sherpaEngine ?: return
+        _state.update { it.copy(isTranscribing = true) }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val text = engine.transcribe(wavFile.absolutePath)
+                withContext(Dispatchers.Main) {
+                    val cur = _state.value.draftContent
+                    _state.update { it.copy(draftContent = if (cur.isBlank()) text else "$cur\n$text", isTranscribing = false) }
+                    sendEffect(DiaryEffect.TranscriptionResult(text))
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isTranscribing = false) }
+                sendEffect(DiaryEffect.ShowToast("변환 실패: ${e.message}"))
+            } finally { wavFile.delete() }
+        }
+    }
     /**
      * 작성 완료한 일기 및 AI 분석 결과를 영구 보관합니다.
      */
@@ -554,6 +568,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         private const val SHERPA_DOWNLOAD_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-korean-2024-06-16-mobile.tar.bz2"
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-korean-2024-06-24.tar.bz2"
     }
 }
