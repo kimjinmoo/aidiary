@@ -96,7 +96,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
     params.language         = lang;
     params.tdrz_enable      = true;
-    params.print_progress   = false;
+    params.print_progress   = true;
     params.print_realtime   = false;
     params.print_timestamps = false;
     params.no_context       = true;
