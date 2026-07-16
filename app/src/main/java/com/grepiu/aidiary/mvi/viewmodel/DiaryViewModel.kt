@@ -1,10 +1,13 @@
 package com.grepiu.aidiary.mvi.viewmodel
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.grepiu.aidiary.data.model.DiaryEntry
@@ -388,6 +391,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (_state.value.isRecording) return
         if (!_state.value.isWhisperModelReady) {
             sendEffect(DiaryEffect.ShowToast("음성 인식 모델이 준비되지 않았습니다."))
+            return
+        }
+        if (ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            sendEffect(DiaryEffect.RequestAudioPermission)
             return
         }
 

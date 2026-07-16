@@ -1,11 +1,14 @@
 package com.grepiu.aidiary
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -69,6 +72,17 @@ class MainActivity : ComponentActivity() {
                 val state by viewModel.state.collectAsState()
                 val context = LocalContext.current
 
+                // 오디오 권한 요청 런처
+                val audioPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { granted ->
+                    if (granted) {
+                        viewModel.processIntent(DiaryIntent.StartRecording)
+                    } else {
+                        Toast.makeText(context, "마이크 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
                 // 일회성 부수 효과(Toast 등) 구독 및 실행
                 LaunchedEffect(Unit) {
                     viewModel.effect.collect { effect ->
@@ -81,6 +95,9 @@ class MainActivity : ComponentActivity() {
                             }
                             is DiaryEffect.TranscriptionResult -> {
                                 Toast.makeText(context, "음성 변환 완료!", Toast.LENGTH_SHORT).show()
+                            }
+                            is DiaryEffect.RequestAudioPermission -> {
+                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }
                     }
