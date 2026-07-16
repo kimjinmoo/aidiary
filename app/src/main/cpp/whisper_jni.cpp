@@ -104,6 +104,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     params.no_context       = true;
     params.single_segment   = false;
     params.translate        = false;
+    params.tdrz_enable      = true;  // tinydiarize: 화자 전환 감지
 
     int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
     LOGD("nativeTranscribe: whisper_full returned %d", ret);
@@ -119,7 +120,15 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     LOGD("nativeTranscribe: %d segments", n_segments);
 
     std::string result;
+    int speakerIdx = 0;
+    const char* speakerLabels[] = {"화자A", "화자B", "화자C", "화자D"};
+
     for (int i = 0; i < n_segments; i++) {
+        // 화자 전환 감지
+        if (i > 0 && whisper_full_get_segment_speaker_turn_next(ctx, i - 1)) {
+            speakerIdx = (speakerIdx + 1) % 4;
+        }
+
         const char* text = whisper_full_get_segment_text(ctx, i);
         if (text && strlen(text) > 0) {
             int64_t t0 = whisper_full_get_segment_t0(ctx, i);
@@ -129,8 +138,8 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
             int sec1 = (int)(t1 / 100);
             int min1 = sec1 / 60; sec1 %= 60;
             
-            char ts[32];
-            snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] ", min0, sec0, min1, sec1);
+            char ts[64];
+            snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] %s: ", min0, sec0, min1, sec1, speakerLabels[speakerIdx]);
             
             if (!result.empty()) result += "\n";
             result += ts;
