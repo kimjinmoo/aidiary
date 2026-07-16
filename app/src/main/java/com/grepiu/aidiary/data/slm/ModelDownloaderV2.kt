@@ -28,8 +28,8 @@ class ModelDownloaderV2(private val context: Context) {
     companion object {
         private const val TAG = "ModelDownloaderV2"
         const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
-        const val SHERPA_ARCHIVE = "sherpa-korean-streaming.tar.bz2"
-        const val SHERPA_MODEL_DIR = "sherpa-korean-streaming"
+        const val SHERPA_ARCHIVE = "sherpa-korean.tar.bz2"
+        const val SHERPA_MODEL_DIR = "sherpa-korean"
         private const val MODEL_ASSET_PATH = "model/$MODEL_FILENAME"
     }
 
