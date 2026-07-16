@@ -47,7 +47,7 @@ class WhisperEngine private constructor(
      * @param language 언어 코드 (예: "ko", "auto")
      * @return 변환된 텍스트
      */
-    fun transcribe(wavPath: String, language: String = "ko"): String {
+    fun transcribe(wavPath: String, language: String = "auto"): String {
         Log.d(TAG, "Transcribing: $wavPath, language=$language")
         val result = nativeTranscribe(nativePtr, wavPath, language)
         Log.d(TAG, "Transcription result (${result.length} chars): ${result.take(80)}...")

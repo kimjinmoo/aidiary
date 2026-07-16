@@ -526,7 +526,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val text = engine.transcribe(wavFile.absolutePath)
+                val text = engine.transcribe(wavFile.absolutePath, "auto")
                 withContext(Dispatchers.Main) {
                     val currentContent = _state.value.draftContent
                     val appended = if (currentContent.isBlank()) text else "$currentContent\n$text"
