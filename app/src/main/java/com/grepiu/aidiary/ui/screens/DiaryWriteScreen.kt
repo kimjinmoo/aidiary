@@ -11,8 +11,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Done
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -120,70 +118,20 @@ fun DiaryWriteScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 if (state.isRecording) {
-                    // 녹음 중 UI
-                    Box(
-                        contentAlignment = Alignment.Center,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFE53935))
+                    Button(
+                        onClick = onStopRecording,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        IconButton(onClick = onStopRecording) {
-                            Icon(
-                                imageVector = Icons.Filled.Stop,
-                                contentDescription = "녹음 중지",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
+                        Text("■ 녹음 중지 (${state.recordingSeconds}초)", color = Color.White, fontWeight = FontWeight.Bold)
                     }
-                    Column(modifier = Modifier.padding(start = 4.dp)) {
-                        Text(
-                            text = "녹음 중... ${state.recordingSeconds}초",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = Color(0xFFE53935)
-                        )
-                        LinearProgressIndicator(
-                            progress = { 1f },
-                            modifier = Modifier
-                                .width(120.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
-                            color = Color(0xFFE53935)
-                        )
-                    }
-                } else if (state.isTranscribing) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("음성 변환 중...", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                } else if (state.isWhisperModelReady) {
-                    FilledTonalIconButton(
+                } else {
+                    FilledTonalButton(
                         onClick = onStartRecording,
-                        modifier = Modifier.size(44.dp)
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Mic,
-                            contentDescription = "음성 녹음",
-                            modifier = Modifier.size(22.dp)
-                        )
+                        Text("🎤 음성으로 일기 쓰기", fontWeight = FontWeight.Medium)
                     }
-                    Text(
-                        text = "음성으로 일기 쓰기",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else if (state.isDownloadingModel) {
-                    Text(
-                        text = "음성 인식 모델 다운로드 중...",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 
