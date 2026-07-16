@@ -29,7 +29,7 @@ class SherpaEngine private constructor(
                     tokens = tokens.absolutePath,
                     modelingUnit = if (bpe.exists()) "bpe" else "cjkchar",
                     bpeVocab = if (bpe.exists()) bpe.absolutePath else "",
-                    modelType = "zipformer2",
+                    modelType = "",
                     numThreads = 4,
                     debug = true,
                     provider = "cpu"
@@ -38,8 +38,10 @@ class SherpaEngine private constructor(
                 enableEndpoint = false
             )
 
-            val recognizer = OnlineRecognizer(config = cfg)
-            Log.d(TAG, "OnlineRecognizer ready, bpe=${bpe.exists()}, type=auto")
+            val recognizer = try { OnlineRecognizer(config = cfg) } catch (e: Exception) {
+                Log.e(TAG, "OnlineRecognizer init failed", e); throw RuntimeException("Sherpa init: ${e.message}")
+            }
+            Log.d(TAG, "OnlineRecognizer ready, bpe=${bpe.exists()}")
             return SherpaEngine(recognizer)
         }
     }
