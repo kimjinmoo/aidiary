@@ -3,10 +3,6 @@ project("whisper_jni")
 
 set(CMAKE_CXX_STANDARD 17)
 
-# ARMv9 Neon + FP16 가속 플래그
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -march=armv8.2-a+fp16+dotprod")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=armv8.2-a+fp16+dotprod")
-
 set(WHISPER_BUILD_EXAMPLES OFF)
 set(WHISPER_BUILD_TESTS OFF)
 set(WHISPER_BUILD_SERVER OFF)

@@ -62,7 +62,8 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(JNIEnv* env, jclass, j
     setenv("GGML_NUMA", "0", 1);
     
     // 단순 init (기본 파라미터)
-    struct whisper_context* ctx = whisper_init_from_file(path);
+    struct whisper_context_params cparams = whisper_context_default_params();
+    struct whisper_context* ctx = whisper_init_from_file_with_params(path, cparams);
     env->ReleaseStringUTFChars(pathJ, path);
     LOGD("Model loaded: %p (using whisper_init_from_file)", ctx);
     return reinterpret_cast<jlong>(ctx);
