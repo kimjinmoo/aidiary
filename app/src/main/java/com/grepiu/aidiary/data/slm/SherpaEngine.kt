@@ -27,7 +27,7 @@ class SherpaEngine private constructor(val recognizer: OnlineRecognizer) {
                     bpeVocab = if (bpe.exists()) bpe.absolutePath else "",
                     numThreads = 4,
                     debug = true,
-                    provider = "cpu"
+                    provider = "gpu"
                 ),
                 decodingMethod = "greedy_search",
                 enableEndpoint = false
