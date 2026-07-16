@@ -59,6 +59,8 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(
     LOGD("nativeInit: loading model from %s", modelPath);
 
     struct whisper_context_params cparams = whisper_context_default_params();
+    cparams.use_gpu = false;
+    cparams.flash_attn = false;
     struct whisper_context* ctx = whisper_init_from_file_with_params(modelPath, cparams);
 
     env->ReleaseStringUTFChars(modelPathJ, modelPath);
@@ -99,7 +101,10 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     params.print_realtime   = false;
     params.print_timestamps = false;
     params.no_context       = true;
-    params.tdrz_enable      = true;
+    params.tdrz_enable      = false;
+    if (params.n_threads <= 0) {
+        params.n_threads = 4;
+    }
 
     int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
     LOGD("nativeTranscribe: whisper_full returned %d", ret);
@@ -119,26 +124,31 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(
     const char* speakerLabels[] = {"화자A", "화자B", "화자C", "화자D"};
 
     for (int i = 0; i < n_segments; i++) {
-        // 화자 전환 감지
-        if (i > 0 && whisper_full_get_segment_speaker_turn_next(ctx, i - 1)) {
-            speakerIdx = (speakerIdx + 1) % 4;
-        }
-
         const char* text = whisper_full_get_segment_text(ctx, i);
         if (text && strlen(text) > 0) {
-            int64_t t0 = whisper_full_get_segment_t0(ctx, i);
-            int64_t t1 = whisper_full_get_segment_t1(ctx, i);
-            int sec0 = (int)(t0 / 100);
-            int min0 = sec0 / 60; sec0 %= 60;
-            int sec1 = (int)(t1 / 100);
-            int min1 = sec1 / 60; sec1 %= 60;
-            
-            char ts[64];
-            snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] %s: ", min0, sec0, min1, sec1, speakerLabels[speakerIdx]);
-            
-            if (!result.empty()) result += "\n";
-            result += ts;
-            result += text;
+            if (params.tdrz_enable) {
+                // 화자 전환 감지 (TDRZ 활성화 시에만 동작)
+                if (i > 0 && whisper_full_get_segment_speaker_turn_next(ctx, i - 1)) {
+                    speakerIdx = (speakerIdx + 1) % 4;
+                }
+                int64_t t0 = whisper_full_get_segment_t0(ctx, i);
+                int64_t t1 = whisper_full_get_segment_t1(ctx, i);
+                int sec0 = (int)(t0 / 100);
+                int min0 = sec0 / 60; sec0 %= 60;
+                int sec1 = (int)(t1 / 100);
+                int min1 = sec1 / 60; sec1 %= 60;
+                
+                char ts[64];
+                snprintf(ts, sizeof(ts), "[%02d:%02d-%02d:%02d] %s: ", min0, sec0, min1, sec1, speakerLabels[speakerIdx]);
+                
+                if (!result.empty()) result += "\n";
+                result += ts;
+                result += text;
+            } else {
+                // TDRZ 비활성화 시에는 타임스탬프와 화자 구분 없이 깨끗한 텍스트만 합쳐서 반환
+                if (!result.empty()) result += " ";
+                result += text;
+            }
         }
     }
 
