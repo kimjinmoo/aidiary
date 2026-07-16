@@ -43,7 +43,7 @@ class WhisperEngine private constructor(
                 decodingMethod = "greedy_search"
             )
 
-            val recognizer = OfflineRecognizer(config)
+            val recognizer = OfflineRecognizer(config = config)
             Log.d(TAG, "Sherpa-Onnx recognizer created, model=${dir.name}")
             return WhisperEngine(recognizer)
         }
