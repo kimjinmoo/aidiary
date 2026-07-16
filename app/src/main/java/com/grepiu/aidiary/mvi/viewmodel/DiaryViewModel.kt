@@ -426,8 +426,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     if (elapsed != _state.value.recordingSeconds) {
                         _state.update { it.copy(recordingSeconds = elapsed) }
                     }
-                    // 최대 60초 제한
-                    if (elapsed >= 60) {
+                    // 최대 3600초(1시간) 제한
+                    if (elapsed >= 3600) {
                         launch(Dispatchers.Main) { stopRecording() }
                         break
                     }
@@ -504,7 +504,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun transcribeAudio(wavFile: File) {
         val engine = whisperEngine ?: return
+        val fileSizeMB = wavFile.length() / 1024 / 1024
         _state.update { it.copy(isTranscribing = true) }
+        // 긴 녹음(5분 이상)은 변환 시간이 오래 걸릴 수 있음을 안내
+        if (fileSizeMB > 10) {
+            sendEffect(DiaryEffect.ShowToast("긴 녹음 파일입니다. 변환에 수 분이 소요될 수 있습니다."))
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val text = engine.transcribe(wavFile.absolutePath)
