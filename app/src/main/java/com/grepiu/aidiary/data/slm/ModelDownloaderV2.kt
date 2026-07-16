@@ -38,7 +38,7 @@ class ModelDownloaderV2(private val context: Context) {
     suspend fun downloadWhisperModel(
         url: String,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit
-    ): Result<File> = downloadModelTo(url, WHISPER_FILENAME, 100L * 1024 * 1024, onProgress)
+    ): Result<File> = downloadModelTo(url, WHISPER_FILENAME, 10L * 1024 * 1024, onProgress)
 
     // --- Common ---
 
