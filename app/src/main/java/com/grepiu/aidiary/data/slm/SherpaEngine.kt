@@ -16,12 +16,15 @@ class SherpaEngine private constructor(val recognizer: OnlineRecognizer) {
             val dec = dir.listFiles()?.firstOrNull { it.name.startsWith("decoder") && it.name.endsWith(".onnx") }
             val joi = dir.listFiles()?.firstOrNull { it.name.startsWith("joiner") && it.name.endsWith(".onnx") }
             val tok = File(dir, "tokens.txt")
+            val bpe = File(dir, "bpe.model")
             listOfNotNull(enc, dec, joi, tok).forEach { require(it.exists()) { "Missing: ${it.name}" } }
 
             val cfg = OnlineRecognizerConfig(
                 modelConfig = OnlineModelConfig(
                     transducer = OnlineTransducerModelConfig(enc!!.absolutePath, dec!!.absolutePath, joi!!.absolutePath),
                     tokens = tok.absolutePath,
+                    modelingUnit = if (bpe.exists()) "bpe" else "cjkchar",
+                    bpeVocab = if (bpe.exists()) bpe.absolutePath else "",
                     numThreads = 4,
                     debug = true,
                     provider = "cpu"
@@ -29,6 +32,7 @@ class SherpaEngine private constructor(val recognizer: OnlineRecognizer) {
                 decodingMethod = "greedy_search",
                 enableEndpoint = false
             )
+            Log.d(TAG, "OnlineRecognizer created, bpe=${bpe.exists()}")
             return SherpaEngine(OnlineRecognizer(config = cfg))
         }
     }
