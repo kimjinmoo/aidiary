@@ -375,9 +375,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 initSherpa()
             }.onFailure { e ->
                 _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
-                Log.e("DiaryViewModel", "Sherpa model download failed: ${e.message}")
+                Log.e("DiaryViewModel", "Sherpa download failed: ${e.message}", e)
+                sendEffect(DiaryEffect.ShowToast("Sherpa download failed: ${e.message}"))
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e("DiaryViewModel", "ensure error", e)
+        }
     }
 
     private fun initSherpa() {
