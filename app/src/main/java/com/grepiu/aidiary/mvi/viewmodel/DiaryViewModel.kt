@@ -250,6 +250,17 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val modelPath = modelFile.absolutePath
+
+            // OpenCL 라이브러리 사전 로드 (tarotxr은 3D glb 렌더링으로 자동 로드됨)
+            withContext(Dispatchers.IO) {
+                try {
+                    System.loadLibrary("OpenCL")
+                    Log.d("DiaryViewModel", "OpenCL library preloaded successfully")
+                } catch (e: UnsatisfiedLinkError) {
+                    Log.w("DiaryViewModel", "OpenCL preload failed, will fallback to CPU: ${e.message}")
+                }
+            }
+
             llmEngine = withContext(Dispatchers.IO) {
                 DiaryLLMEngine.create(getApplication(), modelPath)
             }.apply {
