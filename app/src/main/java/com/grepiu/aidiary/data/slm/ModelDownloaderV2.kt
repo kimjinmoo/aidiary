@@ -25,7 +25,7 @@ class ModelDownloaderV2(private val context: Context) {
     companion object {
         private const val TAG = "ModelDownloaderV2"
         const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
-        const val WHISPER_FILENAME = "ggml-small-q5_1.bin"
+        const val WHISPER_FILENAME = "ggml-tiny-q5_1.bin"
         private const val MODEL_ASSET_PATH = "model/$MODEL_FILENAME"
     }
 
