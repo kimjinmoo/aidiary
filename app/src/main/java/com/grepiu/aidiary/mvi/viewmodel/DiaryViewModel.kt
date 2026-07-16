@@ -380,7 +380,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val modelDir = downloader.getSherpaModelDir()
             if (!modelDir.exists()) return
-            whisperEngine = WhisperEngine.create(getApplication(), modelDir.absolutePath)
+            whisperEngine = WhisperEngine.create(modelDir.absolutePath)
             _state.update { it.copy(isWhisperModelReady = true) }
             Log.d("DiaryViewModel", "Sherpa engine ready")
         } catch (e: Exception) {

@@ -1,68 +1,57 @@
 package com.grepiu.aidiary.data.slm
 
-import android.content.Context
 import android.util.Log
 import com.k2fsa.sherpa.onnx.*
 import java.io.File
 
 /**
  * Sherpa-Onnx 기반 온디바이스 음성→텍스트 변환 엔진입니다.
- *
- * 의존성: libs/sherpa-onnx-android.aar
- * 모델: zipformer-small-korean (encoder/decoder/joiner/tokens)
  */
 class WhisperEngine private constructor(
-    private val recognizer: OfflineRecognizer,
-    private val modelDir: File
+    private val recognizer: OfflineRecognizer
 ) {
     companion object {
         private const val TAG = "WhisperEngine"
 
-        fun create(context: Context, modelDir: String): WhisperEngine {
+        fun create(modelDir: String): WhisperEngine {
             val dir = File(modelDir)
             val encoderFile = File(dir, "encoder.onnx")
             val decoderFile = File(dir, "decoder.onnx")
             val joinerFile = File(dir, "joiner.onnx")
             val tokensFile = File(dir, "tokens.txt")
 
-            // 파일 존재 확인
             listOf(encoderFile, decoderFile, joinerFile, tokensFile).forEach {
                 require(it.exists()) { "Model file not found: ${it.absolutePath}" }
             }
 
-            // Sherpa-Onnx Zipformer 모델 설정
-            val zipformerConfig = OfflineZipformerModelConfig.builder()
-                .setEncoder(encoderFile.absolutePath)
-                .setDecoder(decoderFile.absolutePath)
-                .setJoiner(joinerFile.absolutePath)
-                .build()
+            val transducerConfig = OfflineTransducerModelConfig(
+                encoder = encoderFile.absolutePath,
+                decoder = decoderFile.absolutePath,
+                joiner = joinerFile.absolutePath
+            )
 
-            val modelConfig = OfflineModelConfig.builder()
-                .setZipformer(zipformerConfig)
-                .setTokens(tokensFile.absolutePath)
-                .setNumThreads(4)
-                .setDebug(false)
-                .setProvider("cpu")  // CPU 전용 (GPU/OpenCL 이슈 회피)
-                .build()
+            val modelConfig = OfflineModelConfig(
+                transducer = transducerConfig,
+                tokens = tokensFile.absolutePath,
+                numThreads = 4,
+                debug = false,
+                provider = "cpu"
+            )
 
-            val config = OfflineRecognizerConfig.builder()
-                .setOfflineModelConfig(modelConfig)
-                .setDecodingMethod("greedy_search")
-                .build()
+            val config = OfflineRecognizerConfig(
+                modelConfig = modelConfig,
+                decodingMethod = "greedy_search"
+            )
 
             val recognizer = OfflineRecognizer(config)
             Log.d(TAG, "Sherpa-Onnx recognizer created, model=${dir.name}")
-            return WhisperEngine(recognizer, dir)
+            return WhisperEngine(recognizer)
         }
     }
 
-    /**
-     * WAV 오디오 파일을 텍스트로 변환합니다.
-     */
     fun transcribe(wavPath: String): String {
         Log.d(TAG, "Transcribing: $wavPath")
 
-        // WAV 파일 읽기
         val wavFile = File(wavPath)
         if (!wavFile.exists()) {
             Log.e(TAG, "WAV file not found: $wavPath")
@@ -77,15 +66,14 @@ class WhisperEngine private constructor(
 
         Log.d(TAG, "Read ${samples.size} samples @ $sampleRate Hz (${samples.size / sampleRate}s)")
 
-        // 인식 실행
         val stream = recognizer.createStream()
-        stream.acceptWaveform(sampleRate, samples)
-        recognizer.decodeStream(stream)
-
-        val result = stream.result.text
+        stream.acceptWaveform(samples, sampleRate)
+        recognizer.decode(stream)
+        val resultText = recognizer.getResult(stream).text
         stream.release()
-        Log.d(TAG, "Result: \"${result.take(80)}...\"")
-        return result.trim()
+
+        Log.d(TAG, "Result: \"${resultText.take(80)}...\"")
+        return resultText.trim()
     }
 
     fun dispose() {
@@ -97,23 +85,18 @@ class WhisperEngine private constructor(
         }
     }
 
-    /**
-     * WAV 파일에서 float 샘플을 읽어옵니다.
-     */
     private fun readWavFile(path: String): Pair<FloatArray, Int> {
         return try {
             val file = File(path)
             val bytes = file.readBytes()
             if (bytes.size < 44) return Pair(FloatArray(0), 0)
 
-            // WAV 헤더 파싱
             val sampleRate = ((bytes[24].toInt() and 0xFF)
                 or ((bytes[25].toInt() and 0xFF) shl 8)
                 or ((bytes[26].toInt() and 0xFF) shl 16)
                 or ((bytes[27].toInt() and 0xFF) shl 24))
 
             val bitsPerSample = (bytes[34].toInt() and 0xFF) or ((bytes[35].toInt() and 0xFF) shl 8)
-
             val dataOffset = 44
             val numSamples = (bytes.size - dataOffset) / (bitsPerSample / 8)
             val samples = FloatArray(numSamples)
@@ -127,7 +110,6 @@ class WhisperEngine private constructor(
                     samples[i] = sample / 32768.0f
                 }
             }
-
             Pair(samples, sampleRate)
         } catch (e: Exception) {
             Log.e(TAG, "Error reading WAV", e)
