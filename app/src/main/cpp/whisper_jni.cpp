@@ -3,6 +3,8 @@
 #include <vector>
 #include <fstream>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include <android/log.h>
 #include "whisper.h"
 
@@ -46,11 +48,23 @@ extern "C" {
 JNIEXPORT jlong JNICALL
 Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeInit(JNIEnv* env, jclass, jstring pathJ) {
     const char* path = env->GetStringUTFChars(pathJ, nullptr);
-    LOGD("Loading model: %s", path);
-    struct whisper_context_params cparams = whisper_context_default_params();
-    struct whisper_context* ctx = whisper_init_from_file_with_params(path, cparams);
+    
+    // 모델 파일 크기 확인
+    FILE* f = fopen(path, "rb");
+    if (f) {
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fclose(f);
+        LOGD("Model file: %s (%ld MB)", path, size / 1024 / 1024);
+    }
+    
+    // NUMA 비활성화 (Android에서 문제 유발 가능)
+    setenv("GGML_NUMA", "0", 1);
+    
+    // 단순 init (기본 파라미터)
+    struct whisper_context* ctx = whisper_init_from_file(path);
     env->ReleaseStringUTFChars(pathJ, path);
-    LOGD("Model loaded: %p", ctx);
+    LOGD("Model loaded: %p (using whisper_init_from_file)", ctx);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -70,17 +84,16 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(JNIEnv* env, jcl
     }
 
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    params.language        = lang;
+    params.language        = nullptr;  // 자동 감지 (언어 감지 과정에서 hang 가능성 배제)
     params.n_threads       = 1;
     params.translate       = false;
     params.no_context      = true;
     params.single_segment  = false;
-    params.print_progress  = false;
+    params.print_progress  = true;    // 터미널 출력 활성화 (stderr → logcat)
     params.print_realtime  = false;
     params.print_timestamps = false;
     params.tdrz_enable     = false;
 
-    // 디버깅 콜백: logcat으로 진행상황 확인
     params.progress_callback          = progress_cb;
     params.progress_callback_user_data = nullptr;
     params.new_segment_callback        = segment_cb;
