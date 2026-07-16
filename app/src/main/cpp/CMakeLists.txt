@@ -3,6 +3,10 @@ project("whisper_jni")
 
 set(CMAKE_CXX_STANDARD 17)
 
+# ARMv9 Neon + FP16 가속 플래그
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -march=armv8.2-a+fp16+dotprod")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=armv8.2-a+fp16+dotprod")
+
 set(WHISPER_BUILD_EXAMPLES OFF)
 set(WHISPER_BUILD_TESTS OFF)
 set(WHISPER_BUILD_SERVER OFF)
@@ -12,9 +16,7 @@ set(GGML_CUDA OFF)
 set(GGML_METAL OFF)
 set(GGML_VULKAN OFF)
 set(GGML_BLAS OFF)
-# ARM 최적화 비활성화 (Snapdragon 8 Gen 2 ARMv9 충돌 디버깅)
-set(GGML_CPU_ARM_ARCH "")
-set(GGML_NO_ACCELERATE ON)
+set(GGML_OPENCL OFF)
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/whisper.cpp ${CMAKE_CURRENT_BINARY_DIR}/whisper_build)
 

@@ -83,9 +83,21 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(JNIEnv* env, jcl
         return env->NewStringUTF("");
     }
 
-    struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    params.language        = lang;
+    params.n_threads       = 4;
+    params.translate       = false;
+    params.no_context      = true;
+    params.single_segment  = false;
+    params.print_progress  = false;
+    params.print_realtime  = false;
+    params.print_timestamps = false;
+    params.tdrz_enable     = false;
 
-    LOGD("whisper_full START: %zu samples (all defaults)", samples.size());
+    params.progress_callback          = progress_cb;
+    params.new_segment_callback        = segment_cb;
+
+    LOGD("whisper_full START: %zu samples, lang=%s, threads=%d", samples.size(), lang, params.n_threads);
 
     int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
     LOGD("whisper_full DONE: ret=%d", ret);
