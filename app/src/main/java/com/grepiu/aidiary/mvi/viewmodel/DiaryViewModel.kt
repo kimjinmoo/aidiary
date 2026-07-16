@@ -364,8 +364,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "음성인식 모델 다운로드 중...") }
             downloader.downloadSherpaModel(SHERPA_DOWNLOAD_URL) { bytesRead, totalBytes ->
                 val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                val label = if (progress >= 0.99f) "압축 해제 중..." else "음성인식 모델 다운로드 중..."
                 val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
-                _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = sizeText) }
+                _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "$label $sizeText") }
             }.onSuccess {
                 _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
                 initWhisper()
