@@ -23,14 +23,24 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
          * 지정된 로컬 모델 파일 경로(.litertlm)를 읽어와 LiteRT-LM Engine 인스턴스를 빌드하고 엔진을 생성합니다.
          */
         fun create(context: Context, modelPath: String): DiaryLLMEngine {
-            val config = EngineConfig(
-                modelPath = modelPath,
-                backend = Backend.GPU(), // GPU 가속 설정
-                maxNumTokens = 1024      // 일기 분석 입력 + 답변 길이를 채우면서 메모리 부담 최소화
-            )
-            val engine = Engine(config)
-            engine.initialize() // 엔진 초기화 실행 (동기 호출)
-            Log.d(TAG, "LiteRT-LM Engine initialized successfully for Diary Analysis")
+            val engine: Engine = try {
+                val config = EngineConfig(
+                    modelPath = modelPath,
+                    backend = Backend.GPU(),
+                    maxNumTokens = 1024
+                )
+                Engine(config).also { it.initialize() }
+                Log.d(TAG, "LiteRT-LM Engine initialized with GPU backend")
+            } catch (e: Exception) {
+                Log.w(TAG, "GPU(OpenCL) 초기화 실패, CPU 백엔드로 폴백합니다: ${e.message}")
+                val config = EngineConfig(
+                    modelPath = modelPath,
+                    backend = Backend.CPU(),
+                    maxNumTokens = 1024
+                )
+                Engine(config).also { it.initialize() }
+                Log.d(TAG, "LiteRT-LM Engine initialized with CPU backend")
+            }
             return DiaryLLMEngine(engine)
         }
     }
