@@ -10,6 +10,17 @@
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+// ---- 콜백 (디버깅용) ----
+
+static void progress_cb(struct whisper_context*, struct whisper_state*, int progress, void*) {
+    LOGD("██ Progress: %d%%", progress);
+}
+
+static void segment_cb(struct whisper_context* ctx, struct whisper_state*, int n_new, void*) {
+    int total = whisper_full_n_segments(ctx);
+    LOGD("██ New segments: +%d (total=%d)", n_new, total);
+}
+
 static std::vector<float> read_wav(const char* path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) { LOGE("Cannot open: %s", path); return {}; }
@@ -18,7 +29,7 @@ static std::vector<float> read_wav(const char* path) {
     if (std::strncmp(header, "RIFF", 4) || std::strncmp(header + 8, "WAVE", 4)) { LOGE("Bad WAV header"); return {}; }
     int bits = *(short*)(header + 34);
     int dataSize = *(int*)(header + 40);
-    LOGD("WAV: bits=%d, data=%d", bits, dataSize);
+    LOGD("WAV: bits=%d, data=%d bytes", bits, dataSize);
     std::vector<float> samples;
     if (bits == 16) {
         std::vector<short> pcm(dataSize / 2);
@@ -26,7 +37,7 @@ static std::vector<float> read_wav(const char* path) {
         samples.reserve(pcm.size());
         for (short s : pcm) samples.push_back(s / 32768.0f);
     }
-    LOGD("Loaded %zu samples", samples.size());
+    LOGD("Loaded %zu float samples (%.1fs @ 16kHz)", samples.size(), (float)samples.size() / 16000.0f);
     return samples;
 }
 
@@ -58,22 +69,27 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(JNIEnv* env, jcl
         return env->NewStringUTF("");
     }
 
-    // 최소한의 파라미터만 설정하고 나머지는 기본값 사용
     struct whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    params.language = lang;
-    params.n_threads = 1;  // 싱글스레드로 데드락 방지
-    params.translate = false;
-    params.no_context = true;
-    params.single_segment = false;
-    params.print_progress = false;
-    params.print_realtime = false;
+    params.language        = lang;
+    params.n_threads       = 1;
+    params.translate       = false;
+    params.no_context      = true;
+    params.single_segment  = false;
+    params.print_progress  = false;
+    params.print_realtime  = false;
     params.print_timestamps = false;
-    params.tdrz_enable = false;  // 화자 구분 비활성화 (안정성)
+    params.tdrz_enable     = false;
 
-    LOGD("whisper_full start: %zu samples, lang=%s, threads=%d", samples.size(), lang, params.n_threads);
+    // 디버깅 콜백: logcat으로 진행상황 확인
+    params.progress_callback          = progress_cb;
+    params.progress_callback_user_data = nullptr;
+    params.new_segment_callback        = segment_cb;
+    params.new_segment_callback_user_data = nullptr;
+
+    LOGD("whisper_full START: %zu samples, lang=%s, threads=%d", samples.size(), lang, params.n_threads);
 
     int ret = whisper_full(ctx, params, samples.data(), static_cast<int>(samples.size()));
-    LOGD("whisper_full done: ret=%d", ret);
+    LOGD("whisper_full DONE: ret=%d", ret);
 
     env->ReleaseStringUTFChars(wavJ, wavPath);
     env->ReleaseStringUTFChars(langJ, lang);
@@ -81,6 +97,8 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(JNIEnv* env, jcl
     if (ret != 0) return env->NewStringUTF("");
 
     int n = whisper_full_n_segments(ctx);
+    LOGD("Total segments: %d", n);
+
     std::string result;
     for (int i = 0; i < n; i++) {
         const char* text = whisper_full_get_segment_text(ctx, i);
@@ -94,7 +112,7 @@ Java_com_grepiu_aidiary_data_slm_WhisperEngine_nativeTranscribe(JNIEnv* env, jcl
             result += text;
         }
     }
-    LOGD("Result: %zu chars", result.size());
+    LOGD("Result: %zu chars => \"%s\"", result.size(), result.c_str());
     return env->NewStringUTF(result.c_str());
 }
 
