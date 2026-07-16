@@ -395,18 +395,15 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             Log.e("DiaryViewModel", "Sherpa init failed: ${e.message}")
         }
     }
-
     private fun startRecording() {
         if (_state.value.isRecording) return
-        val engine = sherpaEngine
-        if (engine == null || !_state.value.isSherpaModelReady) {
-            sendEffect(DiaryEffect.ShowToast("음성 인식 모델이 준비되지 않았습니다."))
-            return
+        val engine = sherpaEngine ?: return
+        if (!_state.value.isSherpaModelReady) {
+            sendEffect(DiaryEffect.ShowToast("모델 준비되지 않음")); return
         }
         if (ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED) {
-            sendEffect(DiaryEffect.RequestAudioPermission)
-            return
+            sendEffect(DiaryEffect.RequestAudioPermission); return
         }
 
         recordingJob?.cancel()
@@ -415,103 +412,62 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         try {
             val pm = getApplication<Application>().getSystemService(PowerManager::class.java)
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AIDiary:Recording").apply {
-                acquire(3600 * 1000L)
-            }
-        } catch (e: Exception) {
-            Log.w("DiaryViewModel", "WakeLock 획득 실패: ${e.message}")
-        }
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AIDiary:Recording").apply { acquire(3600 * 1000L) }
+        } catch (_: Exception) {}
 
-        val onlineStream = engine.createStream()
-        this.onlineStream = onlineStream
+        val stream = engine.createStream()
+        onlineStream = stream
 
         recordingJob = viewModelScope.launch(Dispatchers.IO) {
             try {
-                val sampleRate = 16000
-                val bufferSize = AudioRecord.getMinBufferSize(sampleRate,
-                    AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(512)
-                val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC,
-                    sampleRate, AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT, bufferSize * 4)
-                this@DiaryViewModel.audioRecord = audioRecord
+                val rate = 16000
+                val bufSize = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(512)
+                val rec = AudioRecord(MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize * 4)
+                audioRecord = rec
+                val buf = ShortArray(bufSize)
+                rec.startRecording()
 
-                val buffer = ShortArray(bufferSize)
-                audioRecord.startRecording()
-
-                var totalSamples = 0L
-                var lastDecode = 0L
-                val startTime = System.currentTimeMillis()
+                var total = 0L; var lastDecode = 0L; val start = System.currentTimeMillis()
 
                 while (_state.value.isRecording) {
-                    val read = audioRecord.read(buffer, 0, buffer.size)
-                    if (read <= 0) continue
+                    val n = rec.read(buf, 0, buf.size)
+                    if (n <= 0) continue
+                    val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt()
 
-                    val elapsed = ((System.currentTimeMillis() - startTime) / 1000).toInt()
-
-                    // 볼륨 계산
                     var sum = 0L
-                    for (i in 0 until read) { val s = buffer[i].toInt(); sum += s * s }
-                    val rms = Math.sqrt(sum.toDouble() / read).toFloat() / 32768f
-                    val volume = (rms * 8f).coerceIn(0f, 1f)
+                    for (i in 0 until n) { val s = buf[i].toInt(); sum += s * s }
+                    val vol = (Math.sqrt(sum.toDouble() / n).toFloat() / 32768f * 8f).coerceIn(0f, 1f)
 
-                    // float 변환 후 스트림에 공급
-                    val floats = FloatArray(read) { i -> buffer[i] / 32768f }
-                    onlineStream.acceptWaveform(floats, sampleRate)
-                    totalSamples += read
+                    val floats = FloatArray(n) { buf[it] / 32768f }
+                    stream.acceptWaveform(floats, rate)
+                    total += n
 
-                    // 0.5초마다 디코딩 + 실시간 결과 갱신
-                    if (totalSamples - lastDecode >= sampleRate / 2) {
-                        engine.decode(onlineStream)
-                        val partial = engine.getResult(onlineStream)
-                        lastDecode = totalSamples
+                    if (total - lastDecode >= rate / 2) {
+                        engine.decode(stream)
+                        val partial = engine.result(stream)
+                        lastDecode = total
                         launch(Dispatchers.Main) {
-                            _state.update {
-                                it.copy(
-                                    draftContent = accumulatedText + partial,
-                                    recordingSeconds = elapsed,
-                                    recordingVolume = volume
-                                )
-                            }
+                            _state.update { it.copy(draftContent = accumulatedText + partial, recordingSeconds = elapsed, recordingVolume = vol) }
                         }
                     } else {
-                        launch(Dispatchers.Main) {
-                            _state.update { it.copy(recordingSeconds = elapsed, recordingVolume = volume) }
-                        }
+                        launch(Dispatchers.Main) { _state.update { it.copy(recordingSeconds = elapsed, recordingVolume = vol) } }
                     }
-
-                    if (elapsed >= 3600) {
-                        launch(Dispatchers.Main) { stopRecording() }
-                        break
-                    }
+                    if (elapsed >= 3600) { launch(Dispatchers.Main) { stopRecording() }; break }
                 }
 
-                // 녹음 종료 → 최종 디코딩
-                onlineStream.inputFinished()
-                engine.decode(onlineStream)
-                while (engine.isReady(onlineStream)) {
-                    engine.decode(onlineStream)
-                }
-                val finalText = engine.getResult(onlineStream)
-                onlineStream.release()
-
-                audioRecord.stop()
-                audioRecord.release()
+                stream.inputFinished()
+                engine.decode(stream)
+                while (engine.isReady(stream)) { engine.decode(stream) }
+                val finalText = engine.result(stream)
+                stream.release()
+                rec.stop(); rec.release()
 
                 launch(Dispatchers.Main) {
-                    _state.update {
-                        it.copy(
-                            draftContent = accumulatedText + finalText,
-                            isRecording = false,
-                            recordingVolume = 0f,
-                            isTranscribing = false
-                        )
-                    }
-                    if (finalText.isNotBlank()) {
-                        sendEffect(DiaryEffect.TranscriptionResult(finalText))
-                    }
+                    _state.update { it.copy(draftContent = accumulatedText + finalText, isRecording = false, recordingVolume = 0f) }
+                    if (finalText.isNotBlank()) sendEffect(DiaryEffect.TranscriptionResult(finalText))
                 }
             } catch (e: Exception) {
-                Log.e("DiaryViewModel", "Recording error: ${e.message}")
+                Log.e("DiaryViewModel", "Rec error", e)
                 _state.update { it.copy(isRecording = false, recordingVolume = 0f) }
             }
         }
