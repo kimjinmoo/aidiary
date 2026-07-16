@@ -39,7 +39,14 @@ class ModelDownloaderV2(private val context: Context) {
 
     fun isSherpaModelDownloaded(): Boolean {
         val dir = getSherpaModelDir()
-        return dir.exists() && File(dir, "tokens.txt").exists()
+        // tar.bz2 내부 디렉토리 감안하여 tokens.txt 검색
+        return dir.exists() && (File(dir, "tokens.txt").exists() || findModelSubdir(dir) != null)
+    }
+
+    private fun findModelSubdir(dir: File): File? {
+        val subs = dir.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
+        if (subs != null && subs.size == 1 && File(subs[0], "tokens.txt").exists()) return subs[0]
+        return dir.takeIf { File(it, "tokens.txt").exists() }
     }
 
     suspend fun downloadSherpaModel(

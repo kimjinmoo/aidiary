@@ -380,7 +380,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val modelDir = downloader.getSherpaModelDir()
             if (!modelDir.exists()) return
-            whisperEngine = WhisperEngine.create(modelDir.absolutePath)
+            // 중첩 디렉토리 찾기
+            val actualDir = modelDir.listFiles()
+                ?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }
+                ?: modelDir
+            whisperEngine = WhisperEngine.create(actualDir.absolutePath)
             _state.update { it.copy(isWhisperModelReady = true) }
             Log.d("DiaryViewModel", "Sherpa engine ready")
         } catch (e: Exception) {
@@ -611,6 +615,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         private const val SHERPA_DOWNLOAD_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-small-korean-2024-09-18.tar.bz2"
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-zipformer-korean-2024-06-24.tar.bz2"
     }
 }

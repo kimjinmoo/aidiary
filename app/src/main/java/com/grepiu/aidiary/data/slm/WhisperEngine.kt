@@ -14,20 +14,25 @@ class WhisperEngine private constructor(
         private const val TAG = "WhisperEngine"
 
         fun create(modelDir: String): WhisperEngine {
-            val dir = File(modelDir)
-            val encoderFile = File(dir, "encoder.onnx")
-            val decoderFile = File(dir, "decoder.onnx")
-            val joinerFile = File(dir, "joiner.onnx")
+            var dir = File(modelDir)
+            // tar.bz2 추출 시 내부 서브디렉토리 대응
+            val subDirs = dir.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
+            if (subDirs != null && subDirs.size == 1 && File(subDirs[0], "tokens.txt").exists()) {
+                dir = subDirs[0]
+            }
+            // 파일명 패턴 대응 (encoder*.onnx, decoder*.onnx, joiner*.onnx)
+            val encoderFile = dir.listFiles()?.firstOrNull { it.name.startsWith("encoder") && it.name.endsWith(".onnx") }
+            val decoderFile = dir.listFiles()?.firstOrNull { it.name.startsWith("decoder") && it.name.endsWith(".onnx") }
+            val joinerFile = dir.listFiles()?.firstOrNull { it.name.startsWith("joiner") && it.name.endsWith(".onnx") }
             val tokensFile = File(dir, "tokens.txt")
 
-            listOf(encoderFile, decoderFile, joinerFile, tokensFile).forEach {
-                require(it.exists()) { "Model file not found: ${it.absolutePath}" }
-            }
+            val files = listOfNotNull(encoderFile, decoderFile, joinerFile, tokensFile)
+            files.forEach { require(it.exists()) { "Model file not found: ${it.absolutePath}" } }
 
             val transducerConfig = OfflineTransducerModelConfig(
-                encoder = encoderFile.absolutePath,
-                decoder = decoderFile.absolutePath,
-                joiner = joinerFile.absolutePath
+                encoder = encoderFile!!.absolutePath,
+                decoder = decoderFile!!.absolutePath,
+                joiner = joinerFile!!.absolutePath
             )
 
             val modelConfig = OfflineModelConfig(
