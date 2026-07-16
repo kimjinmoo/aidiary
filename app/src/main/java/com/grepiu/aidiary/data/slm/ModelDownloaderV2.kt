@@ -278,6 +278,7 @@ class ModelDownloaderV2(private val context: Context) {
 
                 // 2단계: 실제 모델 파일 스트림 다운로드 (이어받기 요청 헤더 추가)
                 val requestBuilder = Request.Builder().url(downloadUrl)
+                    .header("User-Agent", "AIDiary/1.0")
                 if (existingLength > 0) {
                     requestBuilder.header("Range", "bytes=$existingLength-")
                 }
