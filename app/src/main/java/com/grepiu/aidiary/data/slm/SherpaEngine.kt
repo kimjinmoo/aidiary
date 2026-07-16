@@ -35,9 +35,12 @@ class SherpaEngine private constructor(
                 joiner = joinerFile!!.absolutePath
             )
 
+            val bpeFile = File(dir, "bpe.model")
             val modelConfig = OfflineModelConfig(
                 transducer = transducerConfig,
                 tokens = tokensFile.absolutePath,
+                modelingUnit = if (bpeFile.exists()) "bpe" else "",
+                bpeVocab = if (bpeFile.exists()) bpeFile.absolutePath else "",
                 numThreads = 4,
                 debug = false,
                 provider = "cpu"
@@ -49,8 +52,8 @@ class SherpaEngine private constructor(
             )
 
             val recognizer = OfflineRecognizer(config = config)
-            Log.d(TAG, "Sherpa-Onnx recognizer created, model=${dir.name}")
-            return WhisperEngine(recognizer)
+            Log.d(TAG, "Sherpa-Onnx recognizer created, model=${dir.name}, bpe=${bpeFile.exists()}")
+            return SherpaEngine(recognizer)
         }
     }
 
