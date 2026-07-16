@@ -245,7 +245,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(isModelInitializing = true, isDownloadingModel = false, showDownloadNotice = false, showWifiWarning = false) }
             
             val modelFile = downloader.getModelFile()
-            if (!modelFile.exists() || modelFile.length() < 2.0 * 1024 * 1024 * 1024) {
+            if (!modelFile.exists() || modelFile.length() < 2.3 * 1024 * 1024 * 1024) {
                 throw java.io.IOException("모델 파일이 없거나 크기가 손상되었습니다.")
             }
 

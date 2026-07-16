@@ -18,12 +18,11 @@ data class DeviceCapability(
 object DeviceCapabilityChecker {
 
     private const val TAG = "DeviceCapabilityChecker"
-    private const val MIN_RAM_GB = 4f // 최소 실행 RAM을 4GB로 하향 (6GB 미만은 경고만 제공)
+    private const val MIN_RAM_GB = 6f
 
     fun check(context: Context): DeviceCapability {
         val ramGB = getTotalRamGB(context)
 
-        // 1. RAM 사양 체크 (최소 4GB)
         if (ramGB < MIN_RAM_GB) {
             return DeviceCapability(
                 isSupported = false,
@@ -31,7 +30,8 @@ object DeviceCapabilityChecker {
                 gpuRenderer = "",
                 reason = "죄송합니다. 이 기기는 RAM이 ${ramGB.toInt()}GB로,\n" +
                         "온디바이스 AI 구동에 필요한 최소 사양(${MIN_RAM_GB.toInt()}GB)을 충족하지 못합니다.\n\n" +
-                        "보다 원활한 이용을 위해 RAM 6GB 이상의 기기에서 실행해 주세요."
+                        "보다 원활한 이용을 위해\n" +
+                        "RAM ${MIN_RAM_GB.toInt()}GB 이상의 기기에서 실행해 주세요."
             )
         }
 
@@ -39,13 +39,20 @@ object DeviceCapabilityChecker {
         val isRealGpu = isRealGpu(gpuRenderer)
         val hasOpenCL = isRealGpu && hasOpenCL()
 
-        // 2. GPU 가속 OpenCL 체크 (경고 수준으로 조정하고 다운로드 자체는 차단하지 않음)
-        if (!hasOpenCL && isRealGpu) {
-            Log.w(TAG, "OpenCL is not detected, but letting user proceed with download. GPU: $gpuRenderer")
+        if (!hasOpenCL) {
+            return DeviceCapability(
+                isSupported = false,
+                totalRamGB = ramGB,
+                gpuRenderer = gpuRenderer,
+                reason = "죄송합니다. 이 기기는 온디바이스 AI 추론에\n" +
+                        "필요한 GPU 가속(OpenCL)을 지원하지 않습니다.\n" +
+                        "($gpuRenderer)\n\n" +
+                        "Android XR 지원 실기기에서 이용해 주세요."
+            )
         }
 
         return DeviceCapability(
-            isSupported = true, // 다운로드 및 실행 유도
+            isSupported = true,
             totalRamGB = ramGB,
             gpuRenderer = gpuRenderer
         )
@@ -96,30 +103,12 @@ object DeviceCapabilityChecker {
     }
 
     private fun hasOpenCL(): Boolean {
-        // 방법 1: System.loadLibrary
-        try {
+        return try {
             System.loadLibrary("OpenCL")
-            return true
+            true
         } catch (e: UnsatisfiedLinkError) {
-            // 무시하고 직접 경로 체크 시도
+            Log.w(TAG, "OpenCL library not found")
+            false
         }
-
-        // 방법 2: 시스템 내부 라이브러리 존재 여부 직접 검사 (링커 네임스페이스 제약 우회)
-        val openClPaths = listOf(
-            "/system/lib/libOpenCL.so",
-            "/system/lib64/libOpenCL.so",
-            "/vendor/lib/libOpenCL.so",
-            "/vendor/lib64/libOpenCL.so",
-            "/vendor/lib/egl/libGLES_mali.so",
-            "/vendor/lib64/egl/libGLES_mali.so",
-            "/system/vendor/lib/libOpenCL.so",
-            "/system/vendor/lib64/libOpenCL.so"
-        )
-        for (path in openClPaths) {
-            if (java.io.File(path).exists()) {
-                return true
-            }
-        }
-        return false
     }
 }

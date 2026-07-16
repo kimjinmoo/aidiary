@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import org.json.JSONObject
 import android.app.ActivityManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -143,6 +144,26 @@ class ModelDownloaderV2(private val context: Context) {
     }
 
     /**
+     * API 서버로부터 모델을 직접 다운로드할 수 있는 임시 다운로드용 Presigned URL을 요청하여 가져옵니다.
+     */
+    private fun fetchPresignedUrl(apiUrl: String): String {
+        Log.d(TAG, "Fetching Presigned URL from: $apiUrl")
+        val request = Request.Builder().url(apiUrl).build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Failed to get presigned URL: HTTP ${response.code}")
+            }
+            val bodyString = response.body?.string() ?: throw IOException("Empty response body from presigned URL API")
+            val json = JSONObject(bodyString)
+            if (json.optString("code") == "200") {
+                return json.getString("data")
+            } else {
+                throw IOException("API error: ${json.optString("message")}")
+            }
+        }
+    }
+
+    /**
      * 중계 API 또는 직접 URL로부터 모델 파일을 다운로드하여 로컬 내부 저장소에 저장합니다.
      */
     suspend fun downloadModel(apiUrl: String, onProgress: (bytesRead: Long, totalBytes: Long) -> Unit): Result<File> =
@@ -155,10 +176,15 @@ class ModelDownloaderV2(private val context: Context) {
                 // 기존 다운로드 진행 중이던 임시 파일의 크기를 확인 (이어받기 기준점)
                 val existingLength = if (tempFile.exists()) tempFile.length() else 0L
 
+                // 1단계: API 서버에 요청하여 정식 임시 다운로드 URL을 획득 (S3 다운로드 시 활용, 현재는 Hugging Face 직접 다운로드 사용)
+                // val presignedUrl = fetchPresignedUrl(apiUrl)
+                // val downloadUrl = presignedUrl
+
+                // Hugging Face 직접 다운로드 URL 사용
                 val downloadUrl = apiUrl
                 Log.d(TAG, "Starting stream download from: $downloadUrl, existingLength: $existingLength")
 
-                // 이어받기 요청 헤더 추가
+                // 2단계: 실제 모델 파일 스트림 다운로드 (이어받기 요청 헤더 추가)
                 val requestBuilder = Request.Builder().url(downloadUrl)
                 if (existingLength > 0) {
                     requestBuilder.header("Range", "bytes=$existingLength-")
@@ -166,7 +192,7 @@ class ModelDownloaderV2(private val context: Context) {
                 val request = requestBuilder.build()
                 val response = client.newCall(request).execute()
 
-                // HTTP 416 Range Not Satisfiable 이나 404 에러 시에는 임시 파일이 깨졌을 수 있으므로 삭제 후 재시도
+                // HTTP 416 Range Not Satisfiable 이나 404 에러 시에는 임시 파일이 깨졌을 수 있으므로 삭제 후 재시도 유도
                 if (!response.isSuccessful) {
                     if (response.code == 416 || response.code == 404) {
                         if (tempFile.exists()) tempFile.delete()
@@ -189,6 +215,7 @@ class ModelDownloaderV2(private val context: Context) {
                 }
 
                 val inputStream = body.byteStream()
+                // isRange가 true이면 append 모드로 스트림 개방
                 val outputStream = FileOutputStream(tempFile, isRange)
 
                 inputStream.use { input ->
@@ -207,10 +234,16 @@ class ModelDownloaderV2(private val context: Context) {
                 }
 
                 // 크기 검사 (2.3GB 미만은 모델 깨짐으로 판정)
-                if (tempFile.length() < 2.0 * 1024 * 1024 * 1024) {
+                if (tempFile.length() < 2.3 * 1024 * 1024 * 1024) {
                     tempFile.delete()
                     return@withContext Result.failure(
                         IOException("Download incomplete or corrupt: file size is too small (${tempFile.length()} bytes)")
+                    )
+                }
+                if (contentLength > 0 && tempFile.length() != contentLength) {
+                    tempFile.delete()
+                    return@withContext Result.failure(
+                        IOException("Download incomplete: ${tempFile.length()}/$contentLength bytes")
                     )
                 }
                 if (tempFile.length() == 0L) {
@@ -218,14 +251,24 @@ class ModelDownloaderV2(private val context: Context) {
                     return@withContext Result.failure(IOException("Downloaded file is empty"))
                 }
 
-                // 최종 모델 경로로 이동
+                // 최종 모델 경로로 이동 (rename 실패 시 복사 후 삭제로 폴백)
                 if (!tempFile.renameTo(modelFile)) {
-                    tempFile.delete()
-                    return@withContext Result.failure(IOException("Failed to move model file into place"))
+                    try {
+                        tempFile.inputStream().use { input ->
+                            modelFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        tempFile.delete()
+                    } catch (e: Exception) {
+                        tempFile.delete()
+                        return@withContext Result.failure(IOException("Failed to copy temp file to final location: ${e.message}"))
+                    }
                 }
                 Result.success(modelFile)
             } catch (e: Exception) {
-                // 다운로드 중 에러 발생 시 임시 파일은 유지하여 다음에 이어받을 수 있도록 함
+                Log.e(TAG, "Exception during downloadModel", e)
+                tempFile.delete()
                 Result.failure(e)
             }
         }
