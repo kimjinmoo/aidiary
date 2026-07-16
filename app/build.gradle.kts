@@ -40,6 +40,11 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("libs/jniLibs")
+        }
+    }
     androidResources {
         noCompress += listOf("gguf", "bin", "task", "litertlm", "onnx", "txt")
     }
