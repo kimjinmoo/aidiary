@@ -23,8 +23,6 @@ class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
                 modelConfig = OfflineModelConfig(
                     transducer = OfflineTransducerModelConfig(enc!!.absolutePath, dec!!.absolutePath, joi!!.absolutePath),
                     tokens = tok.absolutePath,
-                    modelingUnit = if (bpe.exists()) "bpe" else "",
-                    bpeVocab = if (bpe.exists()) bpe.absolutePath else "",
                     numThreads = 4,
                     provider = "cpu"
                 ),
