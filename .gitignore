@@ -35,3 +35,6 @@ local.properties
 
 # Android Studio
 *.hprof
+
+# whisper.cpp (빌드 전 git clone 필요)
+app/src/main/cpp/whisper.cpp/
