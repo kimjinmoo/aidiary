@@ -99,12 +99,28 @@ object DeviceCapabilityChecker {
     }
 
     private fun hasOpenCL(): Boolean {
-        return try {
+        // 방법 1: System.loadLibrary
+        try {
             System.loadLibrary("OpenCL")
-            true
+            return true
         } catch (e: UnsatisfiedLinkError) {
-            Log.w(TAG, "OpenCL library not found")
-            false
+            // 링커 네임스페이스 제약으로 실패할 수 있음 → 파일 경로 체크로 폴백
         }
+
+        // 방법 2: 시스템 내부 라이브러리 존재 여부 직접 검사 (네임스페이스 제약 우회)
+        val openClPaths = listOf(
+            "/system/lib/libOpenCL.so",
+            "/system/lib64/libOpenCL.so",
+            "/vendor/lib/libOpenCL.so",
+            "/vendor/lib64/libOpenCL.so",
+            "/vendor/lib/egl/libGLES_mali.so",
+            "/vendor/lib64/egl/libGLES_mali.so",
+            "/system/vendor/lib/libOpenCL.so",
+            "/system/vendor/lib64/libOpenCL.so"
+        )
+        for (path in openClPaths) {
+            if (java.io.File(path).exists()) return true
+        }
+        return false
     }
 }
