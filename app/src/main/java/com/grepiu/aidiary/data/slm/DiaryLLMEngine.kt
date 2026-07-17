@@ -23,6 +23,13 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     companion object {
         private const val TAG = "DiaryLLMEngine"
 
+        /** [classifyContentType] 응답 매핑용 키 (ContentType.storageKey 와 동일). */
+        object ContentTypeKeys {
+            const val DIARY = "DIARY"
+            const val POST = "POST"
+            const val NOTE = "NOTE"
+        }
+
         /**
          * 지정된 로컬 모델 파일 경로(.litertlm)를 읽어와 LiteRT-LM Engine 인스턴스를 빌드하고 엔진을 생성합니다.
          * GPU(OpenCL) 초기화 실패 시 CPU 백엔드로 자동 폴백합니다.
@@ -120,6 +127,148 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
         return "<start_of_turn>system\n$systemPrompt<end_of_turn>\n" +
                "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
                "<start_of_turn>model\n"
+    }
+
+    /**
+     * 본문 내용을 분석해 12자 이내의 한국어 제목을 한 줄로 생성합니다.
+     * 모델은 [TitleAssist] JSON 만 출력하도록 강제합니다.
+     */
+    suspend fun suggestTitle(
+        content: String
+    ): String = withContext(Dispatchers.Default) {
+        if (content.isBlank()) return@withContext ""
+        val systemPrompt = "당신은 한국어 일기 제목을 만들어주는 AI입니다. " +
+                "주어진 본문을 요약해 12자 이내의 한국어 제목을 한 줄로만 만드세요. " +
+                "설명·따옴표·접두어 없이 제목 텍스트만 출력하세요."
+        val userPrompt = "본문:\n$content\n\n제목:"
+
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 64, temperature = 0.4)
+            .trim()
+            .trim('"', '\'', '“', '”', '‘', '’', '《', '》')
+            .let { stripPrefixes(it) }
+            .let { if (it.length > 24) it.substring(0, 24) else it }
+    }
+
+    /**
+     * 본문 톤/길이/구조를 보고 적절한 글 타입 (DIARY / POST / NOTE) 을 결정합니다.
+     * 결과는 [ContentType.storageKey] 만 반환합니다.
+     */
+    suspend fun classifyContentType(
+        content: String
+    ): String = withContext(Dispatchers.Default) {
+        if (content.isBlank()) return@withContext ContentTypeKeys.DIARY
+        val systemPrompt = "당신은 한국어 글의 종류를 분류하는 AI입니다. " +
+                "주어진 본문을 보고 다음 세 가지 중 하나로만 답하세요. 다른 텍스트는 절대 쓰지 마세요.\n" +
+                "- DIARY : 개인 감정·하루 이야기·일상 회고 (1인칭, 시간 흐름, 감정 묘사)\n" +
+                "- POST  : 정보 전달·의견·아이디어·자유 글 (정보성, 객관적, 발행 목적)\n" +
+                "- NOTE  : 짧은 메모·할 일·아이디어 단편 (간결, 1~2문장)"
+        val userPrompt = "본문:\n$content\n\n분류:"
+
+        val raw = runSinglePrompt(systemPrompt, userPrompt, maxTokens = 8, temperature = 0.1)
+            .trim()
+            .uppercase()
+        when {
+            raw.contains("DIARY") -> ContentTypeKeys.DIARY
+            raw.contains("POST") -> ContentTypeKeys.POST
+            raw.contains("NOTE") -> ContentTypeKeys.NOTE
+            else -> ContentTypeKeys.DIARY
+        }
+    }
+
+    /**
+     * 본문의 한국어 오탈자/띄어쓰기/문법/문체 를 정리하고 가독성을 높인
+     * 다듬어진 텍스트를 반환합니다. 의미/톤은 유지합니다.
+     */
+    suspend fun proofreadText(
+        text: String
+    ): String = withContext(Dispatchers.Default) {
+        if (text.isBlank()) return@withContext text
+        val systemPrompt = "당신은 한국어 문장 다듬기 전문가입니다. " +
+                "주어진 본문의 띄어쓰기·맞춤법·문법 오류를 수정하고 가독성을 높이세요. " +
+                "의미와 말투는 유지하되, 불필요한 수식은 제거하세요. " +
+                "설명·주석·접두어 없이 다듬어진 본문만 출력하세요."
+        val userPrompt = "본문:\n$text\n\n다듬은 본문:"
+
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 512, temperature = 0.2)
+            .trim()
+            .let { stripCodeFences(it) }
+    }
+
+    /**
+     * 본문 내용에 어울리는 강조(굵게) 와 색상 강조 위치를 결정해
+     * 텍스트와 서식을 함께 반환합니다. [DecorateResult].
+     */
+    suspend fun decorateText(
+        text: String
+    ): String = withContext(Dispatchers.Default) {
+        if (text.isBlank()) return@withContext text
+        val systemPrompt = "당신은 한국어 글의 핵심 단어/구절을 강조하는 편집자입니다. " +
+                "주어진 본문에서 가장 의미 있는 1~3개 단어나 짧은 구절을 골라 " +
+                "아래 JSON 배열 형식으로만 답하세요. 설명은 쓰지 마세요. " +
+                "각 항목의 start/end 는 0-based half-open 인덱스(원본 텍스트 기준)입니다. " +
+                "키워드는 본문에 실제로 등장하는 그대로의 문자열이어야 합니다. " +
+                "색상은 #D32F2F(빨강) #E65100(주황) #F9A825(노랑) #2E7D32(초록) " +
+                "#0277BD(파랑) #6A1B9A(보라) 중에서만 골라주세요.\n" +
+                "출력 예: [{\"keyword\":\"행복\",\"bold\":true,\"color\":\"#2E7D32\"}]"
+        val userPrompt = "본문:\n$text\n\n강조 키워드 JSON:"
+
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 256, temperature = 0.3)
+            .trim()
+            .let { stripCodeFences(it) }
+    }
+
+    /**
+     * 단발성 프롬프트를 보내고 결과 텍스트를 한 번에 돌려받습니다.
+     * (스트리밍 없이 결과만 사용 — 보조 액션 응답 속도 우선)
+     */
+    private suspend fun runSinglePrompt(
+        systemPrompt: String,
+        userPrompt: String,
+        maxTokens: Int,
+        temperature: Double
+    ): String {
+        val conversation = try {
+            engine.createConversation(
+                ConversationConfig(
+                    samplerConfig = SamplerConfig(
+                        topK = 25,
+                        topP = 0.7,
+                        temperature = temperature
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "runSinglePrompt: conversation create failed", e)
+            return ""
+        }
+
+        val prompt = "<start_of_turn>system\n$systemPrompt<end_of_turn>\n" +
+                "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
+                "<start_of_turn>model\n"
+        val builder = StringBuilder()
+        try {
+            conversation.sendMessageAsync(prompt).collect { message ->
+                builder.append(message.toString())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "runSinglePrompt: sendMessage failed", e)
+        } finally {
+            try { conversation.close() } catch (_: Exception) {}
+        }
+        return builder.toString()
+    }
+
+    private fun stripPrefixes(s: String): String =
+        s.trim().removePrefix("제목:").removePrefix("제목 :").removePrefix("-")
+            .removePrefix("·").removePrefix("*").trim()
+
+    private fun stripCodeFences(s: String): String {
+        var t = s.trim()
+        if (t.startsWith("```")) {
+            t = t.removePrefix("```json").removePrefix("```JSON").removePrefix("```")
+            t = t.removeSuffix("```").trim()
+        }
+        return t
     }
 
     /**

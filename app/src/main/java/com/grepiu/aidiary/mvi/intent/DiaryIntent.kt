@@ -76,4 +76,14 @@ sealed interface DiaryIntent {
     data class SendChatMessage(val text: String) : DiaryIntent
     /** 챗봇 대화 기록을 초기화합니다. */
     data object ClearChatHistory : DiaryIntent
+
+    // ===== 작성 보조 AI 액션 =====
+    /** 본문으로 한국어 제목 자동 생성. */
+    data object SuggestTitle : DiaryIntent
+    /** 본문을 보고 콘텐츠 타입 자동 분류 (DIARY/POST/NOTE). */
+    data object ClassifyContentType : DiaryIntent
+    /** 특정 블록의 텍스트 다듬기(오탈자/띄어쓰기). */
+    data class ProofreadBlock(val blockId: String) : DiaryIntent
+    /** 특정 블록의 강조(색상/굵게) 추천 적용. */
+    data class DecorateBlock(val blockId: String) : DiaryIntent
 }

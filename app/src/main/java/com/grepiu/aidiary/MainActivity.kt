@@ -340,6 +340,18 @@ fun DiaryAppNavigationRouter(
                 onStopRecording = {
                     viewModel.processIntent(DiaryIntent.StopRecording)
                 },
+                onSuggestTitle = {
+                    viewModel.processIntent(DiaryIntent.SuggestTitle)
+                },
+                onClassifyType = {
+                    viewModel.processIntent(DiaryIntent.ClassifyContentType)
+                },
+                onProofreadBlock = { blockId ->
+                    viewModel.processIntent(DiaryIntent.ProofreadBlock(blockId))
+                },
+                onDecorateBlock = { blockId ->
+                    viewModel.processIntent(DiaryIntent.DecorateBlock(blockId))
+                },
                 modifier = modifier
             )
         }

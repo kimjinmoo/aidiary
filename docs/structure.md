@@ -37,7 +37,8 @@ app/src/main/java/com/grepiu/aidiary/
 │   │   └── PlannerRepository.kt     # 플래너 할 일(Tasks) 및 장기 목표(Goals)의 로컬 JSON 파일 영속화 관리
 │   └── slm/
 │       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
-│       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백)
+│       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백 + 보조 액션 단발성 프롬프트)
+│       ├── DecorateResult.kt        # AI 강조 추천 JSON 파서 + TextFormatting 변환
 │       ├── ModelDownloaderV2.kt     # Gemma/Whisper 모델 다운로드·압축 해제·에셋 복사
 │       └── SherpaEngine.kt          # 오프라인 음성 인식 추론
 │
@@ -126,12 +127,33 @@ app/src/main/java/com/grepiu/aidiary/
   - 뒤쪽: 서식이 적용된 `Text(AnnotatedString)` 으로 인라인 프리뷰
   - 앞쪽: 투명 텍스트 `BasicTextField` 가 실제 입력 + 커서 처리
   - 둘은 동일한 TextStyle / padding 으로 정렬
+  - `BringIntoViewRequester` 로 포커스/타이핑/엔터 시 부모 `verticalScroll` 이 자동 스크롤
 - `RichTextToolbar` (`ui/components/RichTextToolbar.kt`)
   - 1행: B / I / U / S 토글 (활성 시 강조 색 배경)
   - 2행: 기본/9색 팔레트 (Color)
   - 3행: 12 / 15 / 18 / 22 (sp) 크기
 - `BlockEditor` 의 `HeadingBlock / TextBlock / QuoteBlock` 분기는 `RichTextEditorBody` 로 묶여 동일 위젯을 사용.
 - 음성 전사 결과는 마지막 `TextBlock` 의 `text` 에만 이어붙이며 서식은 보존됨.
+
+## 4.3 작성 보조 AI 액션 (LiteRT-LM 단발성 프롬프트)
+
+`DiaryLLMEngine` 은 일기 분석(스트리밍) 외에 보조 액션용 단발성 추론도 지원합니다. 모두 `state.isModelReady == true` 일 때만 노출됩니다.
+
+| 액션 | 트리거 UI | 엔진 메서드 | 결과 적용 |
+|---|---|---|---|
+| 제목 자동 생성 | 제목 입력 옆 `AI 제목` 아이콘 버튼 | `suggestTitle(content)` | `state.draftTitle` |
+| 글 타입 자동 분류 | 타입 셀렉터 위 `AI 자동 분류` 텍스트 버튼 | `classifyContentType(content)` | `state.draftContentType` |
+| 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 다듬기` | `proofreadText(text)` | 해당 블록의 `text` (formatting 유지) |
+| 본문 강조 추천 (굵게/색) | 블록 헤더의 `✦` 메뉴 → `AI 강조` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프) |
+
+상태/Intent:
+- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` (각 진행 표시)
+- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)`
+
+UI 규약:
+- 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
+- AI 강조 색상은 6색 팔레트(`#D32F2F #E65100 #F9A825 #2E7D32 #0277BD #6A1B9A`) 중 모델이 선택
+- 모델 응답이 잘못된 JSON/빈 문자열인 경우 안전 폴백 (원본 유지 + 토스트 안내)
 
 ## 5. 핵심 컴포넌트 책임
 

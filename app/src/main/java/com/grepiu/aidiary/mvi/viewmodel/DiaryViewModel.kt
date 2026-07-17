@@ -22,9 +22,11 @@ import com.grepiu.aidiary.data.repository.PlannerRepository
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
 import com.grepiu.aidiary.data.slm.DeviceCapabilityChecker
+import com.grepiu.aidiary.data.slm.DecorateResultParser
 import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
 import com.grepiu.aidiary.data.slm.SherpaEngine
+import com.grepiu.aidiary.data.slm.toTextFormatting
 import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
@@ -153,6 +155,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.UpdateDraftType -> {
                 _state.update { it.copy(draftContentType = intent.contentType) }
+            }
+
+            // ===== 작성 보조 AI 액션 =====
+            is DiaryIntent.SuggestTitle -> {
+                suggestTitleFromBody()
+            }
+            is DiaryIntent.ClassifyContentType -> {
+                classifyDraftContentType()
+            }
+            is DiaryIntent.ProofreadBlock -> {
+                proofreadBlock(intent.blockId)
+            }
+            is DiaryIntent.DecorateBlock -> {
+                decorateBlock(intent.blockId)
             }
             is DiaryIntent.ShowDownloadNotice -> {
                 _state.update { it.copy(showDownloadNotice = intent.show) }
@@ -581,6 +597,214 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 sendEffect(DiaryEffect.ShowToast("AI 분석 오류: ${e.message}"))
             }
         }
+    }
+
+    // ===== 작성 보조 AI 액션 =====
+
+    /** 모델이 준비되어 있고 동시 분석 작업이 없는지 검사하는 공통 게이트. */
+    private fun requireReadyModel(toast: String = "AI 모델이 아직 준비되지 않았습니다."): Boolean {
+        if (!_state.value.isModelReady) {
+            sendEffect(DiaryEffect.ShowToast(toast))
+            return false
+        }
+        return true
+    }
+
+    private fun suggestTitleFromBody() {
+        val plain = _state.value.draftPlainText
+        if (plain.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("제목 추천을 위해 본문을 먼저 작성해주세요."))
+            return
+        }
+        if (!requireReadyModel()) return
+        if (_state.value.isSuggestingTitle) return
+
+        _state.update { it.copy(isSuggestingTitle = true) }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val title = engine.suggestTitle(plain)
+                if (title.isNotBlank()) {
+                    _state.update { it.copy(draftTitle = title) }
+                    sendEffect(DiaryEffect.ShowToast("AI 추천 제목을 적용했어요."))
+                } else {
+                    sendEffect(DiaryEffect.ShowToast("제목을 만들지 못했어요. 다시 시도해 주세요."))
+                }
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("AI 제목 추천 오류: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isSuggestingTitle = false) }
+            }
+        }
+    }
+
+    private fun classifyDraftContentType() {
+        val plain = _state.value.draftPlainText
+        if (plain.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("분류를 위해 본문을 먼저 작성해주세요."))
+            return
+        }
+        if (!requireReadyModel()) return
+        if (_state.value.isClassifyingType) return
+
+        _state.update { it.copy(isClassifyingType = true) }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val key = engine.classifyContentType(plain)
+                val newType = com.grepiu.aidiary.data.model.ContentType.fromStorageKey(key)
+                _state.update { it.copy(draftContentType = newType) }
+                sendEffect(DiaryEffect.ShowToast("글 타입을 '${newType.label}'(으)로 분류했어요."))
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("AI 분류 오류: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isClassifyingType = false) }
+            }
+        }
+    }
+
+    private fun proofreadBlock(blockId: String) {
+        val state = _state.value
+        val block = state.draftBlocks.firstOrNull { it.id == blockId } ?: return
+        val originalText = (block as? com.grepiu.aidiary.data.model.ContentBlock.TextBlock)?.text
+            ?: (block as? com.grepiu.aidiary.data.model.ContentBlock.HeadingBlock)?.text
+            ?: (block as? com.grepiu.aidiary.data.model.ContentBlock.QuoteBlock)?.text
+            ?: return
+        if (originalText.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("다듬을 본문이 비어 있어요."))
+            return
+        }
+        if (!requireReadyModel()) return
+        if (state.isProofreadingBlockId == blockId) return
+
+        _state.update { it.copy(isProofreadingBlockId = blockId) }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val revised = engine.proofreadText(originalText)
+                if (revised.isNotBlank() && revised != originalText) {
+                    applyTextToBlock(blockId, revised)
+                    sendEffect(DiaryEffect.ShowToast("본문을 다듬었어요."))
+                } else if (revised.isNotBlank()) {
+                    sendEffect(DiaryEffect.ShowToast("이미 깔끔한 본문이에요."))
+                } else {
+                    sendEffect(DiaryEffect.ShowToast("다듬기에 실패했어요. 다시 시도해 주세요."))
+                }
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("AI 다듬기 오류: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isProofreadingBlockId = null) }
+            }
+        }
+    }
+
+    private fun decorateBlock(blockId: String) {
+        val state = _state.value
+        val block = state.draftBlocks.firstOrNull { it.id == blockId } ?: return
+        val originalText = (block as? com.grepiu.aidiary.data.model.ContentBlock.TextBlock)?.text
+            ?: (block as? com.grepiu.aidiary.data.model.ContentBlock.HeadingBlock)?.text
+            ?: (block as? com.grepiu.aidiary.data.model.ContentBlock.QuoteBlock)?.text
+            ?: return
+        if (originalText.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("꾸밀 본문이 비어 있어요."))
+            return
+        }
+        if (!requireReadyModel()) return
+        if (state.isDecoratingBlockId == blockId) return
+
+        _state.update { it.copy(isDecoratingBlockId = blockId) }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val raw = engine.decorateText(originalText)
+                val result = DecorateResultParser.parse(raw, originalText)
+                if (result.suggestions.isNotEmpty()) {
+                    val newFmt = result.toTextFormatting()
+                    applyFormattingToBlock(blockId, newFmt)
+                    sendEffect(DiaryEffect.ShowToast("강조 추천을 적용했어요. (${result.suggestions.size}건)"))
+                } else {
+                    sendEffect(DiaryEffect.ShowToast("강조할 단어를 찾지 못했어요."))
+                }
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("AI 꾸미기 오류: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isDecoratingBlockId = null) }
+            }
+        }
+    }
+
+    /**
+     * 특정 블록의 text 만 교체합니다 (formatting 은 그대로 유지).
+     */
+    private fun applyTextToBlock(blockId: String, newText: String) {
+        _state.update { current ->
+            current.copy(
+                draftBlocks = current.draftBlocks.map { block ->
+                    if (block.id != blockId) return@map block
+                    when (block) {
+                        is com.grepiu.aidiary.data.model.ContentBlock.HeadingBlock ->
+                            block.copy(text = newText)
+                        is com.grepiu.aidiary.data.model.ContentBlock.TextBlock ->
+                            block.copy(text = newText)
+                        is com.grepiu.aidiary.data.model.ContentBlock.QuoteBlock ->
+                            block.copy(text = newText)
+                        else -> block
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * 특정 블록의 formatting 만 교체합니다. 텍스트 길이가 변할 수 있으므로
+     * 새 서식의 인덱스가 텍스트 길이 안쪽으로 클램핑되도록 안전 가드를 둡니다.
+     */
+    private fun applyFormattingToBlock(
+        blockId: String,
+        newFormatting: com.grepiu.aidiary.data.model.TextFormatting
+    ) {
+        _state.update { current ->
+            current.copy(
+                draftBlocks = current.draftBlocks.map { block ->
+                    if (block.id != blockId) return@map block
+                    val textLen = when (block) {
+                        is com.grepiu.aidiary.data.model.ContentBlock.HeadingBlock -> block.text.length
+                        is com.grepiu.aidiary.data.model.ContentBlock.TextBlock -> block.text.length
+                        is com.grepiu.aidiary.data.model.ContentBlock.QuoteBlock -> block.text.length
+                        else -> return@map block
+                    }
+                    val safe = clampFormatting(newFormatting, textLen)
+                    when (block) {
+                        is com.grepiu.aidiary.data.model.ContentBlock.HeadingBlock ->
+                            block.copy(formatting = safe)
+                        is com.grepiu.aidiary.data.model.ContentBlock.TextBlock ->
+                            block.copy(formatting = safe)
+                        is com.grepiu.aidiary.data.model.ContentBlock.QuoteBlock ->
+                            block.copy(formatting = safe)
+                        else -> block
+                    }
+                }
+            )
+        }
+    }
+
+    private fun clampFormatting(
+        fmt: com.grepiu.aidiary.data.model.TextFormatting,
+        textLen: Int
+    ): com.grepiu.aidiary.data.model.TextFormatting {
+        fun cap(r: IntRange): IntRange? {
+            val s = r.first.coerceIn(0, textLen)
+            val e = r.last.coerceIn(0, (textLen - 1).coerceAtLeast(0))
+            return if (s > e) null else s..e
+        }
+        return fmt.copy(
+            boldRanges = fmt.boldRanges.mapNotNull(::cap),
+            italicRanges = fmt.italicRanges.mapNotNull(::cap),
+            underlineRanges = fmt.underlineRanges.mapNotNull(::cap),
+            strikethroughRanges = fmt.strikethroughRanges.mapNotNull(::cap),
+            colorRanges = fmt.colorRanges.mapNotNull { (r, v) -> cap(r)?.let { it to v } },
+            sizeRanges = fmt.sizeRanges.mapNotNull { (r, v) -> cap(r)?.let { it to v } },
+        )
     }
 
     /**

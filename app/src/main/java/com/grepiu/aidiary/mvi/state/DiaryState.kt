@@ -53,6 +53,16 @@ data class DiaryState(
     val aiAnalysisText: String? = null,                      // 실시간 스트리밍 분석 텍스트
     val isGeneratingAnalysis: Boolean = false,               // AI 분석 추론 진행 여부
 
+    // 작성 보조 AI 액션 상태
+    /** true: 제목 자동 생성 중 */
+    val isSuggestingTitle: Boolean = false,
+    /** true: 본문 분석 → 타입 분류 중 */
+    val isClassifyingType: Boolean = false,
+    /** true: 특정 블록의 텍스트 다듬기(교정/띄어쓰기) 진행 중 */
+    val isProofreadingBlockId: String? = null,
+    /** true: 특정 블록의 강조(색/굵게) 추천 진행 중 */
+    val isDecoratingBlockId: String? = null,
+
     // Sherpa 음성 녹음 및 변환 상태
     val isSherpaModelReady: Boolean = false,
     val isRecording: Boolean = false,

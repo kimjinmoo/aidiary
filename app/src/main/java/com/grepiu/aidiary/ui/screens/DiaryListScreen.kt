@@ -1,7 +1,11 @@
 package com.grepiu.aidiary.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -119,27 +123,6 @@ fun DiaryListScreen(
     var filterByDate by remember { mutableStateOf(true) }
 
     Scaffold(
-        topBar = {
-            LargeTopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "다이어리 App",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 28.sp
-                        )
-                        Text(
-                            text = "하루의 계획, 목표, 그리고 마음 분석까지 스마트하게",
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = Color.Transparent
-                )
-            )
-        },
         floatingActionButton = {
             if (state.activeTab == "DIARY") {
                 FloatingActionButton(
@@ -163,9 +146,48 @@ fun DiaryListScreen(
         Column(
             modifier = Modifier
                 .padding(innerPadding)
+                .statusBarsPadding()
                 .imePadding()
                 .fillMaxSize()
         ) {
+            // C. 공간 효율적이고 고급스러운 상단 오늘의 날짜/인사말 헤더
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "오늘의 기록",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREAN).format(Date()),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = "AI 감정 분석 요약",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
             // A. 상단 주간 캘린더 스트립
             WeeklyCalendarStrip(
                 days = calendarDays,
@@ -305,12 +327,25 @@ fun WeeklyCalendarStrip(
                     MaterialTheme.colorScheme.onSurface
                 }
 
+                val cellBorder = if (isSelected) {
+                    BorderStroke(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.3f)
+                    )
+                } else {
+                    BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                    )
+                }
+
                 Box(
                     modifier = Modifier
                         .width(52.dp)
                         .height(72.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(backgroundBrush)
+                        .border(cellBorder, RoundedCornerShape(16.dp))
                         .clickable { onDateSelect(day.dateString) }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -382,15 +417,23 @@ fun TabSelector(
             
             tabs.forEach { (tabId, label) ->
                 val isSelected = activeTab == tabId
-                val itemBg = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
-                val itemTextColor = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                val itemBgColor by animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "TabBgColor"
+                )
+                val itemTextColor by animateColorAsState(
+                    targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(durationMillis = 200),
+                    label = "TabTextColor"
+                )
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(38.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(itemBg)
+                        .background(itemBgColor)
                         .clickable { onTabSelect(tabId) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -680,7 +723,12 @@ fun PlannerTaskItemRow(
             containerColor = if (task.isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             else MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isCompleted) 0.dp else 1.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (task.isCompleted) Color.Transparent
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (task.isCompleted) 0.dp else 2.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -917,7 +965,12 @@ fun GoalItemRow(
             containerColor = if (goal.isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
             else MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (goal.isCompleted) 0.dp else 1.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (goal.isCompleted) Color.Transparent
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (goal.isCompleted) 0.dp else 2.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -1329,7 +1382,11 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)

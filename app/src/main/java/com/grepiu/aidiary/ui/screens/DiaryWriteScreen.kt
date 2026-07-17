@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
@@ -86,6 +87,10 @@ fun DiaryWriteScreen(
     onBack: () -> Unit,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
+    onSuggestTitle: () -> Unit,
+    onClassifyType: () -> Unit,
+    onProofreadBlock: (String) -> Unit,
+    onDecorateBlock: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -146,27 +151,40 @@ fun DiaryWriteScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 1. 일기 제목 입력
-            OutlinedTextField(
-                value = state.draftTitle,
-                onValueChange = onTitleChange,
-                label = { Text("일기 제목") },
-                placeholder = { Text("오늘 하루의 한 줄 키워드") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
+            // 1. 일기 제목 입력 + AI 추천 버튼
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = state.draftTitle,
+                    onValueChange = onTitleChange,
+                    label = { Text("일기 제목") },
+                    placeholder = { Text("오늘 하루의 한 줄 키워드") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                AiAssistIconButton(
+                    label = "AI 제목",
+                    loading = state.isSuggestingTitle,
+                    enabled = state.isModelReady && !state.isSuggestingTitle && state.draftPlainText.isNotBlank(),
+                    onClick = onSuggestTitle
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 1.5 콘텐츠 타입 선택
+            // 1.5 콘텐츠 타입 선택 + AI 자동 분류 버튼
             ContentTypeSelector(
                 selected = state.draftContentType,
-                onSelect = onContentTypeChange
+                onSelect = onContentTypeChange,
+                isClassifying = state.isClassifyingType,
+                onClassifyClick = onClassifyType
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -193,11 +211,16 @@ fun DiaryWriteScreen(
                             block = block,
                             index = index,
                             totalCount = state.draftBlocks.size,
+                            isProofreading = state.isProofreadingBlockId == block.id,
+                            isDecorating = state.isDecoratingBlockId == block.id,
+                            aiAssistEnabled = state.isModelReady,
                             onUpdateText = { newText, newFmt -> onUpdateBlockText(block.id, newText, newFmt) },
                             onUpdateCaption = { newCap -> onUpdateBlockCaption(block.id, newCap) },
                             onRemove = { onRemoveBlock(block.id) },
                             onMoveUp = { onMoveBlock(block.id, -1) },
-                            onMoveDown = { onMoveBlock(block.id, +1) }
+                            onMoveDown = { onMoveBlock(block.id, +1) },
+                            onProofread = { onProofreadBlock(block.id) },
+                            onDecorate = { onDecorateBlock(block.id) }
                         )
                     }
                 }
@@ -492,16 +515,30 @@ private fun AIAnalysisSection(
 @Composable
 private fun ContentTypeSelector(
     selected: ContentType,
-    onSelect: (ContentType) -> Unit
+    onSelect: (ContentType) -> Unit,
+    isClassifying: Boolean,
+    onClassifyClick: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "글 타입",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, bottom = 6.dp)
+        ) {
+            Text(
+                text = "글 타입",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            AiAssistTextButton(
+                label = if (isClassifying) "분류 중…" else "AI 자동 분류",
+                loading = isClassifying,
+                onClick = onClassifyClick
+            )
+        }
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
@@ -566,4 +603,102 @@ private fun contentTypeMeta(type: ContentType): Pair<ImageVector, String> = when
     ContentType.DIARY -> Icons.AutoMirrored.Filled.MenuBook to ContentType.DIARY.label
     ContentType.POST -> Icons.Default.EditNote to ContentType.POST.label
     ContentType.NOTE -> Icons.Default.NoteAlt to ContentType.NOTE.label
+}
+
+/**
+ * 보조 입력 옆에 붙는 작은 아이콘형 AI 버튼.
+ *
+ * - [loading] 이 true 면 진행 표시 스피너 노출 + 비활성
+ * - [enabled] 가 false 면 회색
+ */
+@Composable
+fun AiAssistIconButton(
+    label: String,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val active = enabled && !loading
+    val containerColor = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+    val borderColor = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+    val contentColor = if (active) MaterialTheme.colorScheme.primary else Color.Gray
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .size(width = 86.dp, height = 56.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(containerColor)
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .clickable(enabled = active, onClick = onClick)
+            .padding(horizontal = 6.dp)
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(16.dp),
+                color = contentColor
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = label,
+                modifier = Modifier.size(16.dp),
+                tint = contentColor
+            )
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = contentColor,
+            maxLines = 1
+        )
+    }
+}
+
+/**
+ * 글 타입 라벨 우측에 붙는 인라인 텍스트형 AI 버튼.
+ */
+@Composable
+fun AiAssistTextButton(
+    label: String,
+    loading: Boolean,
+    onClick: () -> Unit
+) {
+    val active = !loading
+    val contentColor = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = active, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(12.dp),
+                color = contentColor
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(12.dp),
+                tint = contentColor
+            )
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = contentColor
+        )
+    }
 }

@@ -3,13 +3,18 @@ package com.grepiu.aidiary.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextRange
@@ -18,6 +23,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.grepiu.aidiary.data.model.TextFormatting
+import kotlinx.coroutines.launch
 
 /**
  * 인라인 서식이 적용된 텍스트 에디터.
@@ -25,6 +31,8 @@ import com.grepiu.aidiary.data.model.TextFormatting
  * - 뒤쪽에 [Text] 로 포맷된 [AnnotatedString] 을 깔고, 그 위에 [BasicTextField] 를
  *   투명 텍스트/투명 indicator 로 겹쳐 입력 중에도 서식이 인라인으로 보이게 합니다.
  * - 선택 영역은 [selection] 으로 받고, 변경 시 [onValueChange] 로 부모에 알립니다.
+ * - 포커스 획득/텍스트 변경 시 [BringIntoViewRequester] 로 부모 스크롤이
+ *   해당 필드를 가시 영역으로 끌어올려 키보드에 가려지지 않도록 합니다.
  */
 @Composable
 fun RichTextField(
@@ -45,7 +53,18 @@ fun RichTextField(
     val inputStyle = textStyle.copy(color = Color.Transparent)
     val cursorColor = MaterialTheme.colorScheme.primary
 
-    Box(modifier = modifier) {
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // 텍스트/커서 변화(타이핑, 엔터, 붙여넣기 등) 시 부모 스크롤이
+    // 필드를 가시 영역으로 끌어올림 → 키보드에 가려지지 않도록 함.
+    LaunchedEffect(value.text, value.selection) {
+        bringIntoViewRequester.bringIntoView()
+    }
+
+    Box(
+        modifier = modifier.bringIntoViewRequester(bringIntoViewRequester)
+    ) {
         // 포맷된 텍스트를 배경에 깔아 인라인 프리뷰를 제공
         Text(
             text = annotated,
@@ -65,6 +84,13 @@ fun RichTextField(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(textStyle.paddingOrZero())
+                .onFocusChanged { focusState ->
+                    if (focusState.isFocused) {
+                        coroutineScope.launch {
+                            bringIntoViewRequester.bringIntoView()
+                        }
+                    }
+                }
         )
         if (value.text.isEmpty() && placeholder != null) {
             Text(

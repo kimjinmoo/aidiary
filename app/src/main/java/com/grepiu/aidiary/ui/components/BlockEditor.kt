@@ -20,11 +20,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.HorizontalRule
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,6 +81,11 @@ fun BlockEditor(
     onRemove: () -> Unit,
     onMoveUp: () -> Unit,
     onMoveDown: () -> Unit,
+    isProofreading: Boolean = false,
+    isDecorating: Boolean = false,
+    aiAssistEnabled: Boolean = true,
+    onProofread: () -> Unit = {},
+    onDecorate: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val (typeLabel, typeIcon, accent) = blockTypeMeta(block)
@@ -116,6 +128,21 @@ fun BlockEditor(
                 color = accent
             )
             Spacer(modifier = Modifier.weight(1f))
+            if (block is ContentBlock.TextBlock ||
+                block is ContentBlock.HeadingBlock ||
+                block is ContentBlock.QuoteBlock
+            ) {
+                BlockAiMenu(
+                    enabled = aiAssistEnabled,
+                    isProofreading = isProofreading,
+                    isDecorating = isDecorating,
+                    hasText = (block as? ContentBlock.TextBlock)?.text?.isNotBlank() == true ||
+                        (block as? ContentBlock.HeadingBlock)?.text?.isNotBlank() == true ||
+                        (block as? ContentBlock.QuoteBlock)?.text?.isNotBlank() == true,
+                    onProofread = onProofread,
+                    onDecorate = onDecorate
+                )
+            }
             IconButton(
                 onClick = onMoveUp,
                 enabled = index > 0,
@@ -454,4 +481,81 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
     is ContentBlock.QuoteBlock -> Triple("인용", Icons.Default.FormatQuote, Color(0xFF6A1B9A))
     is ContentBlock.ImageBlock -> Triple("이미지", Icons.Default.Image, Color(0xFF2E7D32))
     is ContentBlock.DividerBlock -> Triple("구분선", Icons.Default.HorizontalRule, MaterialTheme.colorScheme.outline)
+}
+
+/**
+ * 블록 우측 상단의 AI 보조 메뉴 (점 세개 버튼 → 드롭다운).
+ *
+ * - "AI 다듬기": 한국어 오탈자/띄어쓰기 정리
+ * - "AI 강조":   핵심 단어 굵게 + 색상 추천 적용
+ */
+@Composable
+private fun BlockAiMenu(
+    enabled: Boolean,
+    isProofreading: Boolean,
+    isDecorating: Boolean,
+    hasText: Boolean,
+    onProofread: () -> Unit,
+    onDecorate: () -> Unit
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val isBusy = isProofreading || isDecorating
+
+    Box {
+        IconButton(
+            onClick = { menuOpen = true },
+            enabled = enabled && !isBusy,
+            modifier = Modifier.size(32.dp)
+        ) {
+            if (isBusy) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(16.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = "AI 보조",
+                    tint = if (enabled) MaterialTheme.colorScheme.primary else Color.Gray,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("AI 다듬기 (오탈자·띄어쓰기)", fontSize = 13.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Spellcheck,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                enabled = hasText,
+                onClick = {
+                    menuOpen = false
+                    onProofread()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("AI 강조 (색·굵게 추천)", fontSize = 13.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                enabled = hasText,
+                onClick = {
+                    menuOpen = false
+                    onDecorate()
+                }
+            )
+        }
+    }
 }
