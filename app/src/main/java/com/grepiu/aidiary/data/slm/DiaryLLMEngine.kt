@@ -8,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * LiteRT-LM SDK API를 활용하여 온디바이스 일기 분석 피드백 결과를 생성하는 언어 모델 엔진.
@@ -30,7 +29,8 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
         private set
 
     // ===== 챗봇 멀티턴 상태 =====
-    private val chatConversation = AtomicReference<Conversation?>(null)
+    // v2.1: 채팅은 매 호출 fresh conversation 을 사용 (LiteRT-LM Conversation stateful + prompt 임베드
+    // 중복 문제 회피). multi-turn history 는 chatHistory + chatPriorSummary 로 prompt 에서만 관리.
     private val chatHistory = mutableListOf<Pair<String, String>>() // (role, text)
     private var chatPriorSummary: String? = null
 
@@ -62,11 +62,12 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
          */
         const val MAX_CHAT_PROMPT_CHARS = 1100
 
-        /**
-         * 챗봇 Conversation 내부 누적 토큰 폭주 방지용 리셋 주기.
-         * N 턴마다 close + 재생성하여 LiteRT-LM Conversation 의 내부 history 를 비운다.
-         */
-        const val CHAT_CONVERSATION_RESET_TURNS = 4
+    /**
+     * 챗봇 Conversation 내부 누적 토큰 폭주 방지. v2.1 부터 채팅은 매 호출 fresh conversation
+     * 을 사용하므로 이 상수는 더 이상 쓰이지 않음 (호환성 위해 보존).
+     */
+    @Suppress("unused")
+    const val CHAT_CONVERSATION_RESET_TURNS = 4
 
         /**
          * 통합 (분류+감정) 결과.
@@ -337,14 +338,13 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
                 "오늘의 할 일 목록에 해당하는 일정이 없다면, 가상 일정을 만들지 말고 '오늘 계획된 일정이 등록되어 있지 않아요'라고 솔직하게 대답하세요. " +
                 "반드시 100% 한국어로만 답변하고, '~해요'체로 상냥하고 간결하게 대답하세요."
 
-        // 1) 주기적 Conversation 리셋 (내부 history 누적 방지)
-        if (chatTurnCounter >= CHAT_CONVERSATION_RESET_TURNS) {
-            try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
-            chatTurnCounter = 0
-        }
+        // LiteRT-LM Conversation 은 stateful (내부 history 누적). 같은 인스턴스를 재사용하면서
+        // 동시에 user prompt 에 multi-turn history 를 임베드하면 history 중복으로 1024 토큰 한도를
+        // 2턴째에 초과해 두 번째 질문부터 응답이 나오지 않는다.
+        // → 채팅은 매 호출마다 fresh conversation 을 만들고, multi-turn history 는 prompt 에서만 관리한다.
         chatTurnCounter++
 
-        // 2) 3단계 점진 드롭 (full → RAG only → query only)
+        // 3단계 점진 드롭 (full → RAG only → query only)
         val strategies = listOf(
             ContextStrategy.FULL,
             ContextStrategy.RAG_ONLY,
@@ -352,7 +352,7 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
         )
         var lastError: Throwable? = null
 
-        for ((idx, strategy) in strategies.withIndex()) {
+        for (strategy in strategies) {
             val userPrompt = buildChatUserPrompt(strategy, contextBlock, userQuery)
             val totalChars = system.length + userPrompt.length
             if (totalChars > MAX_CHAT_PROMPT_CHARS && strategy == ContextStrategy.QUERY_ONLY) {
@@ -366,11 +366,16 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
                     "<start_of_turn>model\n"
             Log.d(TAG, "Chat prompt strategy=$strategy chars=$totalChars")
 
-            // 각 전략은 fresh conversation 으로 시도 (이전 실패의 internal state 격리)
-            if (idx > 0) {
-                try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
+            // 매 전략은 fresh conversation. 이전 전략의 internal state 격리 + 멀티턴 history 중복 방지.
+            val conv = try {
+                engine.createConversation(
+                    ConversationConfig(samplerConfig = SamplerPresets.GENERATE_MEDIUM.toSamplerConfig())
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "createConversation failed at strategy=$strategy (${e.message})")
+                lastError = e
+                continue
             }
-            val conv = ensureChatConversation()
 
             val builder = StringBuilder()
             var emittedAny = false
@@ -383,6 +388,7 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
                 }
                 onTokenReceived?.invoke("", true)
                 val final = builder.toString()
+                try { conv.close() } catch (_: Exception) {}
                 // 성공 시에만 history 갱신
                 chatHistory.add("USER" to userQuery)
                 chatHistory.add("AI" to final)
@@ -393,6 +399,7 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
             } catch (e: Exception) {
                 lastError = e
                 Log.w(TAG, "Chat prompt failed at strategy=$strategy (${e.message}); trying next fallback")
+                try { conv.close() } catch (_: Exception) {}
                 if (emittedAny) {
                     // 토큰이 이미 노출된 상태면 부분 결과로 수락하고 종료
                     onTokenReceived?.invoke("", true)
@@ -407,9 +414,8 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
             }
         }
 
-        // 모든 전략 실패 (어느 것도 토큰 방출 못함) → 컨버세이션 리셋 + 안전 메시지
+        // 모든 전략 실패 (어느 것도 토큰 방출 못함) → 안전 메시지
         Log.e(TAG, "Error generating chat response (backend=$backendType)", lastError)
-        try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
         chatTurnCounter = 0
         val errorMsg = "[오류가 발생하여 답변할 수 없어요. 잠시 후 다시 시도해 주세요]"
         onTokenReceived?.invoke(errorMsg, true)
@@ -489,19 +495,9 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
      * 챗봇 이력 초기화 (ClearChatHistory 인텐트에서 호출).
      */
     fun clearChat() {
-        try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
-        chatConversation.set(null)
         chatHistory.clear()
         chatPriorSummary = null
         chatTurnCounter = 0
-    }
-
-    private fun ensureChatConversation(): Conversation {
-        chatConversation.get()?.let { return it }
-        val cfg = ConversationConfig(samplerConfig = SamplerPresets.GENERATE_MEDIUM.toSamplerConfig())
-        val conv = engine.createConversation(cfg)
-        chatConversation.set(conv)
-        return conv
     }
 
     /**
@@ -597,7 +593,6 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     fun dispose() {
-        try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
         chatHistory.clear()
         chatPriorSummary = null
         chatTurnCounter = 0

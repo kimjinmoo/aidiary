@@ -75,6 +75,29 @@ app/src/main/java/com/grepiu/aidiary/
     └── theme/                         # Material 3 테마
 ```
 
+## 고려 사항 (TODO)
+
+### FTS5 호환성 — 검색 인덱스 백엔드 선택
+
+현재 `data/repository/DiarySearchDatabase.kt` 는 시스템 SQLite에 FTS5 가 있으면 `trigram` 가상 테이블을, 없으면 일반 테이블 + LIKE 로 폴백. 모든 기기에서 FTS5 를 보장하고 싶을 때의 옵션:
+
+- [ ] **현 구조 유지** — 200건 상한(`DiaryRepository.kt`)에선 LIKE 폴백도 충분. 비용 0
+- [ ] **requery/sqlite-android** — FTS5 + R\*Tree + JSON1 번들. 그러나 2020년 이후 유지보수 중단. APK +1~2MB. `io.requery.android.database.sqlite.*` 로 API 교체
+- [ ] **WCDB (`com.tencent.wcdb`)** — Tencent가 WeChat 에서 검증, 활발한 유지보수. 다만 독자 ORM API 로 `DiarySearchDatabase.kt` 전면 리라이트. APK +3~5MB. C++ JNI 의존
+- [ ] **SQLCipher (`net.zetetic:sqlcipher-android`)** — AES-256 DB 암호화. `SupportFactory` 패턴으로 `SQLiteOpenHelper` 마이그레이션 최소. Android Keystore 기반 키 관리 추가 필요 (+30~50줄). APK +2~4MB
+- [ ] **Android NDK + SQLite 소스 직접 빌드** — FTS5 만 필요할 때 가장 가벼움 (~수백 KB). 빌드 스크립트 작성/유지 부담
+
+**선택 가이드**
+
+| 시나리오 | 추천 |
+|---|---|
+| 검색 인덱스 암호화가 진짜 목적 | SQLCipher |
+| FTS5 일관성만 필요 (200건 안팎) | 현 구조 유지 |
+| Tencent급 ORM + 장기 유지보수 | WCDB |
+| 최소 변경 + 보안 패치 추적 | SQLCipher 또는 NDK 직접 빌드 |
+
+**결정 필요**: AIDiary 는 JSON 이 1차 진실이고 SQLite 는 부가 인덱스. 보안 요구가 명시되기 전까지는 현 구조 유지가 합리적.
+
 ## 라이선스
 
 This project is licensed under the MIT License.
