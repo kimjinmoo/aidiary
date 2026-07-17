@@ -45,20 +45,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.ui.components.BlockRenderer
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,11 +77,10 @@ fun DiaryDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    // --- 1. 파생 데이터: 날짜/읽기시간/커버 이미지/본문 정리 ---
+    // --- 1. 파생 데이터: 날짜/읽기시간/본문 정리 ---
     val dateText = remember(diary.timestamp) {
         SimpleDateFormat("yyyy년 M월 d일 (EEEE)", Locale.KOREAN).format(Date(diary.timestamp))
     }
@@ -102,14 +95,6 @@ fun DiaryDetailScreen(
         }
         val minutes = (charCount / 400).coerceAtLeast(1)
         "읽기 약 ${minutes}분"
-    }
-    val firstImage = remember(diary.id) {
-        diary.blocks.firstOrNull { it is ContentBlock.ImageBlock } as? ContentBlock.ImageBlock
-    }
-    val headerImageFile: File? = remember(firstImage?.relativePath) {
-        val rel = firstImage?.relativePath
-        if (rel.isNullOrBlank()) null
-        else File(context.filesDir, rel).takeIf { it.exists() }
     }
     // 제목이 본문 첫 HeadingBlock 으로 저장된 구버전 호환: 제목과 같은 첫 Heading 은 본문에서 제외
     val finalBlocks = remember(diary.blocks, diary.title) {
@@ -154,21 +139,11 @@ fun DiaryDetailScreen(
                 .imePadding()
                 .verticalScroll(scrollState)
         ) {
-            // 1) Hero 이미지 (첨부된 이미지가 있을 때만)
-            if (headerImageFile != null) {
-                DetailHeroImage(file = headerImageFile)
-            }
-
-            // 2) 본문 컨테이너
+            // 1) 본문 컨테이너 (첨부 이미지는 본문 ImageBlock 으로 인라인 표시 — hero 별도 노출 안 함)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(
-                        PaddingValues(
-                            horizontal = 24.dp,
-                            vertical = if (headerImageFile != null) 8.dp else 24.dp
-                        )
-                    )
+                    .padding(horizontal = 24.dp, vertical = 24.dp)
             ) {
                 // 2-1) 콘텐츠 타입 / 감정 칩
                 DetailChipsRow(
@@ -283,44 +258,6 @@ private fun DetailTopBar(
                 )
             )
         }
-    }
-}
-
-@Composable
-private fun DetailHeroImage(file: File) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .height(240.dp)
-            .shadow(
-                elevation = 6.dp,
-                shape = RoundedCornerShape(20.dp),
-                clip = false
-            )
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        AsyncImage(
-            model = file,
-            contentDescription = "일기 커버 이미지",
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
-        // 하단 깊이감을 위한 그라데이션 오버레이
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.25f)
-                        )
-                    )
-                )
-        )
     }
 }
 
