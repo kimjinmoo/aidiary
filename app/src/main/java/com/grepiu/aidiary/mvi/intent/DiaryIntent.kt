@@ -51,10 +51,13 @@ sealed interface DiaryIntent {
     data class MoveBlock(val blockId: String, val direction: Int) : DiaryIntent
 
     // ===== 이미지 픽업/촬영 =====
-    /** PhotoPicker 등 외부에서 받은 이미지 URI 를 내부 저장소로 가져오고 ImageBlock 으로 추가합니다. */
-    data class ImagePicked(val uri: Uri) : DiaryIntent
-    /** 카메라 촬영이 완료된 임시 파일을 내부 저장소로 가져와 ImageBlock 으로 추가합니다. */
-    data class CameraImageCaptured(val tempFilePath: String) : DiaryIntent
+    /** PhotoPicker 등 외부에서 받은 이미지 URI 목록(1개 이상) 을 내부 저장소로 가져와 각각 ImageBlock 으로 추가합니다. */
+    data class ImagesPicked(val uris: List<Uri>) : DiaryIntent
+    /**
+     * 카메라 촬영이 완료된 이미지의 [content://] URI(FileProvider).
+     * ContentResolver 로 스트림을 열어 내부 저장소로 복사합니다.
+     */
+    data class CameraImageCaptured(val capturedUri: Uri) : DiaryIntent
 
     // ===== 표 =====
     /** 표의 (row, col) 셀 텍스트를 갱신합니다. */

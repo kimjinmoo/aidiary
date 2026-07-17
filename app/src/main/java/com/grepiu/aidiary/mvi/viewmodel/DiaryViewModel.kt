@@ -322,11 +322,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // ===== 이미지 픽업/촬영 =====
-            is DiaryIntent.ImagePicked -> {
-                importPickedImage(intent.uri)
+            is DiaryIntent.ImagesPicked -> {
+                if (intent.uris.isNotEmpty()) importPickedImages(intent.uris)
             }
             is DiaryIntent.CameraImageCaptured -> {
-                importCapturedImage(intent.tempFilePath)
+                importCapturedImage(intent.capturedUri)
             }
 
             // ===== 플래너 및 목표 기록 =====
@@ -402,40 +402,55 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 외부에서 픽업된 이미지 URI 를 내부 저장소로 복사하고 ImageBlock 으로 추가합니다.
      */
-    private fun importPickedImage(uri: Uri) {
+    /**
+     * 다중 픽업 이미지(1..N) 를 순차적으로 내부 저장소로 가져와 ImageBlock 들을 본문 끝에 append 합니다.
+     * 부분 실패는 카운트해서 마지막에 토스트로 요약 알립니다.
+     */
+    private fun importPickedImages(uris: List<Uri>) {
         if (_state.value.isImportingImage) return
         _state.update { it.copy(isImportingImage = true) }
         viewModelScope.launch {
-            imageStore.importFromUri(uri)
-                .onSuccess { relPath ->
+            var successCount = 0
+            var failCount = 0
+            for (uri in uris) {
+                val result = imageStore.importFromUri(uri)
+                result.onSuccess { relPath ->
+                    successCount++
                     val block = ContentBlock.ImageBlock(relativePath = relPath)
                     _state.update {
-                        it.copy(
-                            draftBlocks = it.draftBlocks + block,
-                            isImportingImage = false
-                        )
+                        it.copy(draftBlocks = it.draftBlocks + block)
                     }
+                }.onFailure { e ->
+                    failCount++
+                    android.util.Log.w("DiaryViewModel", "Image import failed: uri=$uri err=${e.message}")
                 }
-                .onFailure { e ->
-                    _state.update { it.copy(isImportingImage = false) }
-                    sendEffect(DiaryEffect.ShowToast("이미지를 가져오지 못했어요: ${e.message}"))
-                }
+            }
+            _state.update { it.copy(isImportingImage = false) }
+            when {
+                failCount == 0 -> sendEffect(
+                    DiaryEffect.ShowToast(
+                        if (successCount == 1) "이미지를 추가했어요."
+                        else "이미지 ${successCount}장을 추가했어요."
+                    )
+                )
+                successCount == 0 -> sendEffect(
+                    DiaryEffect.ShowToast("이미지를 가져오지 못했어요.")
+                )
+                else -> sendEffect(
+                    DiaryEffect.ShowToast("${successCount}장 추가, ${failCount}장 실패")
+                )
+            }
         }
     }
 
     /**
-     * 카메라 촬영으로 생성된 임시 파일을 내부 저장소로 가져와 ImageBlock 으로 추가합니다.
+     * 카메라 촬영의 [content://] URI 를 ContentResolver 로 읽어 내부 저장소로 복사한 뒤 ImageBlock 으로 추가합니다.
      */
-    private fun importCapturedImage(tempFilePath: String) {
-        val temp = File(tempFilePath)
-        if (!temp.exists() || temp.length() == 0L) {
-            sendEffect(DiaryEffect.ShowToast("촬영된 이미지를 찾을 수 없어요."))
-            return
-        }
+    private fun importCapturedImage(capturedUri: Uri) {
         if (_state.value.isImportingImage) return
         _state.update { it.copy(isImportingImage = true) }
         viewModelScope.launch {
-            imageStore.importFromFile(temp)
+            imageStore.importFromUri(capturedUri)
                 .onSuccess { relPath ->
                     val block = ContentBlock.ImageBlock(relativePath = relPath)
                     _state.update {
@@ -444,7 +459,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                             isImportingImage = false
                         )
                     }
-                    temp.delete()
                 }
                 .onFailure { e ->
                     _state.update { it.copy(isImportingImage = false) }
@@ -707,6 +721,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             sendEffect(DiaryEffect.ShowToast("다듬을 본문이 비어 있어요."))
             return
         }
+        if (originalText.length > DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS) {
+            sendEffect(
+                DiaryEffect.ShowToast(
+                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 다듬기를 적용할 수 없어요. 블록을 나눠 주세요."
+                )
+            )
+            return
+        }
         if (!requireReadyModel()) return
         if (state.isProofreadingBlockId == blockId) return
 
@@ -740,6 +762,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             ?: return
         if (originalText.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("꾸밀 본문이 비어 있어요."))
+            return
+        }
+        if (originalText.length > DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS) {
+            sendEffect(
+                DiaryEffect.ShowToast(
+                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 강조 추천을 적용할 수 없어요. 블록을 나눠 주세요."
+                )
+            )
             return
         }
         if (!requireReadyModel()) return

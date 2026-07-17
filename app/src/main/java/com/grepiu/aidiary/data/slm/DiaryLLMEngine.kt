@@ -31,6 +31,18 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
         }
 
         /**
+         * 블록 단위 AI 액션([proofreadText], [decorateText]) 입력 안전 한도.
+         *
+         *  - 모델 컨텍스트: [maxNumTokens] = 1024
+         *  - 한국어 토큰화 비율 약 1.5~2 chars/token (보수적으로 1.5)
+         *  - 출력 예약: proofread 512 / decorate 256
+         *  - 시스템/유저 프롬프트 오버헤드: ~150 tokens
+         *  - 따라서 입력 안전 한도는 (1024 - 512 - 150) × 1.5 ≈ 543 chars
+         *  - 안전 마진을 더해 600 chars 로 고정
+         */
+        const val MAX_BLOCK_AI_INPUT_CHARS = 600
+
+        /**
          * [detectEmotion] 결과. 5종 감정 라벨 중 하나와 보정된 정규화 라벨.
          */
         data class EmotionResult(

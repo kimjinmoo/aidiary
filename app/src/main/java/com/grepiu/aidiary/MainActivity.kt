@@ -96,12 +96,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // 갤러리 픽업 런처 (PhotoPicker)
+                // 갤러리 픽업 런처 (PhotoPicker - 다중 선택)
                 val pickImageLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.PickVisualMedia()
-                ) { uri ->
-                    if (uri != null) {
-                        viewModel.processIntent(DiaryIntent.ImagePicked(uri))
+                    ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20)
+                ) { uris ->
+                    if (uris.isNotEmpty()) {
+                        viewModel.processIntent(DiaryIntent.ImagesPicked(uris))
                     }
                 }
 
@@ -115,7 +115,8 @@ class MainActivity : ComponentActivity() {
                     val uri = pendingCameraUri.value
                     pendingCameraUri.value = null
                     if (success && uri != null) {
-                        viewModel.processIntent(DiaryIntent.CameraImageCaptured(uri.toString().removePrefix("file://")))
+                        // FileProvider 의 content:// URI 를 그대로 전달. ViewModel 이 ContentResolver 로 읽어 복사.
+                        viewModel.processIntent(DiaryIntent.CameraImageCaptured(uri))
                     }
                 }
 

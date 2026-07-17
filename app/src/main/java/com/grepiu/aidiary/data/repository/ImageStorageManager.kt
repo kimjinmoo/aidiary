@@ -23,6 +23,9 @@ class ImageStorageManager(private val context: Context) {
     /**
      * [sourceUri] 가 가리키는 이미지를 앱 내부 저장소로 복사하고,
      * DB/JSON 에 저장할 상대 경로("diary_images/<uuid>.jpg") 를 반환합니다.
+     *
+     * FileProvider 의 content:// URI, file:// URI, 갤러리 content URI 등 모든 스킴을
+     * [ContentResolver.openInputStream] 으로 통일 처리합니다.
      */
     suspend fun importFromUri(sourceUri: Uri): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
@@ -33,17 +36,6 @@ class ImageStorageManager(private val context: Context) {
                     input.copyTo(output)
                 }
             }
-            "${IMAGE_DIR}/${target.name}"
-        }
-    }
-
-    /**
-     * 임시 파일(카메라 촬영 출력 등)을 내부 저장소로 가져옵니다.
-     */
-    suspend fun importFromFile(source: File): Result<String> = withContext(Dispatchers.IO) {
-        runCatching {
-            val target = File(baseDir, "${UUID.randomUUID()}.jpg")
-            source.copyTo(target, overwrite = true)
             "${IMAGE_DIR}/${target.name}"
         }
     }
