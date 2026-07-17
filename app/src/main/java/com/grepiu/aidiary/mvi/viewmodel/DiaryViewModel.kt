@@ -77,6 +77,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private var audioRecord: AudioRecord? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // 저장 시 통합 분석 결과의 감정 라벨을 다이얼로그 응답까지 캐싱 (재호출 방지)
+    private var pendingEmotionLabel: String? = null
+
     // MVI 상태 데이터 홀더
     private val _state = MutableStateFlow(DiaryState())
     val state: StateFlow<DiaryState> = _state.asStateFlow()
@@ -180,6 +183,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 proceedWithEmotionAndSave()
             }
             is DiaryIntent.CancelContentTypeChange -> {
+                pendingEmotionLabel = null
                 _state.update {
                     it.copy(
                         pendingContentTypeChange = null,
@@ -566,6 +570,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 runOnDeviceChat(intent.text)
             }
             is DiaryIntent.ClearChatHistory -> {
+                llmEngine?.clearChat()
                 _state.update { it.copy(chatMessages = emptyList()) }
             }
         }
@@ -841,7 +846,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val engine = llmEngine ?: return@launch
-                val title = engine.suggestTitle(plain)
+                val title = engine.suggestTitle(
+                    content = plain,
+                    currentTitle = state.draftTitle,
+                    contentTypeLabel = state.draftContentType.label
+                )
                 if (title.isNotBlank()) {
                     applyDraftTitle(title)
                     sendEffect(DiaryEffect.ShowToast("AI 추천 제목을 적용했어요."))
@@ -1028,6 +1037,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 탭별 AI 브리핑을 생성/재생성합니다.
      * 동일 탭에서 이미 진행 중이면 무시, 다른 탭은 병행 가능.
+     * v2: 기존 브리핑이 있으면 "직전 브리핑" 으로 컨텍스트에 포함해 추세 비교를 유도.
      */
     private fun requestBriefing(tab: String) {
         val state = _state.value
@@ -1044,11 +1054,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (alreadyRunning) return
 
-        val context = buildBriefingContext(tab, state)
-        if (context.isBlank()) {
+        val baseContext = buildBriefingContext(tab, state)
+        if (baseContext.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("브리핑을 위한 데이터가 부족해요."))
             return
         }
+        val prev = when (tab) {
+            "DIARY" -> state.diaryBriefing
+            "PLANNER" -> state.plannerBriefing
+            "GOALS" -> state.goalsBriefing
+            else -> null
+        }
+        val context = if (!prev.isNullOrBlank()) {
+            "[직전 브리핑]\n${prev.trim()}\n\n$baseContext"
+        } else baseContext
 
         _state.update {
             when (tab) {
@@ -1219,19 +1238,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun classifyDraftContentType() {
-        val plain = _state.value.draftPlainText
+        val state = _state.value
+        val plain = state.draftPlainText
         if (plain.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("분류를 위해 본문을 먼저 작성해주세요."))
             return
         }
         if (!requireReadyModel()) return
-        if (_state.value.isClassifyingType) return
+        if (state.isClassifyingType) return
 
         _state.update { it.copy(isClassifyingType = true) }
         viewModelScope.launch {
             try {
                 val engine = llmEngine ?: return@launch
-                val key = engine.classifyContentType(plain)
+                val key = engine.classifyContentType(plain, currentTypeLabel = state.draftContentType.label)
                 val newType = com.grepiu.aidiary.data.model.ContentType.fromStorageKey(key)
                 _state.update { it.copy(draftContentType = newType) }
                 sendEffect(DiaryEffect.ShowToast("글 타입을 '${newType.label}'(으)로 분류했어요."))
@@ -1265,11 +1285,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (!requireReadyModel()) return
         if (state.isProofreadingBlockId == blockId) return
 
+        val adj = com.grepiu.aidiary.data.slm.LLMContextBuilder.extractAdjacentContext(
+            state.draftBlocks, blockId
+        )
+
         _state.update { it.copy(isProofreadingBlockId = blockId) }
         viewModelScope.launch {
             try {
                 val engine = llmEngine ?: return@launch
-                val revised = engine.proofreadText(originalText)
+                val revised = engine.proofreadText(
+                    text = originalText,
+                    previousTail = adj.previousTail,
+                    nextHead = adj.nextHead,
+                    sessionTitle = state.draftTitle.takeIf { it.isNotBlank() }
+                )
                 if (revised.isNotBlank() && revised != originalText) {
                     applyTextToBlock(blockId, revised)
                     sendEffect(DiaryEffect.ShowToast("본문을 다듬었어요."))
@@ -1308,11 +1337,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (!requireReadyModel()) return
         if (state.isDecoratingBlockId == blockId) return
 
+        val adj = com.grepiu.aidiary.data.slm.LLMContextBuilder.extractAdjacentContext(
+            state.draftBlocks, blockId
+        )
+
         _state.update { it.copy(isDecoratingBlockId = blockId) }
         viewModelScope.launch {
             try {
                 val engine = llmEngine ?: return@launch
-                val raw = engine.decorateText(originalText)
+                val raw = engine.decorateText(
+                    text = originalText,
+                    previousTail = adj.previousTail,
+                    nextHead = adj.nextHead,
+                    sessionTitle = state.draftTitle.takeIf { it.isNotBlank() }
+                )
                 val result = DecorateResultParser.parse(raw, originalText)
                 if (result.suggestions.isNotEmpty()) {
                     val newFmt = result.toTextFormatting()
@@ -1407,11 +1445,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      * 사용자가 입력한 대화 내용을 바탕으로 캘린더 일기, 플래너, 목표 리스트로부터 로컬 RAG 검색을 수집한 뒤
      * 온디바이스 Gemma 4 언어 모델에게 질문 및 답변 유도를 수행합니다. (스트리밍 방식 피드백)
      *
-     * 일기 검색은 [DiaryRepository.searchDiaries] 의 SQLite FTS5 + 날짜 가중치 인덱스를 사용한다.
-     *  - 2,000건 이상에서도 부분 문자열 매칭이 빠르게 동작.
-     *  - 한국어는 trigram 토크나이저로 공백이 없어도 매칭.
-     *  - 최대 30건 후보 → 날짜 가중치 반영해 재정렬된 상위 [DIARY_CONTEXT_LIMIT] 건만 컨텍스트로 주입.
-     *  - FTS 가 0건이거나 실패하면 기존 방식(키워드 substring + 최신 3건 폴백)으로 안전하게 폴백.
+     * v2 멀티턴 강화:
+     *  - DiaryLLMEngine 이 Conversation 을 재사용하여 최근 raw N턴 + 그 이전 요약 슬라이딩 윈도우로 상하 문맥 보존
+     *  - 컨텍스트 빌더 [DiaryLLMEngine.buildChatContextBlock] 로 RAG 블록을 표준화
+     *  - 일기 RAG 컨텍스트는 평문이 길어 maxChars 적용 + 핵심 정보만 추출
      */
     private fun runOnDeviceChat(query: String) {
         val currentState = _state.value
@@ -1423,12 +1460,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         chatJob?.cancel()
 
-        // 1. 사용자 메시지 및 AI 대기 상태 메시지를 리스트에 적재
         val userMsg = ChatMessage("USER", query)
         val aiMsg = ChatMessage("AI", "생각 중...")
         _state.update { it.copy(chatMessages = it.chatMessages + userMsg + aiMsg) }
 
-        // 2. RAG 검색 (1차: 일기는 FTS, 폴백: 키워드 substring + 최신 3건)
         val cleanQuery = query.trim().lowercase()
         val keywords = cleanQuery.split("\\s+".toRegex())
             .filter { it.length > 1 }
@@ -1437,111 +1472,47 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         val ftsHits = repository.searchDiaries(query, limit = 30)
         val matchedDiaries: List<DiaryEntry> = when {
-            ftsHits.isNotEmpty() -> {
-                ftsHits.mapNotNull { hit ->
-                    currentState.diaries.firstOrNull { it.id == hit.id }
-                }.take(DIARY_CONTEXT_LIMIT)
-            }
-            keywords.isNotEmpty() -> {
-                currentState.diaries.filter { diary ->
-                    keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
-                }.take(DIARY_CONTEXT_LIMIT)
-            }
+            ftsHits.isNotEmpty() -> ftsHits.mapNotNull { hit -> currentState.diaries.firstOrNull { it.id == hit.id } }
+                .take(DIARY_CONTEXT_LIMIT)
+            keywords.isNotEmpty() -> currentState.diaries.filter { diary ->
+                keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
+            }.take(DIARY_CONTEXT_LIMIT)
             else -> currentState.diaries.take(DIARY_CONTEXT_LIMIT)
         }
-
-        // 할 일/목표는 데이터량이 작아 in-memory 키워드 매칭 유지
         val matchedTasks = currentState.plannerTasks.filter { task ->
             keywords.any { kw -> task.text.lowercase().contains(kw) }
         }.take(TASK_CONTEXT_LIMIT)
-
         val matchedGoals = currentState.goals.filter { goal ->
             keywords.any { kw -> goal.text.lowercase().contains(kw) }
         }.take(GOAL_CONTEXT_LIMIT)
 
-        // 매칭 결과가 전혀 없는 경우 최근 3개 데이터를 폴백 컨텍스트로 지정
-        // 오늘 및 선택한 날짜의 할 일 정보 별도 기입 준비
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val todayTasks = currentState.plannerTasks.filter { it.dateString == todayStr }
         val selectedDateStr = currentState.selectedDateString
         val selectedDateTasks = currentState.plannerTasks.filter { it.dateString == selectedDateStr }
 
-        // 매칭 결과가 전혀 없는 경우 최근 N개 데이터를 폴백 컨텍스트로 지정
-        val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) {
-            currentState.diaries.take(DIARY_CONTEXT_LIMIT)
-        } else matchedDiaries
+        val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) currentState.diaries.take(DIARY_CONTEXT_LIMIT) else matchedDiaries
+        val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) currentState.plannerTasks.take(TASK_CONTEXT_LIMIT) else matchedTasks
+        val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) currentState.goals.take(GOAL_CONTEXT_LIMIT) else matchedGoals
 
-        val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) {
-            currentState.plannerTasks.take(TASK_CONTEXT_LIMIT)
-        } else matchedTasks
-
-        val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) {
-            currentState.goals.take(GOAL_CONTEXT_LIMIT)
-        } else matchedGoals
-
-        // 3. 온디바이스 전용 프롬프트 조합 (RAG 정보 주입)
-        val systemPrompt = "당신은 사용자의 일기 내용과 일정을 기억하는 다이어리 인공지능 비서예요. " +
-                "제공되는 [컨텍스트 기록] 정보에 기반하여 사용자의 질문에만 정직하게 대답해야 해요. " +
-                "**필독 규칙**: 절대로 사용자의 일정이나 일기를 상상해서 지어내어 거짓으로 답변하지 마세요. " +
-                "오늘의 할 일 목록에 해당하는 일정이 없다면, 가상 일정을 만들지 말고 '오늘 계획된 일정이 등록되어 있지 않아요'라고 솔직하게 대답하세요. " +
-                "반드시 100% 한국어로만 답변하고, '~해요'체로 상냥하고 간결하게 대답하세요."
-
-        val userPrompt = buildString {
-            append("[컨텍스트 기록]\n")
-            append("- 기준 날짜 (오늘): $todayStr\n")
-            append("- 선택된 캘린더 날짜: $selectedDateStr\n\n")
-
-            append("■ 오늘($todayStr)의 실제 계획된 할 일 목록:\n")
-            if (todayTasks.isEmpty()) {
-                append("  - (오늘 계획된 할 일이 등록되어 있지 않습니다)\n\n")
-            } else {
-                todayTasks.forEach { task ->
-                    append("  - 할 일: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
-                }
-                append("\n")
-            }
-
-            if (selectedDateStr != todayStr) {
-                append("■ 선택한 날짜($selectedDateStr)의 실제 계획된 할 일 목록:\n")
-                if (selectedDateTasks.isEmpty()) {
-                    append("  - (이날 계획된 할 일이 등록되어 있지 않습니다)\n\n")
-                } else {
-                    selectedDateTasks.forEach { task ->
-                        append("  - 할 일: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
-                    }
-                    append("\n")
-                }
-            }
-
-            if (finalDiaries.isNotEmpty() || finalTasks.isNotEmpty() || finalGoals.isNotEmpty()) {
-                append("■ 연관 검색 기록:\n")
-                if (finalDiaries.isNotEmpty()) {
-                    append("[일기 내용]\n")
-                    finalDiaries.forEach { diary ->
-                        val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
-                        append("  - 날짜: $dateStr, 제목: ${diary.title}, 본문: ${diary.contentText}, 감정: ${diary.emotion}\n")
-                    }
-                }
-                if (finalTasks.isNotEmpty()) {
-                    append("[기타 할 일]\n")
-                    finalTasks.forEach { task ->
-                        append("  - 계획날짜: ${task.dateString}, 내용: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
-                    }
-                }
-                if (finalGoals.isNotEmpty()) {
-                    append("[나의 장기 목표]\n")
-                    finalGoals.forEach { goal ->
-                        append("  - 목표: ${goal.text}, 상태: ${if (goal.isCompleted) "완료" else "미완료"}\n")
-                    }
-                }
-            }
-            append("\n[사용자 질문]\n")
-            append("$query\n")
+        val diaryLines = finalDiaries.map { diary ->
+            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
+            "날짜: $dateStr, 제목: ${diary.title}, 본문: ${com.grepiu.aidiary.data.slm.LLMContextBuilder.truncateChars(diary.contentText, 280)}, 감정: ${diary.emotion}"
         }
+        val taskLinesToday = todayTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+        val taskLinesSelected = selectedDateTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+        val taskLinesMatched = finalTasks.map { "계획날짜: ${it.dateString}, 내용: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+        val goalLines = finalGoals.map { "목표: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
 
-        val prompt = "<start_of_turn>system\n$systemPrompt<end_of_turn>\n" +
-                "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
-                "<start_of_turn>model\n"
+        val contextBlock = engine.buildChatContextBlock(
+            todayStr = todayStr,
+            selectedDateStr = selectedDateStr,
+            todayTasks = taskLinesToday,
+            selectedDateTasks = if (selectedDateStr != todayStr) taskLinesSelected else emptyList(),
+            matchedDiaries = diaryLines,
+            matchedTasks = taskLinesMatched,
+            matchedGoals = goalLines
+        )
 
         // 4. streaming 토큰 누적 수집 콜백 등록
         var hasStartedOutput = false
@@ -1569,10 +1540,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 5. 비동기 백그라운드 추론 구동
+        // 5. 비동기 백그라운드 추론 구동 (멀티턴 Conversation 내부 재사용)
         chatJob = viewModelScope.launch {
             try {
-                engine.generateChatResponse(prompt)
+                engine.generateChatResponse(contextBlock, query)
             } catch (e: Exception) {
                 _state.update { current ->
                     val list = current.chatMessages.toMutableList()
@@ -1845,19 +1816,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 작성 완료한 일기를 영구 보관합니다.
      *
-     * 흐름:
-     * 1. 본문/제목/저장중복 검사
-     * 2. 모델 준비 시 AI 감정 분류 → TAG AI 블록 (emotion 만)
-     *  3. 영구 저장 + LIST 화면으로 전환
-     *
-     * 저장 시점의 AI 글 타입 재확인 흐름:
-     *  - 본문/제목 검증
-     *  - 모델 미준비 시 즉시 저장
-     *  - 모델 준비 시 AI 분류 호출 → 추천 타입이 현재 선택과 다르면
-     *    [DiaryState.pendingContentTypeChange] 세팅 + 3버튼 다이얼로그 표시
-     *  - 동일하면 바로 감정 분석 + 저장 (이전 [proceedWithEmotionAndSave])
-     *  - 사용자가 "변경/유지/취소" 응답 시 각각 [DiaryIntent.ConfirmContentTypeChange]
-     *    / [DiaryIntent.KeepCurrentContentTypeAndSave] / [DiaryIntent.CancelContentTypeChange]
+     * v2 흐름 (1회 통합 호출):
+     * 1. 본문/제목 검증
+     * 2. 모델 미준비 시 즉시 저장
+     * 3. 모델 준비 시 (글 타입 + 감정) 을 1회 LLM 호출로 동시에 추출
+     *    → 추천 타입이 현재 선택과 다르면 [DiaryState.pendingContentTypeChange] 세팅 + 다이얼로그
+     *    → 같거나 사용자 응답이 들어오면 감정 결과로 TAG AI 블록 만들어 저장
      */
     private fun saveDiaryDraft() {
         val currentState = _state.value
@@ -1877,7 +1841,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         val engine = llmEngine
         if (engine == null || !currentState.isModelReady) {
-            // 모델이 없으면 즉시 저장 (감정 태그, 타입 검증 없이)
             persistDiary(
                 currentState = currentState,
                 plain = plain,
@@ -1887,51 +1850,92 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 1단계: AI 글 타입 재분류
         analysisJob?.cancel()
         _state.update { it.copy(isClassifyingTypeOnSave = true) }
         analysisJob = viewModelScope.launch {
             try {
-                val key = engine.classifyContentType(plain)
-                val suggestedType = com.grepiu.aidiary.data.model.ContentType.fromStorageKey(key)
+                val dateStr = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN).format(Date())
+                val result = engine.classifyAndDetectEmotion(
+                    title = currentState.sessionTitle,
+                    content = plain,
+                    dateString = dateStr,
+                    currentTypeLabel = currentState.draftContentType.label
+                )
+                _state.update { it.copy(isClassifyingTypeOnSave = false) }
+                val suggestedType = com.grepiu.aidiary.data.model.ContentType.fromStorageKey(result.typeKey)
                 val currentType = _state.value.draftContentType
-                if (suggestedType == currentType) {
-                    // 추천 타입이 현재 선택과 동일 → 감정 분석 + 저장으로 진행
-                    _state.update { it.copy(isClassifyingTypeOnSave = false) }
-                    proceedWithEmotionAndSave()
-                } else {
-                    // 추천 타입이 다름 → 사용자 응답 대기
+                if (suggestedType != currentType) {
                     _state.update {
                         it.copy(
-                            isClassifyingTypeOnSave = false,
                             pendingContentTypeChange = PendingContentTypeChange(
                                 currentType = currentType,
                                 suggestedType = suggestedType
-                            )
+                            ),
+                            // 감정 결과는 미리 캐싱해 다이얼로그 응답 시 즉시 사용
                         )
                     }
+                    // 추천 타입 결과와 감정 결과를 pending 캐시로 보관
+                    pendingEmotionLabel = result.emotion
+                } else {
+                    // 같은 타입 → 즉시 저장
+                    val emotionCode = mapEmotionLabelToCode(result.emotion)
+                    _state.update { it.copy(isGeneratingAnalysis = true) }
+                    persistDiary(
+                        currentState = _state.value,
+                        plain = plain,
+                        finalEmotion = emotionCode,
+                        tagAiBlock = ContentBlock.TagAiBlock(emotion = result.emotion)
+                    )
                 }
             } catch (e: Exception) {
-                Log.e("DiaryViewModel", "저장 시 AI 타입 분류 실패, 현재 타입으로 저장합니다", e)
-                sendEffect(DiaryEffect.ShowToast("AI 타입 분류에 실패해 현재 선택으로 저장할게요."))
+                Log.e("DiaryViewModel", "저장 시 통합 분석 실패, 현재 타입/감정 폴백으로 저장합니다", e)
+                sendEffect(DiaryEffect.ShowToast("AI 분석에 실패해 현재 상태로 저장할게요."))
                 _state.update { it.copy(isClassifyingTypeOnSave = false) }
-                proceedWithEmotionAndSave()
+                persistDiary(
+                    currentState = _state.value,
+                    plain = plain,
+                    finalEmotion = currentState.draftEmotion,
+                    tagAiBlock = null
+                )
             }
         }
     }
 
     /**
-     * 타입 분기(현재 저장 다이얼로그 응답 포함) 이후 감정 분석 → 영구 저장을 이어서 수행.
-     * [proceedWithEmotionAndSave] 는 항상 최신 [_state.value] 를 읽어
-     * [DiaryIntent.ConfirmContentTypeChange] 로 변경된 타입이 반영되도록 한다.
+     * 다이얼로그 응답 (변경/유지) 이후 저장. 통합 호출에서 받은 감정 결과를 재사용한다.
      */
     private fun proceedWithEmotionAndSave() {
         val currentState = _state.value
         if (currentState.isGeneratingAnalysis) return
-        val engine = llmEngine ?: return
+        val engine = llmEngine
         val plain = currentState.draftPlainText
         if (plain.isBlank()) return
 
+        // 1) 이미 캐시된 감정 결과가 있으면 즉시 사용
+        val cached = pendingEmotionLabel
+        if (engine != null && cached != null) {
+            pendingEmotionLabel = null
+            _state.update { it.copy(isGeneratingAnalysis = true) }
+            val emotionCode = mapEmotionLabelToCode(cached)
+            persistDiary(
+                currentState = currentState,
+                plain = plain,
+                finalEmotion = emotionCode,
+                tagAiBlock = ContentBlock.TagAiBlock(emotion = cached)
+            )
+            return
+        }
+
+        // 2) 캐시가 없거나 모델 미준비 시 단일 감정 분류 폴백
+        if (engine == null) {
+            persistDiary(
+                currentState = currentState,
+                plain = plain,
+                finalEmotion = currentState.draftEmotion,
+                tagAiBlock = null
+            )
+            return
+        }
         _state.update { it.copy(isGeneratingAnalysis = true) }
         viewModelScope.launch {
             try {
@@ -1942,12 +1946,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     dateString = dateStr
                 )
                 val emotionCode = mapEmotionLabelToCode(result.emotion)
-                val tagAiBlock = ContentBlock.TagAiBlock(emotion = result.emotion)
                 persistDiary(
                     currentState = currentState,
                     plain = plain,
                     finalEmotion = emotionCode,
-                    tagAiBlock = tagAiBlock
+                    tagAiBlock = ContentBlock.TagAiBlock(emotion = result.emotion)
                 )
             } catch (e: Exception) {
                 Log.e("DiaryViewModel", "AI 감정 분류 실패, TAG 블록 없이 저장합니다", e)
@@ -1972,6 +1975,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         finalEmotion: String,
         tagAiBlock: ContentBlock.TagAiBlock?
     ) {
+        pendingEmotionLabel = null
         val finalBlocks = if (tagAiBlock != null) {
             currentState.draftBlocks + tagAiBlock
         } else {

@@ -14,6 +14,7 @@
 - **온디바이스 AI**:
   - 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM)
   - 음성 인식: Sherpa-Onnx (오프라인, 한국어 Zipformer)
+- **2B 모델 상하 문맥 보강 (v2)**: 모든 보조 액션 프롬프트는 [LLMContextBuilder] 가 통일. proofread/decorate 는 인접 블록 컨텍스트, 챗봇은 멀티턴 Conversation 재사용 + 직전 N턴 raw + 그 이전 1줄 요약 슬라이딩 윈도우, 저장 시점 (글 타입+감정) 은 1회 통합 호출.
 - **데이터 저장**: 앱 내부 저장소
   - `filesDir/diary_history.json` (일기 메타, `contentType` 필드 포함. 구버전 데이터는 DIARY 로 폴백)
   - `filesDir/diary_images/<uuid>.jpg` (첨부 이미지 원본)
@@ -37,7 +38,8 @@ app/src/main/java/com/grepiu/aidiary/
 │   │   └── PlannerRepository.kt     # 플래너 할 일(Tasks) 및 장기 목표(Goals)의 로컬 JSON 파일 영속화 관리
 │   └── slm/
 │       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
-│       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백 + 보조 액션 단발성 프롬프트)
+│       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백 + 보조 액션 단발성 프롬프트, 멀티턴 챗봇 Conversation 재사용, 작업별 Sampler 프리셋)
+│       ├── LLMContextBuilder.kt     # [NEW] 모든 보조 액션 프롬프트의 계층적 빌더 (도메인/세션/인접/현재입력/제약/예시), 인접 컨텍스트 추출, 슬라이딩 윈도우용 롤링 요약
 │       ├── DecorateResult.kt        # AI 꾸미기 추천 JSON 파서 + TextFormatting 변환 (5종 스타일)
 │       ├── ModelDownloaderV2.kt     # Gemma/Whisper 모델 다운로드·압축 해제·에셋 복사
 │       └── SherpaEngine.kt          # 오프라인 음성 인식 추론
@@ -141,17 +143,37 @@ app/src/main/java/com/grepiu/aidiary/
 
 ## 4.3 작성 보조 AI 액션 (LiteRT-LM 단발성 프롬프트)
 
-`DiaryLLMEngine` 은 일기 분석(스트리밍) 외에 보조 액션용 단발성 추론도 지원합니다. 모두 `state.isModelReady == true` 일 때만 노출됩니다.
+`DiaryLLMEngine` 은 일기 분석(스트리밍) 외에 보조 액션용 단발성 추론도 지원합니다. 모두 `state.isModelReady == true` 일 때만 노출됩니다. v2 부터 모든 user prompt 는 [LLMContextBuilder] 가 통일된 계층 구조로 만들고, 작업별 Sampler 프리셋을 적용합니다.
 
 | 액션 | 트리거 UI | 엔진 메서드 | 결과 적용 |
 |---|---|---|---|
-| 제목 자동 생성 | 제목 입력 옆 `AI 제목` 아이콘 버튼 | `suggestTitle(content)` | `state.draftTitle` |
-| 글 타입 자동 분류 | 타입 셀렉터 위 `AI 자동 분류` 텍스트 버튼 | `classifyContentType(content)` | `state.draftContentType` |
-| 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 오타 띄어쓰기` | `proofreadText(text)` | 해당 블록의 `text` (formatting 유지) |
-| 본문 꾸미기 (색·굵게·이탤릭·밑줄·크기) | 블록 헤더의 `✦` 메뉴 → `AI 꾸미기 (색·크기·밑줄)` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프). LLM 시스템 프롬프트가 5가지 스타일(bold/italic/underline/color/size) 을 모두 안내하고, 6색 팔레트 + 사이즈 화이트리스트(14/15/18/22/26sp) 만 사용하도록 강제 |
-| 마음 분석 + 감정 자동 태그 (TAG AI) | **저장 시 자동 실행** (수동 버튼 없음) | `detectEmotion(title, content, date)` → `DiaryLLMEngine.EmotionResult(raw, emotion)` | 본문 끝에 `ContentBlock.TagAiBlock(emotion)` 자동 추가 + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문 생성은 제거되어 단순 1-토큰 분류만 수행 (저장 지연 최소화) |
+| 제목 자동 생성 | 제목 입력 옆 `AI 제목` 아이콘 버튼 | `suggestTitle(content, currentTitle, contentTypeLabel)` | `state.draftTitle` |
+| 글 타입 자동 분류 | 타입 셀렉터 위 `AI 자동 분류` 텍스트 버튼 | `classifyContentType(content, currentTypeLabel)` | `state.draftContentType` |
+| 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 오타 띄어쓰기` | `proofreadText(text, previousTail, nextHead, sessionTitle)` | 해당 블록의 `text` (formatting 유지). 인접 블록 컨텍스트로 어조 일관성 보존 |
+| 본문 꾸미기 (색·굵게·이탤릭·밑줄·크기) | 블록 헤더의 `✦` 메뉴 → `AI 꾸미기 (색·크기·밑줄)` | `decorateText(text, previousTail, nextHead, sessionTitle)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프). LLM 시스템 프롬프트가 5가지 스타일(bold/italic/underline/color/size) 을 모두 안내하고, 6색 팔레트 + 사이즈 화이트리스트(14/15/18/22/26sp) 만 사용하도록 강제 |
+| 마음 분석 + 감정 자동 태그 (TAG AI) | **저장 시 자동 실행** (수동 버튼 없음) | 저장 흐름은 `classifyAndDetectEmotion(title, content, date, currentTypeLabel)` **1회 통합 호출** → `ClassifyAndEmotion(typeKey, emotion, raw)`. 단독 사용 시 `detectEmotion(title, content, date)` → `EmotionResult(raw, emotion)` | 본문 끝에 `ContentBlock.TagAiBlock(emotion)` 자동 추가 + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문 생성은 제거되어 단순 1-토큰 분류만 수행. **저장 시 통합 호출은 (분류+감정) 을 한 번에 받아 응답 지연 약 50% 감소** |
 | 플래너 할 일명 AI 자동 추천 | 플래너 탭 입력란 옆 `AI 자동 플래너명` 아이콘 버튼 (AutoAwesome) | `suggestPlannerTaskName(context)` | `state.suggestedPlannerTaskText` 에 1회성 저장 → UI `LaunchedEffect` 가 입력란에 반영 후 `ClearSuggestedPlannerTask` 인텐트로 비움 |
-| 탭별 AI 브리핑 (기록/플래너/목표) | 각 탭 LazyColumn 상단 `AiBriefingCard` 의 새로고침 아이콘 (Refresh) | `generateBriefing(tabKey, context)` — tabKey 별 분기 시스템 프롬프트 | `state.{diary,planner,goals}Briefing` (영속) + `isBriefing{Diary,Planner,Goals}` (로딩). 다시 요청 가능, 모델 미준비 시 dimmed |
+| 탭별 AI 브리핑 (기록/플래너/목표) | 각 탭 LazyColumn 상단 `AiBriefingCard` 의 새로고침 아이콘 (Refresh) | `generateBriefing(tabKey, context)` — tabKey 별 분기 시스템 프롬프트. **v2: 기존 브리핑이 있으면 `[직전 브리핑]` 섹션으로 컨텍스트에 포함해 추세/변화 비교를 유도** | `state.{diary,planner,goals}Briefing` (영속) + `isBriefing{Diary,Planner,Goals}` (로딩). 다시 요청 가능, 모델 미준비 시 dimmed |
+| 온디바이스 AI 챗봇 | 챗봇 UI 의 입력 + 전송 | `generateChatResponse(contextBlock, userQuery)` (멀티턴) | `state.chatMessages` 스트리밍 누적. **v2: 동일 `Conversation` 을 재사용하여 최근 raw N턴 + 그 이전 1줄 누적 요약으로 슬라이딩 윈도우. 히스토리가 6턴 초과 시 자동 압축** |
+
+`LLMContextBuilder` 가 만들어주는 user prompt 공통 구조:
+
+```
+[도메인 헤더] 한국어 일기/플래너/장기목표 앱의 온디바이스 AI 어시스턴트
+[역할 정의] 이 작업에서 무엇을 해야 하는지
+[세션 컨텍스트] 글 제목, 글 타입, 인접 블록 발췌 (proofread/decorate)
+[현재 입력] 처리할 텍스트
+[제약] 출력 형식, 길이, 화이트리스트
+[예시] few-shot 출력 예시 (분류/꾸미기/통합)
+```
+
+`SamplerPresets` 4종:
+- `CLASSIFY` (topK=10, topP=0.5, temperature=0.05) — 글 타입 / 감정 분류
+- `GENERATE_SHORT` (topK=25, topP=0.7, temperature=0.4) — 제목 / 1줄 계획
+- `GENERATE_MEDIUM` (topK=30, topP=0.75, temperature=0.5) — 브리핑 / 축하 / 꾸미기 / 챗봇
+- `GENERATE_LONG` (topK=25, topP=0.7, temperature=0.2) — 다듬기 / 번역 (low temp 로 충실도 우선)
+
+`LLMContextBuilder.extractAdjacentContext(blocks, targetId, prevChars=120, nextChars=120)` 가 proofread/decorate 의 인접 컨텍스트 추출 헬퍼.
 
 상태/Intent:
 - `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` / `isSuggestingPlannerTask` / `isGeneratingAnalysis` (저장 시 AI TAG 생성 진행 표시) / `isClassifyingTypeOnSave` (저장 시 타입 재확인 중) / `pendingContentTypeChange` (타입 변경 제안 다이얼로그 1회성 상태) / `suggestedPlannerTaskText` (1회성 추천 결과) / `diaryBriefing` / `plannerBriefing` / `goalsBriefing` (탭별 AI 브리핑 결과) / `isBriefingDiary` / `isBriefingPlanner` / `isBriefingGoals` (브리핑 로딩)
@@ -159,7 +181,7 @@ app/src/main/java/com/grepiu/aidiary/
 - 수동 `AnalyzeDiary` 인텐트/버튼 제거됨 — 마음 분석은 `SaveDiary` 흐름에 흡수되어 자동 실행
 - **상단 제목 입력란**: 키보드 입력이 기본. `state.draftTitle` 에 직접 바인딩되며 AI 추천(`SuggestTitle`) 도 같은 필드를 갱신
 - 제목 스타일 피커(`draftTitleStyle`): `state.draftTitle.isNotBlank()` 일 때만 노출 (예전 `hasHeadingBlock` 가드 대체)
-- **저장 시 자동 흐름**: `SaveDiary` → 본문 비면 토스트 / 제목 비면 토스트 / 모델 미준비 시 즉시 저장 / 모델 준비 시 1) `classifyContentType` 으로 글 타입 재확인 → 추천 타입이 현재 선택과 다르면 `pendingContentTypeChange` 세팅 + `ContentTypeChangeDialog` (3버튼: `"변경하고 저장" / "원래 타입 저장" / "취소"`) 노출, 같으면 2) `detectEmotion` 호출 → 5 종 감정 라벨(기쁨/슬픔/분노/불안/평온) 중 하나를 `ContentBlock.TagAiBlock(emotion)` 으로 본문 끝에 append + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문은 생성하지 않으므로 분석 본문 필드(`aiAnalysis`) 는 null. 타입 분류/감정 분류 실패 시 안전 폴백 (현재 타입 유지 / TAG 블록 없이 저장).
+- **저장 시 자동 흐름 (v2)**: `SaveDiary` → 본문/제목 검증 → 모델 미준비 시 즉시 저장 / 모델 준비 시 `classifyAndDetectEmotion` **1회 호출**로 (글 타입 + 감정) 동시 수신. 추천 타입이 현재 선택과 다르면 `pendingContentTypeChange` 세팅 + 감정 결과는 `pendingEmotionLabel` 캐시 + `ContentTypeChangeDialog` (3버튼: `"변경하고 저장" / "원래 타입 저장" / "취소"`) 노출. 같으면 즉시 `ContentBlock.TagAiBlock(emotion)` 본문 끝에 append + `DiaryEntry.emotion` 코드 매핑 후 저장. 사용자 응답(변경/유지) 시 캐시된 감정으로 `proceedWithEmotionAndSave()` 가 LLM 재호출 없이 저장. 통합 분석 실패 시 안전 폴백 (현재 타입 유지 / TAG 블록 없이 저장).
 - **본문 복사 / AI 한글 번역 (작성 화면)**: 본문 섹션 헤더 우측에 아이콘 2개. `ContentCopy` = 본문 평문 시스템 클립보드 복사, `Translate` = `DiaryLLMEngine.translateToKorean(content)` 호출 (다국어→한국어, 한국어면 자연스러운 다듬기). 결과는 `state.translatedDraft` 에 1회성 저장 + `TranslationResultDialog` (원문/번역문 미리보기 + `[본문에 적용]` / `[복사]` / `[취소]`). 적용 시 마지막 `TextBlock` 의 `text` 끝에 append (없으면 새 TextBlock). `isTranslatingDraft` 로 로딩 표시.
 
 UI 규약:
@@ -168,7 +190,8 @@ UI 규약:
 - 모델 응답이 잘못된 JSON/빈 문자열인 경우 안전 폴백 (원본 유지 + 토스트 안내)
 - **AI 플래너 추천 컨텍스트**: `buildPlannerTaskContext` 가 우선순위대로 4개 섹션을 조합해 LLM 프롬프트로 전달 — (1순위) `DiaryIntent.SuggestPlannerTask` 의 입력 필드 (날짜, 시작/종료 시간, 장소, 반복 요일·종료일), (2순위) 같은 날 이미 등록된 계획(시간·장소 포함), (3순위) 미완료 장기 목표(최대 5건), (4순위) 최근 일기 평문(최대 3건, 각 120자). 1순위가 비어 있어도 (날짜는 항상 포함) 동작. 결과는 한국어 1줄, 따옴표·접두사·이모지·번호·마침표 없이 30자 내로 잘라낸다.
 - **키보드 가림 방지 (탭 입력)**: `DiaryListScreen` 의 모든 탭(PLANNER/GOALS 등) 입력 폼은 단일 `LazyColumn` (또는 `verticalScroll`) 안에 들어가야 `BringIntoViewRequester` 로 포커스 시 자동 스크롤된다. PLANNER 는 첫 아이템이 입력 카드라 자연 동작. GOALS 는 대시보드/입력/목록을 모두 단일 LazyColumn 으로 통합 + 입력 카드에 `bringIntoViewRequester` 부착 + `onFocusChanged` 에서 `bringIntoView()` 호출.
-- **탭별 AI 브리핑 컨텍스트**: `buildBriefingContext(tab, state)` 가 tabKey 별로 분기 — "DIARY": 최근 7건 일기 + 콘텐츠 타입/감정 통계 + 선택 날짜 / "PLANNER": 오늘 계획 + 반복 시리즈 + 예정된 날짜(다음 5개) / "GOALS": 전체 진행률 + 활성 목표 + 최근 달성 + 오늘 플래너. 결과는 한국어 1단락(2~4줄), 마크다운/이모지/번호 없이 600자 내로 잘라낸다. `AiBriefingCard` 의 새로고침 아이콘으로 다시 요청 가능.
+- **탭별 AI 브리핑 컨텍스트**: `buildBriefingContext(tab, state)` 가 tabKey 별로 분기 — "DIARY": 최근 7건 일기 + 콘텐츠 타입/감정 통계 + 선택 날짜 / "PLANNER": 오늘 계획 + 반복 시리즈 + 예정된 날짜(다음 5개) / "GOALS": 전체 진행률 + 활성 목표 + 최근 달성 + 오늘 플래너. v2 부터 기존에 저장된 브리핑이 있으면 `[직전 브리핑]` 섹션으로 컨텍스트에 함께 주입해 추세/변화 비교를 유도. 결과는 한국어 1단락(2~4줄), 마크다운/이모지/번호 없이 600자 내로 잘라낸다. `AiBriefingCard` 의 새로고침 아이콘으로 다시 요청 가능.
+- **AI 챗봇 멀티턴 컨텍스트 (v2)**: `DiaryLLMEngine` 내부에 단일 `Conversation` 을 재사용. 매 턴 `[이전 대화 요약] + [최근 raw N턴] + [RAG 컨텍스트(오늘/선택일/연관 일기·할 일·목표)] + [현재 질문]` 으로 user prompt 를 만들고, 히스토리가 임계치(CHAT_SUMMARY_TRIGGER_TURNS=6) 초과 시 오래된 턴을 1줄로 압축해 `chatPriorSummary` 앞에 누적. `ClearChatHistory` 인텐트 또는 `engine.dispose()` 시 컨버세이션·요약·히스토리 모두 정리. RAG 일기는 평문 `LLMContextBuilder.truncateChars(..., 280)` 로 컨텍스트 폭주 방지.
 
 ## 5. 핵심 컴포넌트 책임
 
