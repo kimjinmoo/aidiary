@@ -247,24 +247,31 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     /**
-     * 본문 내용에 어울리는 강조(굵게) 와 색상 강조 위치를 결정해
-     * 텍스트와 서식을 함께 반환합니다. [DecorateResult].
+     * 본문 가독성을 위해 의미 있는 단어/구절에 색상·굵게·이탤릭·밑줄·크기 등
+     * 인라인 서식을 조합한 꾸미기 제안을 생성합니다. [DecorateResult].
+     *
+     * 시스템 프롬프트가 5가지 스타일(bold/italic/underline/color/size) 을 모두 안내해
+     * LLM 이 본문 의미를 살린 가독성 향상 제안을 만들도록 유도한다.
      */
     suspend fun decorateText(
         text: String
     ): String = withContext(Dispatchers.Default) {
         if (text.isBlank()) return@withContext text
-        val systemPrompt = "당신은 한국어 글의 핵심 단어/구절을 강조하는 편집자입니다. " +
-                "주어진 본문에서 가장 의미 있는 1~3개 단어나 짧은 구절을 골라 " +
-                "아래 JSON 배열 형식으로만 답하세요. 설명은 쓰지 마세요. " +
-                "각 항목의 start/end 는 0-based half-open 인덱스(원본 텍스트 기준)입니다. " +
-                "키워드는 본문에 실제로 등장하는 그대로의 문자열이어야 합니다. " +
-                "색상은 #D32F2F(빨강) #E65100(주황) #F9A825(노랑) #2E7D32(초록) " +
-                "#0277BD(파랑) #6A1B9A(보라) 중에서만 골라주세요.\n" +
-                "출력 예: [{\"keyword\":\"행복\",\"bold\":true,\"color\":\"#2E7D32\"}]"
-        val userPrompt = "본문:\n$text\n\n강조 키워드 JSON:"
+        val systemPrompt = "당신은 한국어 일기 본문을 가독성 좋게 꾸며주는 편집자입니다. " +
+                "본문에서 의미 있는 단어/구절 2~6개를 골라 색상·굵게·이탤릭·밑줄·크기를 조합해 " +
+                "강조하세요. (1) 키워드는 본문에 실제로 등장하는 그대로의 문자열, " +
+                "(2) start/end 는 0-based half-open 인덱스(원본 텍스트 기준), " +
+                "(3) 색상은 #D32F2F(빨강) #E65100(주황) #F9A825(노랑) " +
+                "#2E7D32(초록) #0277BD(파랑) #6A1B9A(보라) 중 하나, " +
+                "(4) size 는 14/15/18/22/26 중 하나(생략 시 기본값), " +
+                "(5) bold/italic/underline 는 true/false (생략 가능). " +
+                "JSON 배열 형식으로만 답하고 다른 텍스트는 절대 쓰지 마세요.\n" +
+                "출력 예: " +
+                "[{\"keyword\":\"행복\",\"bold\":true,\"color\":\"#2E7D32\",\"size\":18}," +
+                "{\"keyword\":\"기대\",\"underline\":true,\"italic\":true}]"
+        val userPrompt = "본문:\n$text\n\n꾸미기 제안 JSON:"
 
-        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 256, temperature = 0.3)
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 512, temperature = 0.4)
             .trim()
             .let { stripCodeFences(it) }
     }

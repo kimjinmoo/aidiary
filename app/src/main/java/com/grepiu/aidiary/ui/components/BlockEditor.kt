@@ -830,8 +830,8 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
 /**
  * 블록 우측 상단의 AI 보조 메뉴 (점 세개 버튼 → 드롭다운).
  *
- * - "AI 다듬기": 한국어 오탈자/띄어쓰기 정리
- * - "AI 강조":   핵심 단어 굵게 + 색상 추천 적용
+ * - "AI 오타 띄어쓰기": 한국어 맞춤법·띄어쓰기 정리
+ * - "AI 꾸미기":       색상·굵게·이탤릭·밑줄·크기 조합으로 본문 가독성 향상
  */
 @Composable
 private fun BlockAiMenu(
@@ -871,7 +871,7 @@ private fun BlockAiMenu(
             onDismissRequest = { menuOpen = false }
         ) {
             DropdownMenuItem(
-                text = { Text("AI 다듬기 (오탈자·띄어쓰기)", fontSize = 13.sp) },
+                text = { Text("AI 오타 띄어쓰기", fontSize = 13.sp) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Spellcheck,
@@ -886,7 +886,7 @@ private fun BlockAiMenu(
                 }
             )
             DropdownMenuItem(
-                text = { Text("AI 강조 (색·굵게 추천)", fontSize = 13.sp) },
+                text = { Text("AI 꾸미기 (색·크기·밑줄)", fontSize = 13.sp) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Palette,

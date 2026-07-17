@@ -38,7 +38,7 @@ app/src/main/java/com/grepiu/aidiary/
 │   └── slm/
 │       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
 │       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백 + 보조 액션 단발성 프롬프트)
-│       ├── DecorateResult.kt        # AI 강조 추천 JSON 파서 + TextFormatting 변환
+│       ├── DecorateResult.kt        # AI 꾸미기 추천 JSON 파서 + TextFormatting 변환 (5종 스타일)
 │       ├── ModelDownloaderV2.kt     # Gemma/Whisper 모델 다운로드·압축 해제·에셋 복사
 │       └── SherpaEngine.kt          # 오프라인 음성 인식 추론
 │
@@ -137,7 +137,7 @@ app/src/main/java/com/grepiu/aidiary/
   - 3행: 12 / 15 / 18 / 22 (sp) 크기
 - `BlockEditor` 의 `HeadingBlock / TextBlock / QuoteBlock` 분기는 `RichTextEditorBody` 로 묶여 동일 위젯을 사용.
 - 음성 전사 결과는 마지막 `TextBlock` 의 `text` 에만 이어붙이며 서식은 보존됨.
-- **음성 인식 다국어**: 작성 화면 `VoiceCard` 하단에 언어 chip row (자동/한국어/English/日本語/中文) 노출. 선택 시 `DiaryIntent.UpdateVoiceLanguage` → `state.voiceLanguage` 갱신 + Sherpa 엔진 재초기화(현재 언어 반영). UI 라벨은 "음성으로 기록하기" (구 "음성으로 일기 쓰기"에서 변경).
+- **음성 인식 다국어**: 작성 화면 `VoiceCard` 하단에 언어 chip row (자동/한국어/English/日本語/中文) 노출. 선택 시 `DiaryIntent.UpdateVoiceLanguage` → `state.voiceLanguage` 즉시 갱신 + `state.isChangingVoiceLanguage = true` + 백그라운드(`Dispatchers.IO`)에서 Sherpa 엔진 dispose + 새 언어로 재초기화. UX: 1) 클릭 즉시 선택 칩이 새 언어로 강조, 2) 그 칩 안에 작은 `CircularProgressIndicator` 가 떠서 "처리중" 알림, 3) 재초기화 완료 시 스피너 사라지고 토스트. 연타 시 `voiceLangJob` generation guard 로 마지막 요청만 로딩 상태를 해제. UI 라벨은 "음성으로 기록하기" (구 "음성으로 일기 쓰기"에서 변경).
 
 ## 4.3 작성 보조 AI 액션 (LiteRT-LM 단발성 프롬프트)
 
@@ -147,8 +147,8 @@ app/src/main/java/com/grepiu/aidiary/
 |---|---|---|---|
 | 제목 자동 생성 | 제목 입력 옆 `AI 제목` 아이콘 버튼 | `suggestTitle(content)` | `state.draftTitle` |
 | 글 타입 자동 분류 | 타입 셀렉터 위 `AI 자동 분류` 텍스트 버튼 | `classifyContentType(content)` | `state.draftContentType` |
-| 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 다듬기` | `proofreadText(text)` | 해당 블록의 `text` (formatting 유지) |
-| 본문 강조 추천 (굵게/색) | 블록 헤더의 `✦` 메뉴 → `AI 강조` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프) |
+| 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 오타 띄어쓰기` | `proofreadText(text)` | 해당 블록의 `text` (formatting 유지) |
+| 본문 꾸미기 (색·굵게·이탤릭·밑줄·크기) | 블록 헤더의 `✦` 메뉴 → `AI 꾸미기 (색·크기·밑줄)` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프). LLM 시스템 프롬프트가 5가지 스타일(bold/italic/underline/color/size) 을 모두 안내하고, 6색 팔레트 + 사이즈 화이트리스트(14/15/18/22/26sp) 만 사용하도록 강제 |
 | 마음 분석 + 감정 자동 태그 (TAG AI) | **저장 시 자동 실행** (수동 버튼 없음) | `detectEmotion(title, content, date)` → `DiaryLLMEngine.EmotionResult(raw, emotion)` | 본문 끝에 `ContentBlock.TagAiBlock(emotion)` 자동 추가 + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문 생성은 제거되어 단순 1-토큰 분류만 수행 (저장 지연 최소화) |
 | 플래너 할 일명 AI 자동 추천 | 플래너 탭 입력란 옆 `AI 자동 플래너명` 아이콘 버튼 (AutoAwesome) | `suggestPlannerTaskName(context)` | `state.suggestedPlannerTaskText` 에 1회성 저장 → UI `LaunchedEffect` 가 입력란에 반영 후 `ClearSuggestedPlannerTask` 인텐트로 비움 |
 | 탭별 AI 브리핑 (기록/플래너/목표) | 각 탭 LazyColumn 상단 `AiBriefingCard` 의 새로고침 아이콘 (Refresh) | `generateBriefing(tabKey, context)` — tabKey 별 분기 시스템 프롬프트 | `state.{diary,planner,goals}Briefing` (영속) + `isBriefing{Diary,Planner,Goals}` (로딩). 다시 요청 가능, 모델 미준비 시 dimmed |
@@ -164,7 +164,7 @@ app/src/main/java/com/grepiu/aidiary/
 
 UI 규약:
 - 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
-- AI 강조 색상은 6색 팔레트(`#D32F2F #E65100 #F9A825 #2E7D32 #0277BD #6A1B9A`) 중 모델이 선택
+- AI 강조 색상은 6색 팔레트(`#D32F2F #E65100 #F9A825 #2E7D32 #0277BD #6A1B9A`) 중 모델이 선택, 사이즈는 화이트리스트(14/15/18/22/26sp) 내에서만 선택
 - 모델 응답이 잘못된 JSON/빈 문자열인 경우 안전 폴백 (원본 유지 + 토스트 안내)
 - **AI 플래너 추천 컨텍스트**: `buildPlannerTaskContext` 가 우선순위대로 4개 섹션을 조합해 LLM 프롬프트로 전달 — (1순위) `DiaryIntent.SuggestPlannerTask` 의 입력 필드 (날짜, 시작/종료 시간, 장소, 반복 요일·종료일), (2순위) 같은 날 이미 등록된 계획(시간·장소 포함), (3순위) 미완료 장기 목표(최대 5건), (4순위) 최근 일기 평문(최대 3건, 각 120자). 1순위가 비어 있어도 (날짜는 항상 포함) 동작. 결과는 한국어 1줄, 따옴표·접두사·이모지·번호·마침표 없이 30자 내로 잘라낸다.
 - **키보드 가림 방지 (탭 입력)**: `DiaryListScreen` 의 모든 탭(PLANNER/GOALS 등) 입력 폼은 단일 `LazyColumn` (또는 `verticalScroll`) 안에 들어가야 `BringIntoViewRequester` 로 포커스 시 자동 스크롤된다. PLANNER 는 첫 아이템이 입력 카드라 자연 동작. GOALS 는 대시보드/입력/목록을 모두 단일 LazyColumn 으로 통합 + 입력 카드에 `bringIntoViewRequester` 부착 + `onFocusChanged` 에서 `bringIntoView()` 호출.

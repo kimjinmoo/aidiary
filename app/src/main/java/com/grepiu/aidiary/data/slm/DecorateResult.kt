@@ -7,15 +7,18 @@ import org.json.JSONObject
 /**
  * LLM 보조 액션의 결과 모델들.
  *
- *  - [DecorateSuggestion] : 강조 키워드 한 건 (start/end 인덱스, bold, color)
- *  - [DecorateResult]     : 다듬어진 본문과 강조 제안 묶음
+ *  - [DecorateSuggestion] : 꾸미기 키워드 한 건 (start/end 인덱스, bold/italic/underline/color/size)
+ *  - [DecorateResult]     : 본문과 꾸미기 제안 묶음
  */
 data class DecorateSuggestion(
     val keyword: String,
     val start: Int,
     val end: Int,
-    val bold: Boolean,
-    val color: String?
+    val bold: Boolean = false,
+    val italic: Boolean = false,
+    val underline: Boolean = false,
+    val color: String? = null,
+    val sizeSp: Int? = null
 )
 
 data class DecorateResult(
@@ -33,6 +36,9 @@ object DecorateResultParser {
         "#D32F2F", "#E65100", "#F9A825", "#2E7D32", "#0277BD", "#6A1B9A"
     )
 
+    /** 가독성 좋은 사이즈 화이트리스트 (sp). 기본 본문 ~ 강조/제목 단계. */
+    private val allowedSizes = setOf(14, 15, 18, 22, 26)
+
     fun parse(rawJson: String, originalText: String): DecorateResult {
         val arr = extractJsonArray(rawJson) ?: return DecorateResult(originalText, emptyList())
         val out = mutableListOf<DecorateSuggestion>()
@@ -41,8 +47,12 @@ object DecorateResultParser {
             val keyword = obj.optString("keyword", "").trim()
             if (keyword.isEmpty()) continue
             val bold = obj.optBoolean("bold", false)
+            val italic = obj.optBoolean("italic", false)
+            val underline = obj.optBoolean("underline", false)
             val colorRaw = obj.optString("color", "").trim().uppercase()
             val color = colorRaw.takeIf { it in allowedColors }
+            val sizeRaw = if (obj.has("size") && !obj.isNull("size")) obj.optInt("size") else -1
+            val sizeSp = sizeRaw.takeIf { it in allowedSizes }
 
             val start = obj.optInt("start", -1)
             val end = obj.optInt("end", -1)
@@ -54,7 +64,10 @@ object DecorateResultParser {
                     start = resolved.first,
                     end = resolved.second - 1, // TextFormatting 은 end inclusive
                     bold = bold,
-                    color = color
+                    italic = italic,
+                    underline = underline,
+                    color = color,
+                    sizeSp = sizeSp
                 )
             )
         }
@@ -103,13 +116,19 @@ object DecorateResultParser {
 
 /**
  * [DecorateResult.suggestions] 를 [TextFormatting] 으로 변환합니다.
+ *
+ * 각 제안의 6가지 스타일(bold / italic / underline / color / size) 을 독립적으로 적용하며,
+ * 같은 범위에 여러 스타일이 누적되면 모두 합쳐진다.
  */
 fun DecorateResult.toTextFormatting(): TextFormatting {
     var fmt = TextFormatting.Empty
     suggestions.forEach { s ->
         val range = s.start..s.end
         if (s.bold) fmt = fmt.toggleBold(range)
+        if (s.italic) fmt = fmt.toggleItalic(range)
+        if (s.underline) fmt = fmt.toggleUnderline(range)
         if (s.color != null) fmt = fmt.setColor(range, s.color)
+        if (s.sizeSp != null) fmt = fmt.setSize(range, s.sizeSp)
     }
     return fmt
 }

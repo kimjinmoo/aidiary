@@ -73,6 +73,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private var analysisJob: Job? = null
     private var recordingJob: Job? = null
     private var chatJob: Job? = null
+    private var voiceLangJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -226,18 +227,44 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.UpdateVoiceLanguage -> {
                 val newLang = intent.language
+                // 같은 언어 클릭(로딩 중 포함) 은 무시 — 사용자가 같은 칩을 연타해도 재로딩하지 않음
                 if (_state.value.voiceLanguage == newLang) return
-                _state.update { it.copy(voiceLanguage = newLang) }
-                // 이미 준비된 Sherpa 엔진이 있으면 새 언어로 재초기화
-                if (_state.value.isSherpaModelReady) {
-                    try {
-                        sherpaEngine?.dispose()
-                    } catch (_: Exception) {}
-                    sherpaEngine = null
-                    initSherpa()
-                    sendEffect(DiaryEffect.ShowToast("음성 인식 언어를 '${languageLabel(newLang)}'(으)로 변경했어요."))
-                } else {
+
+                // 직전 언어 변경 잡이 살아있으면 취소 (가장 마지막 요청만 적용)
+                voiceLangJob?.cancel()
+
+                // 1) 클릭 즉시 상태 반영: 선택된 칩이 바로 새 언어로 강조됨
+                _state.update { it.copy(voiceLanguage = newLang, isChangingVoiceLanguage = true) }
+
+                if (!_state.value.isSherpaModelReady) {
+                    // 모델이 아직 없으면 상태만 저장하고 로딩은 해제
                     sendEffect(DiaryEffect.ShowToast("음성 인식 언어가 '${languageLabel(newLang)}'(으)로 설정됐어요. 모델 다운로드 후 적용됩니다."))
+                    _state.update { it.copy(isChangingVoiceLanguage = false) }
+                    return
+                }
+
+                // 2) 백그라운드에서 엔진 dispose + 새 언어로 재초기화
+                voiceLangJob = viewModelScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) {
+                            try { sherpaEngine?.dispose() } catch (_: Exception) {}
+                            sherpaEngine = null
+                            initSherpa()
+                        }
+                        // 직전 요청 도중 새 요청이 들어와 잡이 취소되었을 수 있으므로 현재 선택 언어와 일치할 때만 토스트
+                        if (_state.value.voiceLanguage == newLang) {
+                            sendEffect(DiaryEffect.ShowToast("음성 인식 언어를 '${languageLabel(newLang)}'(으)로 변경했어요."))
+                        }
+                    } catch (e: Exception) {
+                        if (_state.value.voiceLanguage == newLang) {
+                            sendEffect(DiaryEffect.ShowToast("언어 변경 실패: ${e.message}"))
+                        }
+                    } finally {
+                        // generation guard: 최신 요청의 잡만 로딩 상태를 해제
+                        if (_state.value.voiceLanguage == newLang) {
+                            _state.update { it.copy(isChangingVoiceLanguage = false) }
+                        }
+                    }
                 }
             }
             is DiaryIntent.TranslateDraftToKorean -> {
@@ -1230,7 +1257,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (originalText.length > DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS) {
             sendEffect(
                 DiaryEffect.ShowToast(
-                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 다듬기를 적용할 수 없어요. 블록을 나눠 주세요."
+                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 오타 띄어쓰기를 적용할 수 없어요. 블록을 나눠 주세요."
                 )
             )
             return
@@ -1249,10 +1276,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 } else if (revised.isNotBlank()) {
                     sendEffect(DiaryEffect.ShowToast("이미 깔끔한 본문이에요."))
                 } else {
-                    sendEffect(DiaryEffect.ShowToast("다듬기에 실패했어요. 다시 시도해 주세요."))
+                    sendEffect(DiaryEffect.ShowToast("AI 오타 띄어쓰기에 실패했어요. 다시 시도해 주세요."))
                 }
             } catch (e: Exception) {
-                sendEffect(DiaryEffect.ShowToast("AI 다듬기 오류: ${e.message}"))
+                sendEffect(DiaryEffect.ShowToast("AI 오타 띄어쓰기 오류: ${e.message}"))
             } finally {
                 _state.update { it.copy(isProofreadingBlockId = null) }
             }
@@ -1273,7 +1300,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (originalText.length > DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS) {
             sendEffect(
                 DiaryEffect.ShowToast(
-                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 강조 추천을 적용할 수 없어요. 블록을 나눠 주세요."
+                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 꾸미기를 적용할 수 없어요. 블록을 나눠 주세요."
                 )
             )
             return
@@ -1290,9 +1317,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 if (result.suggestions.isNotEmpty()) {
                     val newFmt = result.toTextFormatting()
                     applyFormattingToBlock(blockId, newFmt)
-                    sendEffect(DiaryEffect.ShowToast("강조 추천을 적용했어요. (${result.suggestions.size}건)"))
+                    sendEffect(DiaryEffect.ShowToast("AI 꾸미기를 적용했어요. (${result.suggestions.size}건)"))
                 } else {
-                    sendEffect(DiaryEffect.ShowToast("강조할 단어를 찾지 못했어요."))
+                    sendEffect(DiaryEffect.ShowToast("꾸미기 적용할 단어를 찾지 못했어요."))
                 }
             } catch (e: Exception) {
                 sendEffect(DiaryEffect.ShowToast("AI 꾸미기 오류: ${e.message}"))

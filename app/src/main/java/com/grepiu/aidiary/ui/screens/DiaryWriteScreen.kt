@@ -828,6 +828,7 @@ private fun VoiceCard(
                 Spacer(Modifier.height(10.dp))
                 VoiceLanguageChipRow(
                     selected = state.voiceLanguage,
+                    isChanging = state.isChangingVoiceLanguage,
                     onSelect = onLanguageChange
                 )
             }
@@ -839,6 +840,7 @@ private fun VoiceCard(
 @Composable
 private fun VoiceLanguageChipRow(
     selected: String,
+    isChanging: Boolean,
     onSelect: (String) -> Unit
 ) {
     val options = listOf(
@@ -861,6 +863,8 @@ private fun VoiceLanguageChipRow(
         )
         options.forEach { (code, label) ->
             val isSel = code == selected
+            // 로딩 중에는 선택된 칩을 제외한 다른 칩만 비활성화 → 사용자가 또 다른 언어로 끊김없이 변경 가능
+            val enabled = !isSel
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -874,16 +878,27 @@ private fun VoiceLanguageChipRow(
                         else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                         RoundedCornerShape(8.dp)
                     )
-                    .clickable(enabled = !isSel) { onSelect(code) }
+                    .clickable(enabled = enabled) { onSelect(code) }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text(
-                    text = label,
-                    fontSize = 11.sp,
-                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isSel) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSel) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    // 클릭 즉시 강조 + 그 칩 안에서 로딩 스피너가 돌아서 처리중임을 알림
+                    if (isSel && isChanging) {
+                        Spacer(Modifier.width(4.dp))
+                        CircularProgressIndicator(
+                            strokeWidth = 1.5.dp,
+                            modifier = Modifier.size(10.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
         }
     }

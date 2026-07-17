@@ -158,8 +158,8 @@ sealed interface DiaryIntent {
     data object SuggestTitle : DiaryIntent
     /** 본문을 보고 콘텐츠 타입 자동 분류 (DIARY/POST/NOTE). */
     data object ClassifyContentType : DiaryIntent
-    /** 특정 블록의 텍스트 다듬기(오탈자/띄어쓰기). */
+    /** 특정 블록의 오타·띄어쓰기 다듬기. */
     data class ProofreadBlock(val blockId: String) : DiaryIntent
-    /** 특정 블록의 강조(색상/굵게) 추천 적용. */
+    /** 특정 블록의 AI 꾸미기(색상·굵게·이탤릭·밑줄·크기) 추천 적용. */
     data class DecorateBlock(val blockId: String) : DiaryIntent
 }

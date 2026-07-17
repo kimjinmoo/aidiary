@@ -63,9 +63,9 @@ data class DiaryState(
     val isSuggestingTitle: Boolean = false,
     /** true: 본문 분석 → 타입 분류 중 */
     val isClassifyingType: Boolean = false,
-    /** true: 특정 블록의 텍스트 다듬기(교정/띄어쓰기) 진행 중 */
+    /** true: 특정 블록의 텍스트 오타·띄어쓰기 다듬기 진행 중 */
     val isProofreadingBlockId: String? = null,
-    /** true: 특정 블록의 강조(색/굵게) 추천 진행 중 */
+    /** true: 특정 블록의 AI 꾸미기(색/굵게/이탤릭/밑줄/크기) 추천 진행 중 */
     val isDecoratingBlockId: String? = null,
     /** true: 플래너 할 일명 AI 추천 진행 중 */
     val isSuggestingPlannerTask: Boolean = false,
@@ -94,6 +94,8 @@ data class DiaryState(
     val isTranscribing: Boolean = false,
     /** Sherpa 음성 인식 언어. "auto" | "ko" | "en" | "ja" | "zh" | "yue" */
     val voiceLanguage: String = "auto",
+    /** true: 사용자가 선택한 언어로 Sherpa 엔진을 재초기화하는 중 (UX 로딩 표시용) */
+    val isChangingVoiceLanguage: Boolean = false,
 
     // 이미지 픽업/촬영 진행 상태
     val isImportingImage: Boolean = false,
