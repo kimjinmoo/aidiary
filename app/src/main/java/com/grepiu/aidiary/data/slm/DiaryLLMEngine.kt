@@ -319,6 +319,9 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
      *  - user prompt 총 문자수가 [MAX_CHAT_PROMPT_CHARS] 를 넘으면
      *    1) 멀티턴 컨텍스트 제거 → 2) RAG 컨텍스트 절반 축소 → 3) 그래도 안되면 query 만 전송
      *    순으로 점진적 드롭하여 1024 토큰 한도 초과 방지
+     *  - 각 전략은 fresh conversation 으로 시도 (이전 실패의 internal state 격리)
+     *  - 토큰이 이미 방출된 후 실패하면 부분 결과로 수락 (재시도 시 토큰이 중복 노출되지 않음)
+     *  - 모든 전략 실패 시에도 `onTokenReceived` 로 안전 메시지를 보내 UI 가 "생각 중..." 에 멈추지 않게 한다
      *
      * @param contextBlock [DiaryLLMEngine.buildChatContextBlock] 으로 빌드된 RAG 컨텍스트
      * @param userQuery 현재 사용자 질문
@@ -339,63 +342,78 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
             try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
             chatTurnCounter = 0
         }
-        val conversation = ensureChatConversation()
         chatTurnCounter++
 
-        // 2) 사용자 발화 누적
-        chatHistory.add("USER" to userQuery)
-        if (chatHistory.size > CHAT_SUMMARY_TRIGGER_TURNS) {
-            compressChatHistory()
-        }
-
-        // 3) 컨텍스트 조합: 3단계 점진 드롭 (full → RAG only → query only)
+        // 2) 3단계 점진 드롭 (full → RAG only → query only)
         val strategies = listOf(
             ContextStrategy.FULL,
             ContextStrategy.RAG_ONLY,
             ContextStrategy.QUERY_ONLY
         )
         var lastError: Throwable? = null
-        var response: String? = null
 
-        for (strategy in strategies) {
+        for ((idx, strategy) in strategies.withIndex()) {
             val userPrompt = buildChatUserPrompt(strategy, contextBlock, userQuery)
             val totalChars = system.length + userPrompt.length
             if (totalChars > MAX_CHAT_PROMPT_CHARS && strategy == ContextStrategy.QUERY_ONLY) {
-                // 마지막 단계(QUERY_ONLY)도 너무 길면 그냥 안전 메시지
                 Log.w(TAG, "Chat prompt overflow: $totalChars > $MAX_CHAT_PROMPT_CHARS chars (query=${userQuery.length})")
-                response = "질문이 너무 길거나 컨텍스트가 너무 커서 답변할 수 없어요. 짧게 다시 질문해 주세요."
-                onTokenReceived?.invoke(response, true)
-                return@withContext response
+                val overflowMsg = "질문이 너무 길거나 컨텍스트가 너무 커서 답변할 수 없어요. 짧게 다시 질문해 주세요."
+                onTokenReceived?.invoke(overflowMsg, true)
+                return@withContext overflowMsg
             }
             val prompt = "<start_of_turn>system\n$system<end_of_turn>\n" +
                     "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
                     "<start_of_turn>model\n"
             Log.d(TAG, "Chat prompt strategy=$strategy chars=$totalChars")
 
+            // 각 전략은 fresh conversation 으로 시도 (이전 실패의 internal state 격리)
+            if (idx > 0) {
+                try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
+            }
+            val conv = ensureChatConversation()
+
             val builder = StringBuilder()
+            var emittedAny = false
             try {
-                conversation.sendMessageAsync(prompt).collect { message ->
+                conv.sendMessageAsync(prompt).collect { message ->
                     val token = message.toString()
                     builder.append(token)
+                    emittedAny = true
                     onTokenReceived?.invoke(token, false)
                 }
                 onTokenReceived?.invoke("", true)
                 val final = builder.toString()
+                // 성공 시에만 history 갱신
+                chatHistory.add("USER" to userQuery)
                 chatHistory.add("AI" to final)
+                if (chatHistory.size > CHAT_SUMMARY_TRIGGER_TURNS) {
+                    compressChatHistory()
+                }
                 return@withContext final
             } catch (e: Exception) {
                 lastError = e
                 Log.w(TAG, "Chat prompt failed at strategy=$strategy (${e.message}); trying next fallback")
-                // 다음 전략 시도 — Conversation 은 그대로 두고 (LiteRT-LM 이 내부 상태는 유지)
+                if (emittedAny) {
+                    // 토큰이 이미 노출된 상태면 부분 결과로 수락하고 종료
+                    onTokenReceived?.invoke("", true)
+                    val partial = builder.toString()
+                    if (partial.isNotBlank()) {
+                        chatHistory.add("USER" to userQuery)
+                        chatHistory.add("AI" to partial)
+                    }
+                    return@withContext partial
+                }
+                // 아니면 다음 전략으로 진행
             }
         }
 
-        // 모든 전략 실패 → 컨버세이션 리셋 후 안전 메시지
+        // 모든 전략 실패 (어느 것도 토큰 방출 못함) → 컨버세이션 리셋 + 안전 메시지
         Log.e(TAG, "Error generating chat response (backend=$backendType)", lastError)
-        onTokenReceived?.invoke("", true)
         try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
         chatTurnCounter = 0
-        "[오류가 발생하여 답변할 수 없어요. 잠시 후 다시 시도해 주세요]"
+        val errorMsg = "[오류가 발생하여 답변할 수 없어요. 잠시 후 다시 시도해 주세요]"
+        onTokenReceived?.invoke(errorMsg, true)
+        errorMsg
     }
 
     private enum class ContextStrategy { FULL, RAG_ONLY, QUERY_ONLY }
