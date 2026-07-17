@@ -18,10 +18,12 @@ import java.io.File
  *
  * - 직렬화 포맷: 파일 상단에 `schemaVersion` 을 두어 추후 마이그레이션에 대비합니다.
  * - 이미지 파일 관리는 [ImageStorageManager] 에 위임합니다.
+ * - AI 비서 검색용 SQLite FTS5 인덱스는 [searchDb] 가 관리하며, add/update/delete 시 동기화됩니다.
  */
 class DiaryRepository(
     private val context: Context,
-    private val imageStore: ImageStorageManager = ImageStorageManager(context)
+    private val imageStore: ImageStorageManager = ImageStorageManager(context),
+    private val searchDb: DiarySearchDatabase = DiarySearchDatabase(context)
 ) {
     private val file = File(context.filesDir, "diary_history.json")
     private val tempFile = File(context.filesDir, "diary_history.json.tmp")
@@ -31,6 +33,21 @@ class DiaryRepository(
     private val cacheLock = Any()
 
     private val MAX_ENTRIES = 200
+
+    init {
+        // FTS 인덱스가 비어 있으면(JSON 에는 데이터가 있는데 인덱스만 없는 신규 설치/마이그레이션)
+        // 백그라운드 스레드에서 일괄 동기화한다. 2,000건 기준 수십 ms.
+        Thread {
+            try {
+                if (searchDb.readableDatabase
+                        .rawQuery("SELECT COUNT(*) FROM ${DiarySearchDatabase.TABLE_NAME}", null)
+                        .use { c -> c.moveToFirst() && c.getInt(0) > 0 }
+                ) return@Thread
+                getDiaries().forEach { searchDb.upsert(it) }
+            } catch (_: Exception) {
+            }
+        }.start()
+    }
 
     /**
      * 전체 일기 목록을 반환합니다 (역시간순 정렬).
@@ -54,6 +71,7 @@ class DiaryRepository(
             current.toList()
         }
         cachedDiaries = updated
+        try { searchDb.upsert(entry) } catch (_: Exception) {}
         return updated
     }
 
@@ -61,19 +79,25 @@ class DiaryRepository(
      * 특정 일기의 AI 분석결과와 분석된 감정을 갱신합니다.
      */
     fun updateAnalysis(id: String, emotion: String, aiAnalysis: String): List<DiaryEntry> {
+        var updatedEntry: DiaryEntry? = null
         val updated = synchronized(cacheLock) {
             val current = getOrLoadCache().toMutableList()
             val idx = current.indexOfFirst { it.id == id }
             if (idx >= 0) {
-                current[idx] = current[idx].copy(
+                val newEntry = current[idx].copy(
                     emotion = emotion,
                     aiAnalysis = aiAnalysis
                 )
+                current[idx] = newEntry
+                updatedEntry = newEntry
                 persist(current)
             }
             current.toList()
         }
         cachedDiaries = updated
+        updatedEntry?.let {
+            try { searchDb.upsert(it) } catch (_: Exception) {}
+        }
         return updated
     }
 
@@ -90,7 +114,32 @@ class DiaryRepository(
             filtered
         }
         cachedDiaries = updated
+        try { searchDb.delete(id) } catch (_: Exception) {}
         return updated
+    }
+
+    /**
+     * AI 비서가 사용하는 부분 문자열 + 날짜 가중치 검색.
+     * 결과는 [DiarySearchHit.relevance] 내림차순으로 정렬되어 반환된다.
+     * 검색 자체는 빠르게(인덱스 기반) 동작하므로 2,000건 이상에서도 실용적이다.
+     */
+    fun searchDiaries(query: String, limit: Int = 30): List<DiarySearchHit> {
+        return try {
+            searchDb.search(query, limit)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * FTS 인덱스를 전체 일기로 강제 재구축한다. (디버그/마이그레이션 용)
+     */
+    fun rebuildSearchIndex() {
+        try {
+            searchDb.clear()
+            getDiaries().forEach { searchDb.upsert(it) }
+        } catch (_: Exception) {
+        }
     }
 
     /**

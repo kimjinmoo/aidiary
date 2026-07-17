@@ -137,6 +137,7 @@ app/src/main/java/com/grepiu/aidiary/
   - 3행: 12 / 15 / 18 / 22 (sp) 크기
 - `BlockEditor` 의 `HeadingBlock / TextBlock / QuoteBlock` 분기는 `RichTextEditorBody` 로 묶여 동일 위젯을 사용.
 - 음성 전사 결과는 마지막 `TextBlock` 의 `text` 에만 이어붙이며 서식은 보존됨.
+- **음성 인식 다국어**: 작성 화면 `VoiceCard` 하단에 언어 chip row (자동/한국어/English/日本語/中文) 노출. 선택 시 `DiaryIntent.UpdateVoiceLanguage` → `state.voiceLanguage` 갱신 + Sherpa 엔진 재초기화(현재 언어 반영). UI 라벨은 "음성으로 기록하기" (구 "음성으로 일기 쓰기"에서 변경).
 
 ## 4.3 작성 보조 AI 액션 (LiteRT-LM 단발성 프롬프트)
 
@@ -159,6 +160,7 @@ app/src/main/java/com/grepiu/aidiary/
 - **상단 제목 입력란**: 키보드 입력이 기본. `state.draftTitle` 에 직접 바인딩되며 AI 추천(`SuggestTitle`) 도 같은 필드를 갱신
 - 제목 스타일 피커(`draftTitleStyle`): `state.draftTitle.isNotBlank()` 일 때만 노출 (예전 `hasHeadingBlock` 가드 대체)
 - **저장 시 자동 흐름**: `SaveDiary` → 본문 비면 토스트 / 제목 비면 토스트 / 모델 미준비 시 즉시 저장 / 모델 준비 시 1) `classifyContentType` 으로 글 타입 재확인 → 추천 타입이 현재 선택과 다르면 `pendingContentTypeChange` 세팅 + `ContentTypeChangeDialog` (3버튼: `"변경하고 저장" / "원래 타입 저장" / "취소"`) 노출, 같으면 2) `detectEmotion` 호출 → 5 종 감정 라벨(기쁨/슬픔/분노/불안/평온) 중 하나를 `ContentBlock.TagAiBlock(emotion)` 으로 본문 끝에 append + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문은 생성하지 않으므로 분석 본문 필드(`aiAnalysis`) 는 null. 타입 분류/감정 분류 실패 시 안전 폴백 (현재 타입 유지 / TAG 블록 없이 저장).
+- **본문 복사 / AI 한글 번역 (작성 화면)**: 본문 섹션 헤더 우측에 아이콘 2개. `ContentCopy` = 본문 평문 시스템 클립보드 복사, `Translate` = `DiaryLLMEngine.translateToKorean(content)` 호출 (다국어→한국어, 한국어면 자연스러운 다듬기). 결과는 `state.translatedDraft` 에 1회성 저장 + `TranslationResultDialog` (원문/번역문 미리보기 + `[본문에 적용]` / `[복사]` / `[취소]`). 적용 시 마지막 `TextBlock` 의 `text` 끝에 append (없으면 새 TextBlock). `isTranslatingDraft` 로 로딩 표시.
 
 UI 규약:
 - 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
@@ -176,7 +178,7 @@ UI 규약:
 | `ImageStorageManager` | URI/파일 → `filesDir/diary_images/` 복사, 경로 resolve/delete | 항상 상대 경로(`diary_images/...`) 만 DB/JSON 에 저장 |
 | `DiaryViewModel` | 인텐트 라우팅, 모델/엔진 초기화, 이미지 IO 코루틴, 블록 라이프사이클 | `WakeLock`, `AudioRecord` 자원 해제 필수 |
 | `DiaryLLMEngine` | LiteRT-LM 세션, 토큰 단위 스트리밍 | `dispose()` 호출 전 메모리 누수 |
-| `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM | `sherpa-onnx-zipformer-korean-2024-06-24` 고정 |
+| `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM, 다국어(`auto`/`ko`/`en`/`ja`/`zh`/`yue`) | 모델 디렉토리에서 `.onnx` + `tokens.txt` 자동 탐지. `SherpaEngine.create(modelDir, language)` 로 언어 전달. 기본 `auto` |
 | `ModelDownloaderV2` | HuggingFace 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 콜백 |
 | `DiaryState` | 모든 UI 상태의 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실, 플래너/목표 및 AI 챗봇 대화 기록 동시 관리 |
 | `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 (`PlannerTask` 필드: id / text / isCompleted / dateString / startTime / endTime / location / **seriesId** / timestamp) | `seriesId` 는 반복 계획 일괄 등록 그룹 식별자. 같은 시리즈의 모든 일자에 동일 UUID 가 부여되어 시리즈 단위 삭제가 가능. 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |

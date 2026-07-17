@@ -2,6 +2,9 @@ package com.grepiu.aidiary.mvi.viewmodel
 
 import android.Manifest
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -18,6 +21,7 @@ import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryRepository
+import com.grepiu.aidiary.data.repository.DiarySearchHit
 import com.grepiu.aidiary.data.repository.ImageStorageManager
 import com.grepiu.aidiary.data.repository.PlannerRepository
 import com.grepiu.aidiary.data.repository.Goal
@@ -219,6 +223,34 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.StopRecording -> {
                 stopRecording()
+            }
+            is DiaryIntent.UpdateVoiceLanguage -> {
+                val newLang = intent.language
+                if (_state.value.voiceLanguage == newLang) return
+                _state.update { it.copy(voiceLanguage = newLang) }
+                // 이미 준비된 Sherpa 엔진이 있으면 새 언어로 재초기화
+                if (_state.value.isSherpaModelReady) {
+                    try {
+                        sherpaEngine?.dispose()
+                    } catch (_: Exception) {}
+                    sherpaEngine = null
+                    initSherpa()
+                    sendEffect(DiaryEffect.ShowToast("음성 인식 언어를 '${languageLabel(newLang)}'(으)로 변경했어요."))
+                } else {
+                    sendEffect(DiaryEffect.ShowToast("음성 인식 언어가 '${languageLabel(newLang)}'(으)로 설정됐어요. 모델 다운로드 후 적용됩니다."))
+                }
+            }
+            is DiaryIntent.TranslateDraftToKorean -> {
+                translateDraftToKorean()
+            }
+            is DiaryIntent.ApplyTranslatedDraft -> {
+                applyTranslatedDraft()
+            }
+            is DiaryIntent.ClearTranslatedDraft -> {
+                _state.update { it.copy(translatedDraft = null, isTranslatingDraft = false) }
+            }
+            is DiaryIntent.CopyDraftToClipboard -> {
+                copyDraftToClipboard()
             }
 
             // ===== 블록 기반 콘텐츠 =====
@@ -1347,6 +1379,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 사용자가 입력한 대화 내용을 바탕으로 캘린더 일기, 플래너, 목표 리스트로부터 로컬 RAG 검색을 수집한 뒤
      * 온디바이스 Gemma 4 언어 모델에게 질문 및 답변 유도를 수행합니다. (스트리밍 방식 피드백)
+     *
+     * 일기 검색은 [DiaryRepository.searchDiaries] 의 SQLite FTS5 + 날짜 가중치 인덱스를 사용한다.
+     *  - 2,000건 이상에서도 부분 문자열 매칭이 빠르게 동작.
+     *  - 한국어는 trigram 토크나이저로 공백이 없어도 매칭.
+     *  - 최대 30건 후보 → 날짜 가중치 반영해 재정렬된 상위 [DIARY_CONTEXT_LIMIT] 건만 컨텍스트로 주입.
+     *  - FTS 가 0건이거나 실패하면 기존 방식(키워드 substring + 최신 3건 폴백)으로 안전하게 폴백.
      */
     private fun runOnDeviceChat(query: String) {
         val currentState = _state.value
@@ -1363,27 +1401,36 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         val aiMsg = ChatMessage("AI", "생각 중...")
         _state.update { it.copy(chatMessages = it.chatMessages + userMsg + aiMsg) }
 
-        // 2. RAG 검색 수행 (텍스트 키워드 매칭)
+        // 2. RAG 검색 (1차: 일기는 FTS, 폴백: 키워드 substring + 최신 3건)
         val cleanQuery = query.trim().lowercase()
         val keywords = cleanQuery.split("\\s+".toRegex())
             .filter { it.length > 1 }
             .map { it.replace(Regex("[은는이가을를에에서으로]"), "") }
             .filter { it.isNotBlank() }
 
-        // 일기 매칭
-        val matchedDiaries = currentState.diaries.filter { diary ->
-            keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
-        }.take(3)
+        val ftsHits = repository.searchDiaries(query, limit = 30)
+        val matchedDiaries: List<DiaryEntry> = when {
+            ftsHits.isNotEmpty() -> {
+                ftsHits.mapNotNull { hit ->
+                    currentState.diaries.firstOrNull { it.id == hit.id }
+                }.take(DIARY_CONTEXT_LIMIT)
+            }
+            keywords.isNotEmpty() -> {
+                currentState.diaries.filter { diary ->
+                    keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
+                }.take(DIARY_CONTEXT_LIMIT)
+            }
+            else -> currentState.diaries.take(DIARY_CONTEXT_LIMIT)
+        }
 
-        // 할 일 매칭
+        // 할 일/목표는 데이터량이 작아 in-memory 키워드 매칭 유지
         val matchedTasks = currentState.plannerTasks.filter { task ->
             keywords.any { kw -> task.text.lowercase().contains(kw) }
-        }.take(3)
+        }.take(TASK_CONTEXT_LIMIT)
 
-        // 목표 매칭
         val matchedGoals = currentState.goals.filter { goal ->
             keywords.any { kw -> goal.text.lowercase().contains(kw) }
-        }.take(3)
+        }.take(GOAL_CONTEXT_LIMIT)
 
         // 매칭 결과가 전혀 없는 경우 최근 3개 데이터를 폴백 컨텍스트로 지정
         // 오늘 및 선택한 날짜의 할 일 정보 별도 기입 준비
@@ -1392,17 +1439,17 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         val selectedDateStr = currentState.selectedDateString
         val selectedDateTasks = currentState.plannerTasks.filter { it.dateString == selectedDateStr }
 
-        // 매칭 결과가 전혀 없는 경우 최근 3개 데이터를 폴백 컨텍스트로 지정
+        // 매칭 결과가 전혀 없는 경우 최근 N개 데이터를 폴백 컨텍스트로 지정
         val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) {
-            currentState.diaries.take(3)
+            currentState.diaries.take(DIARY_CONTEXT_LIMIT)
         } else matchedDiaries
 
         val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) {
-            currentState.plannerTasks.take(3)
+            currentState.plannerTasks.take(TASK_CONTEXT_LIMIT)
         } else matchedTasks
 
         val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) {
-            currentState.goals.take(3)
+            currentState.goals.take(GOAL_CONTEXT_LIMIT)
         } else matchedGoals
 
         // 3. 온디바이스 전용 프롬프트 조합 (RAG 정보 주입)
@@ -1546,9 +1593,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             val actualDir = modelDir.listFiles()
                 ?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }
                 ?: modelDir
-            sherpaEngine = SherpaEngine.create(actualDir.absolutePath)
+            sherpaEngine = SherpaEngine.create(
+                actualDir.absolutePath,
+                language = _state.value.voiceLanguage
+            )
             _state.update { it.copy(isSherpaModelReady = true) }
-            Log.d("DiaryViewModel", "Sherpa engine ready")
+            Log.d("DiaryViewModel", "Sherpa engine ready (lang=${_state.value.voiceLanguage})")
         } catch (e: Exception) {
             Log.e("DiaryViewModel", "Sherpa init failed: ${e.message}")
         }
@@ -1610,6 +1660,101 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private fun stopRecording() {
         _state.update { it.copy(isRecording = false) }
         wakeLock?.let { if (it.isHeld) it.release() }
+    }
+
+    /**
+     * 사용자가 선택한 음성 인식 언어 코드를 한국어 라벨로 변환한다.
+     * (UI 토스트/표시용)
+     */
+    private fun languageLabel(code: String): String = when (code) {
+        "auto" -> "자동"
+        "ko" -> "한국어"
+        "en" -> "English"
+        "ja" -> "日本語"
+        "zh" -> "中文"
+        "yue" -> "粤语"
+        else -> code
+    }
+
+    /**
+     * 현재 본문 평문을 AI 로 한국어로 번역한다.
+     * 결과는 [DiaryState.translatedDraft] 에 저장되어 다이얼로그에서 노출,
+     * [DiaryIntent.ApplyTranslatedDraft] 로 본문에 적용하거나
+     * [DiaryIntent.ClearTranslatedDraft] 로 폐기한다.
+     */
+    private fun translateDraftToKorean() {
+        val state = _state.value
+        if (!requireReadyModel()) return
+        val plain = state.draftPlainText
+        if (plain.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("번역할 본문이 비어 있어요."))
+            return
+        }
+        if (state.isTranslatingDraft) return
+
+        _state.update { it.copy(isTranslatingDraft = true, translatedDraft = null) }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val translated = engine.translateToKorean(plain)
+                if (translated.isBlank()) {
+                    sendEffect(DiaryEffect.ShowToast("번역 결과를 만들지 못했어요. 다시 시도해 주세요."))
+                    _state.update { it.copy(isTranslatingDraft = false) }
+                } else {
+                    _state.update { it.copy(translatedDraft = translated, isTranslatingDraft = false) }
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(isTranslatingDraft = false) }
+                sendEffect(DiaryEffect.ShowToast("AI 번역 오류: ${e.message}"))
+            }
+        }
+    }
+
+    /**
+     * [DiaryState.translatedDraft] 결과를 현재 본문(첫 TextBlock) 에 덮어쓴다.
+     * - 본문이 비어 있으면 새 TextBlock 을 만들고, 있으면 마지막 TextBlock 에 append 한다.
+     * - RichTextField 의 TextFormatting 은 유지되지 않으므로 텍스트만 교체한다.
+     */
+    private fun applyTranslatedDraft() {
+        val translated = _state.value.translatedDraft ?: return
+        val newBlocks = _state.value.draftBlocks.toMutableList()
+        val lastTextIdx = newBlocks.indexOfLast { it is ContentBlock.TextBlock }
+        if (lastTextIdx >= 0) {
+            val last = newBlocks[lastTextIdx] as ContentBlock.TextBlock
+            val combined = if (last.text.isBlank()) translated
+                           else "${last.text}\n$translated"
+            newBlocks[lastTextIdx] = last.copy(text = combined)
+        } else {
+            newBlocks.add(ContentBlock.TextBlock(text = translated))
+        }
+        _state.update {
+            it.copy(
+                draftBlocks = newBlocks,
+                translatedDraft = null
+            )
+        }
+        sendEffect(DiaryEffect.ShowToast("본문에 번역 결과를 적용했어요."))
+    }
+
+    /**
+     * 본문 평문을 Android 시스템 클립보드에 복사한다.
+     * 본문이 비어 있으면 토스트로 알리고 early return.
+     */
+    private fun copyDraftToClipboard() {
+        val plain = _state.value.draftPlainText
+        if (plain.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("복사할 본문이 비어 있어요."))
+            return
+        }
+        try {
+            val clipboard = getApplication<Application>()
+                .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("diary_draft", plain)
+            clipboard.setPrimaryClip(clip)
+            sendEffect(DiaryEffect.ShowToast("본문을 클립보드에 복사했어요."))
+        } catch (e: Exception) {
+            sendEffect(DiaryEffect.ShowToast("클립보드 복사 실패: ${e.message}"))
+        }
     }
 
     private fun shortArrayToByteArray(shorts: ShortArray, count: Int): ByteArray {
@@ -1898,6 +2043,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        // AI 비서(RAG) 가 한 번에 LLM 컨텍스트로 주입하는 상한.
+        // 일기는 FTS + 날짜 가중치로 추려서 15건, 할 일/목표는 데이터량이 적어 5건.
+        private const val DIARY_CONTEXT_LIMIT = 15
+        private const val TASK_CONTEXT_LIMIT = 5
+        private const val GOAL_CONTEXT_LIMIT = 5
+
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         private const val SHERPA_DOWNLOAD_URL =

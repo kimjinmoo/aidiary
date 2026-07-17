@@ -8,7 +8,12 @@ class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
     companion object {
         private const val TAG = "SherpaEngine"
 
-        fun create(modelDir: String): SherpaEngine {
+        /**
+         * Sherpa-ONNX SenseVoice 가 인식 가능한 언어 코드.
+         * 모델은 sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 (zh/en/ja/ko/yue + auto).
+         * @param language "auto" | "ko" | "en" | "ja" | "zh" | "yue"
+         */
+        fun create(modelDir: String, language: String = "auto"): SherpaEngine {
             var dir = File(modelDir)
             dir.listFiles()?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }?.let { dir = it }
 
@@ -16,11 +21,16 @@ class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
             val tok = File(dir, "tokens.txt")
             require(modelFile != null && tok.exists()) { "Model files missing" }
 
+            val normalizedLanguage = when (language) {
+                "ko", "en", "ja", "zh", "yue", "auto" -> language
+                else -> "auto"
+            }
+
             val cfg = OfflineRecognizerConfig(
                 modelConfig = OfflineModelConfig(
                     senseVoice = OfflineSenseVoiceModelConfig(
                         model = modelFile.absolutePath,
-                        language = "ko",
+                        language = normalizedLanguage,
                         useInverseTextNormalization = true
                     ),
                     tokens = tok.absolutePath,

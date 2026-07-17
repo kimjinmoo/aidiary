@@ -92,9 +92,17 @@ data class DiaryState(
     val recordingSeconds: Int = 0,
     val recordingVolume: Float = 0f,
     val isTranscribing: Boolean = false,
+    /** Sherpa 음성 인식 언어. "auto" | "ko" | "en" | "ja" | "zh" | "yue" */
+    val voiceLanguage: String = "auto",
 
     // 이미지 픽업/촬영 진행 상태
     val isImportingImage: Boolean = false,
+
+    // 본문 AI 한글 번역
+    /** true: 본문 → 한글 번역 LLM 호출 중 */
+    val isTranslatingDraft: Boolean = false,
+    /** LLM 이 생성한 한글 번역 결과. UI 에서 다이얼로그로 노출 후 ClearTranslatedDraft 로 소비 */
+    val translatedDraft: String? = null,
 
     // 온디바이스 AI 챗봇 대화 데이터 추가
     val chatMessages: List<ChatMessage> = emptyList(),       // 챗봇 대화 기록

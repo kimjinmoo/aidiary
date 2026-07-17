@@ -40,6 +40,19 @@ sealed interface DiaryIntent {
     data class ShowWifiWarning(val show: Boolean) : DiaryIntent
     data object StartRecording : DiaryIntent
     data object StopRecording : DiaryIntent
+    /**
+     * Sherpa 음성 인식 언어를 변경합니다.
+     * @param language "auto" | "ko" | "en" | "ja" | "zh" | "yue"
+     */
+    data class UpdateVoiceLanguage(val language: String) : DiaryIntent
+    /** 본문 평문을 AI 로 한국어로 번역하도록 요청. 결과는 [DiaryState.translatedDraft] 에 1회성 저장 */
+    data object TranslateDraftToKorean : DiaryIntent
+    /** 번역 결과를 현재 본문으로 적용. 본문 첫 TextBlock 의 text 를 번역문으로 교체 */
+    data object ApplyTranslatedDraft : DiaryIntent
+    /** 번역 결과 다이얼로그를 닫고 1회성 상태를 비움 */
+    data object ClearTranslatedDraft : DiaryIntent
+    /** 본문 평문을 시스템 클립보드에 복사 */
+    data object CopyDraftToClipboard : DiaryIntent
 
     // ===== 블록 기반 콘텐츠 =====
     /** 새 블록을 마지막에 추가합니다. */

@@ -181,6 +181,27 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     /**
+     * 주어진 본문 평문을 한국어로 자연스럽게 번역한다.
+     * 이미 한국어인 경우 그대로 유지하고, 외국어면 자연스러운 한국어로 의역한다.
+     * 마크다운/이모지/접두사 없이 번역문만 출력.
+     */
+    suspend fun translateToKorean(
+        content: String
+    ): String = withContext(Dispatchers.Default) {
+        if (content.isBlank()) return@withContext ""
+        val systemPrompt = "당신은 다국어 → 한국어 번역가입니다. " +
+                "주어진 본문이 한국어라면 자연스러운 한국어 문장으로 다듬어 그대로 반환하고, " +
+                "외국어(영어/일본어/중국어 등)라면 의미/톤/뉘앙스를 살린 자연스러운 한국어로 번역하세요. " +
+                "원문에 없는 내용을 추가하지 마세요. 설명·주석·접두사·마크다운·이모지 없이 번역문만 출력하세요."
+        val userPrompt = "본문:\n$content\n\n한국어 번역:"
+
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 1024, temperature = 0.2)
+            .trim()
+            .let { stripCodeFences(it) }
+            .let { it.trimStart().removePrefix("한국어 번역:").removePrefix("번역:").trim() }
+    }
+
+    /**
      * 본문 톤/길이/구조를 보고 적절한 글 타입 (DIARY / POST / NOTE) 을 결정합니다.
      * 결과는 [ContentType.storageKey] 만 반환합니다.
      */

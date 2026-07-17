@@ -26,10 +26,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lightbulb
@@ -195,7 +197,17 @@ fun DiaryWriteScreen(
 
             // 4) 본문 섹션
             Spacer(Modifier.height(24.dp))
-            SectionLabel(icon = Icons.Filled.EditNote, label = "본문")
+            SectionLabel(
+                icon = Icons.Filled.EditNote,
+                label = "본문",
+                trailing = {
+                    BodyTrailingActions(
+                        state = state,
+                        onCopy = { onIntent(DiaryIntent.CopyDraftToClipboard) },
+                        onTranslate = { onIntent(DiaryIntent.TranslateDraftToKorean) }
+                    )
+                }
+            )
             Spacer(Modifier.height(8.dp))
             BodySection(
                 state = state,
@@ -238,7 +250,8 @@ fun DiaryWriteScreen(
             VoiceCard(
                 state = state,
                 onStartRecording = onStartRecording,
-                onStopRecording = onStopRecording
+                onStopRecording = onStopRecording,
+                onLanguageChange = { lang -> onIntent(DiaryIntent.UpdateVoiceLanguage(lang)) }
             )
 
             // 7) 저장 안내 알림
@@ -252,13 +265,24 @@ fun DiaryWriteScreen(
             Spacer(Modifier.height(48.dp))
         }
 
-        // 8) 저장 시 AI 가 추천한 글 타입이 현재 선택과 다를 때 표시되는 3버튼 다이얼로그
+            // 8) 저장 시 AI 가 추천한 글 타입이 현재 선택과 다를 때 표시되는 3버튼 다이얼로그
         state.pendingContentTypeChange?.let { pending ->
             ContentTypeChangeDialog(
                 pending = pending,
                 onConfirm = { onIntent(DiaryIntent.ConfirmContentTypeChange(pending.suggestedType)) },
                 onKeep = { onIntent(DiaryIntent.KeepCurrentContentTypeAndSave) },
                 onCancel = { onIntent(DiaryIntent.CancelContentTypeChange) }
+            )
+        }
+
+        // 9) 본문 AI 한글 번역 결과 다이얼로그
+        state.translatedDraft?.let { translated ->
+            TranslationResultDialog(
+                original = state.draftPlainText,
+                translated = translated,
+                isTranslating = state.isTranslatingDraft,
+                onApply = { onIntent(DiaryIntent.ApplyTranslatedDraft) },
+                onClose = { onIntent(DiaryIntent.ClearTranslatedDraft) }
             )
         }
     }
@@ -765,7 +789,8 @@ private fun EmptyBodyHint() {
 private fun VoiceCard(
     state: DiaryState,
     onStartRecording: () -> Unit,
-    onStopRecording: () -> Unit
+    onStopRecording: () -> Unit,
+    onLanguageChange: (String) -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -778,24 +803,87 @@ private fun VoiceCard(
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(14.dp)
-        ) {
-            when {
-                state.isRecording -> RecordingActiveBody(
-                    seconds = state.recordingSeconds,
-                    volume = state.recordingVolume,
-                    onStop = onStopRecording,
-                    modifier = Modifier.weight(1f)
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when {
+                    state.isRecording -> RecordingActiveBody(
+                        seconds = state.recordingSeconds,
+                        volume = state.recordingVolume,
+                        onStop = onStopRecording,
+                        modifier = Modifier.weight(1f)
+                    )
+                    state.isTranscribing -> TranscribingBody()
+                    state.isSherpaModelReady -> RecordIdleBody(
+                        onStart = onStartRecording,
+                        modifier = Modifier.weight(1f)
+                    )
+                    state.isDownloadingModel -> DownloadingModelBody(modifier = Modifier.weight(1f))
+                }
+            }
+            // 다국어 음성 인식 선택 (모델 준비 완료 시)
+            if (state.isSherpaModelReady && !state.isRecording && !state.isTranscribing) {
+                Spacer(Modifier.height(10.dp))
+                VoiceLanguageChipRow(
+                    selected = state.voiceLanguage,
+                    onSelect = onLanguageChange
                 )
-                state.isTranscribing -> TranscribingBody()
-                state.isSherpaModelReady -> RecordIdleBody(
-                    onStart = onStartRecording,
-                    modifier = Modifier.weight(1f)
+            }
+        }
+    }
+}
+
+/** Sherpa 음성 인식 언어 선택 칩 행. */
+@Composable
+private fun VoiceLanguageChipRow(
+    selected: String,
+    onSelect: (String) -> Unit
+) {
+    val options = listOf(
+        "auto" to "자동",
+        "ko" to "한국어",
+        "en" to "English",
+        "ja" to "日本語",
+        "zh" to "中文"
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "언어",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 2.dp)
+        )
+        options.forEach { (code, label) ->
+            val isSel = code == selected
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                        else Color.Transparent
+                    )
+                    .border(
+                        1.dp,
+                        if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable(enabled = !isSel) { onSelect(code) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 11.sp,
+                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isSel) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                state.isDownloadingModel -> DownloadingModelBody(modifier = Modifier.weight(1f))
             }
         }
     }
@@ -894,7 +982,7 @@ private fun RecordIdleBody(
     }
     Column(modifier = modifier) {
         Text(
-            text = "음성으로 일기 쓰기",
+            text = "음성으로 기록하기",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface
@@ -1161,6 +1249,172 @@ private fun ContentTypeChangeDialog(
                 }
                 TextButton(onClick = onCancel) {
                     Text("취소")
+                }
+            }
+        }
+    )
+}
+
+/**
+ * 본문 섹션 헤더 우측에 붙는 작은 아이콘 액션 행.
+ *  - 복사 : 본문 평문을 시스템 클립보드에 복사
+ *  - 번역 : AI 로 본문을 한국어로 번역
+ */
+@Composable
+private fun BodyTrailingActions(
+    state: DiaryState,
+    onCopy: () -> Unit,
+    onTranslate: () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        val hasBody = state.draftPlainText.isNotBlank()
+        IconButton(
+            onClick = onCopy,
+            enabled = hasBody,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.ContentCopy,
+                contentDescription = "본문 복사",
+                tint = if (hasBody) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        val isTranslating = state.isTranslatingDraft
+        IconButton(
+            onClick = onTranslate,
+            enabled = hasBody && state.isModelReady && !isTranslating,
+            modifier = Modifier.size(28.dp)
+        ) {
+            if (isTranslating) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(14.dp),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Translate,
+                    contentDescription = "AI 한글 번역",
+                    tint = if (hasBody && state.isModelReady) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 본문 AI 한글 번역 결과 다이얼로그.
+ *  - 번역 중이면 로딩 인디케이터만 노출
+ *  - 완료 시: 원문/번역문 미리보기 + [본문에 적용] [클립보드 복사] [닫기] 3 버튼
+ */
+@Composable
+private fun TranslationResultDialog(
+    original: String,
+    translated: String,
+    isTranslating: Boolean,
+    onApply: () -> Unit,
+    onClose: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val copyTranslation = {
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("diary_translation", translated))
+        android.widget.Toast.makeText(context, "번역문을 클립보드에 복사했어요.", android.widget.Toast.LENGTH_SHORT).show()
+    }
+    AlertDialog(
+        onDismissRequest = onClose,
+        shape = RoundedCornerShape(20.dp),
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.Translate,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = "AI 한글 번역",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        },
+        text = {
+            if (isTranslating) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("AI 가 본문을 한국어로 번역하고 있어요…", fontSize = 13.sp)
+                }
+            } else {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "원문",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = original.take(400) + if (original.length > 400) "…" else "",
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "한국어 번역",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = translated,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (!isTranslating) {
+                TextButton(onClick = onApply) {
+                    Text("본문에 적용", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (!isTranslating) {
+                    TextButton(onClick = copyTranslation) {
+                        Text("복사")
+                    }
+                }
+                TextButton(onClick = onClose) {
+                    Text(if (isTranslating) "닫기" else "취소")
                 }
             }
         }
