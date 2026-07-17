@@ -574,7 +574,8 @@ private fun RichTextEditorBody(
     onUpdate: (String, TextFormatting) -> Unit,
     showToolbar: Boolean,
     minLines: Int = 1,
-    singleLine: Boolean = false
+    singleLine: Boolean = false,
+    maxChars: Int = 600
 ) {
     val baseColor = MaterialTheme.colorScheme.onSurface
     // tfv 는 컴포저블 수명 동안 유지 (initialText 가 바뀌어도 재생성하지 않음).
@@ -610,12 +611,14 @@ private fun RichTextEditorBody(
         RichTextField(
             value = tfv,
             onValueChange = { newTfv ->
-                val oldText = tfv.text
-                tfv = newTfv
-                formatting = formatting.shift(oldText, newTfv.text)
-                onUpdate(newTfv.text, formatting)
-                // 사용자가 직접 입력한 경우, 외부 동기화 플래그를 현재 텍스트로 맞춤
-                lastAppliedExternalText = newTfv.text
+                if (newTfv.text.length <= maxChars || newTfv.text.length < tfv.text.length) {
+                    val oldText = tfv.text
+                    tfv = newTfv
+                    formatting = formatting.shift(oldText, newTfv.text)
+                    onUpdate(newTfv.text, formatting)
+                    // 사용자가 직접 입력한 경우, 외부 동기화 플래그를 현재 텍스트로 맞춤
+                    lastAppliedExternalText = newTfv.text
+                }
             },
             formatting = formatting,
             textStyle = baseTextStyle.copy(color = baseColor),
@@ -624,6 +627,22 @@ private fun RichTextEditorBody(
             singleLine = singleLine,
             modifier = Modifier.fillMaxWidth()
         )
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp, end = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            val charCount = tfv.text.length
+            Text(
+                text = "$charCount / ${maxChars}자",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (charCount >= maxChars) MaterialTheme.colorScheme.error 
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
         if (showToolbar) {
             Spacer(modifier = Modifier.height(6.dp))
             RichTextToolbar(

@@ -13,6 +13,9 @@ data class Goal(
     val id: String = UUID.randomUUID().toString(),
     val text: String,
     val isCompleted: Boolean = false,
+    val category: String = "일반",
+    val completedDateString: String? = null,
+    val aiCongratulationText: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -37,9 +40,9 @@ class PlannerRepository(private val context: Context) {
     fun loadGoals(): List<Goal> {
         if (!goalsFile.exists()) {
             val defaultGoals = listOf(
-                Goal(text = "매일 일기 한 장 기록하기 ✍️", isCompleted = false),
-                Goal(text = "하루에 한 번 나를 위한 명상 🧘", isCompleted = false),
-                Goal(text = "매주 3회 가볍게 운동하기 🏃", isCompleted = false)
+                Goal(text = "매일 일기 한 장 기록하기 ✍️", isCompleted = false, category = "자기개발"),
+                Goal(text = "하루에 한 번 나를 위한 명상 🧘", isCompleted = false, category = "건강"),
+                Goal(text = "매주 3회 가볍게 운동하기 🏃", isCompleted = false, category = "건강")
             )
             saveGoals(defaultGoals)
             return defaultGoals
@@ -54,6 +57,9 @@ class PlannerRepository(private val context: Context) {
                     id = obj.getString("id"),
                     text = obj.getString("text"),
                     isCompleted = obj.getBoolean("isCompleted"),
+                    category = obj.optString("category", "일반"),
+                    completedDateString = if (obj.isNull("completedDateString")) null else obj.getString("completedDateString"),
+                    aiCongratulationText = if (obj.isNull("aiCongratulationText")) null else obj.getString("aiCongratulationText"),
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis())
                 )
             }
@@ -73,6 +79,9 @@ class PlannerRepository(private val context: Context) {
                     put("id", goal.id)
                     put("text", goal.text)
                     put("isCompleted", goal.isCompleted)
+                    put("category", goal.category)
+                    put("completedDateString", goal.completedDateString ?: JSONObject.NULL)
+                    put("aiCongratulationText", goal.aiCongratulationText ?: JSONObject.NULL)
                     put("timestamp", goal.timestamp)
                 }
                 arr.put(obj)

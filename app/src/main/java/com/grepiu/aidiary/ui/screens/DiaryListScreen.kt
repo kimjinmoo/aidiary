@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -322,7 +324,7 @@ fun DiaryListScreen(
                             state = state,
                             newTaskText = newTaskText,
                             onTextChange = { newTaskText = it },
-                            onAddTask = { text, start, end, loc ->
+                            onAddTask = { text, start, end, loc, repeat, days, endDate ->
                                 if (text.isNotBlank()) {
                                     onIntent(
                                         DiaryIntent.AddPlannerTask(
@@ -330,7 +332,10 @@ fun DiaryListScreen(
                                             dateString = state.selectedDateString,
                                             startTime = start,
                                             endTime = end,
-                                            location = loc
+                                            location = loc,
+                                            isRepeat = repeat,
+                                            repeatDays = days,
+                                            repeatEndDateString = endDate
                                         )
                                     )
                                     newTaskText = ""
@@ -347,9 +352,9 @@ fun DiaryListScreen(
                             state = state,
                             newGoalText = newGoalText,
                             onTextChange = { newGoalText = it },
-                            onAddGoal = {
-                                if (newGoalText.isNotBlank()) {
-                                    onIntent(DiaryIntent.AddGoal(newGoalText))
+                            onAddGoal = { text, category ->
+                                if (text.isNotBlank()) {
+                                    onIntent(DiaryIntent.AddGoal(text, category))
                                     newGoalText = ""
                                     focusManager.clearFocus()
                                 }
@@ -918,7 +923,7 @@ fun PlannerTabContent(
     state: DiaryState,
     newTaskText: String,
     onTextChange: (String) -> Unit,
-    onAddTask: (String, String?, String?, String?) -> Unit,
+    onAddTask: (String, String?, String?, String?, Boolean, List<Int>, String?) -> Unit,
     onToggleTask: (String) -> Unit,
     onDeleteTask: (String) -> Unit
 ) {
@@ -946,6 +951,11 @@ fun PlannerTabContent(
     var locationText by remember { mutableStateOf("") }
     var isExpanded by remember { mutableStateOf(false) }
 
+    // 반복 등록 상태
+    var isRepeat by remember { mutableStateOf(false) }
+    val selectedDays = remember { mutableStateListOf<Int>() } // 1(월) .. 7(일)
+    var repeatEndDateStr by remember { mutableStateOf<String?>(null) }
+
     val showTimePicker = { isStart: Boolean ->
         val cal = Calendar.getInstance()
         val currentStr = if (isStart) startTime else endTime
@@ -972,18 +982,44 @@ fun PlannerTabContent(
         ).show()
     }
 
+    val showEndDatePicker = {
+        val cal = Calendar.getInstance()
+        if (!repeatEndDateStr.isNullOrBlank()) {
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                sdf.parse(repeatEndDateStr)?.let { cal.time = it }
+            } catch (e: Exception) {}
+        }
+        android.app.DatePickerDialog(
+            context,
+            { _, y, m, d ->
+                val formatted = String.format(Locale.getDefault(), "%04d-%02d-%02d", y, m + 1, d)
+                repeatEndDateStr = formatted
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     val handleAddTask = {
         if (newTaskText.isNotBlank()) {
             onAddTask(
                 newTaskText,
                 startTime,
                 endTime,
-                locationText.takeIf { it.isNotBlank() }
+                locationText.takeIf { it.isNotBlank() },
+                isRepeat,
+                selectedDays.toList(),
+                repeatEndDateStr
             )
             // 리셋
             startTime = null
             endTime = null
             locationText = ""
+            isRepeat = false
+            selectedDays.clear()
+            repeatEndDateStr = null
             isExpanded = false
         }
     }
@@ -1042,7 +1078,7 @@ fun PlannerTabContent(
                             Icon(
                                 imageVector = if (isExpanded) Icons.Default.Close else Icons.Default.EditNote,
                                 contentDescription = "시간/장소 설정",
-                                tint = if (isExpanded || startTime != null || endTime != null || locationText.isNotEmpty()) {
+                                tint = if (isExpanded || startTime != null || endTime != null || locationText.isNotEmpty() || isRepeat) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -1162,9 +1198,136 @@ fun PlannerTabContent(
                                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                                     unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
                                 ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth()
                             )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(bottom = 12.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+                            )
+
+                            // 1. 반복 설정 토글 스위치 형태의 칩셋 Row
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.DateRange,
+                                        contentDescription = null,
+                                        tint = if (isRepeat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "반복 계획으로 등록",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Switch(
+                                    checked = isRepeat,
+                                    onCheckedChange = { isRepeat = it },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
+                                )
+                            }
+
+                            // 2. 반복 설정이 켜졌을 때 요일 선택 및 종료일 피커 노출
+                            AnimatedVisibility(visible = isRepeat) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "반복 요일 (다중 선택)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    // 월~일 요일 토글 버튼 그룹
+                                    val daysList = listOf("월" to 1, "화" to 2, "수" to 3, "목" to 4, "금" to 5, "토" to 6, "일" to 7)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        daysList.forEach { (name, value) ->
+                                            val isSelected = selectedDays.contains(value)
+                                            Box(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(
+                                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                                        else Color.Transparent
+                                                    )
+                                                    .border(
+                                                        1.dp,
+                                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
+                                                        RoundedCornerShape(10.dp)
+                                                    )
+                                                    .clickable {
+                                                        if (isSelected) selectedDays.remove(value) else selectedDays.add(value)
+                                                    }
+                                                    .padding(vertical = 8.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = name,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 반복 종료일 선택 영역
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "반복 종료일",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+
+                                        SuggestionChip(
+                                            onClick = { showEndDatePicker() },
+                                            label = {
+                                                Text(
+                                                    text = repeatEndDateStr?.let { "종료: $it" } ?: "📅 종료일 선택",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (repeatEndDateStr != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            },
+                                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                                containerColor = if (repeatEndDateStr != null) {
+                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                                } else {
+                                                    Color.Transparent
+                                                }
+                                            )
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1388,7 +1551,7 @@ fun GoalsTabContent(
     state: DiaryState,
     newGoalText: String,
     onTextChange: (String) -> Unit,
-    onAddGoal: () -> Unit,
+    onAddGoal: (String, String) -> Unit,
     onToggleGoal: (String) -> Unit,
     onDeleteGoal: (String) -> Unit
 ) {
@@ -1399,18 +1562,33 @@ fun GoalsTabContent(
     // 프로그레스 바 애니메이션 적용
     val animatedProgress by animateFloatAsState(
         targetValue = progressRatio,
-        animationSpec = tween(durationMillis = 500),
+        animationSpec = tween(durationMillis = 600),
         label = "GoalProgressAnimation"
     )
 
+    // 카테고리 태그 선택 상태
+    val categories = listOf(
+        "일반" to Color(0xFF78909C),
+        "건강" to Color(0xFF66BB6A),
+        "공부" to Color(0xFF42A5F5),
+        "커리어" to Color(0xFFAB47BC),
+        "자산" to Color(0xFFFFA726),
+        "취미" to Color(0xFFEC407A)
+    )
+    var selectedCategory by remember { mutableStateOf("일반") }
     var isInputFocused by remember { mutableStateOf(false) }
+    var isFinishedExpanded by remember { mutableStateOf(false) }
+
+    // 진행 중인 목표와 완료된 목표 분리
+    val activeGoals = remember(state.goals) { state.goals.filter { !it.isCompleted } }
+    val completedGoalsList = remember(state.goals) { state.goals.filter { it.isCompleted } }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // A. 목표 진행률 대시보드
+        // A. 목표 진행률 대시보드 (원형 게이지 및 동적 응원 메시지 도입)
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
             ),
             border = BorderStroke(
                 width = 1.dp,
@@ -1418,112 +1596,55 @@ fun GoalsTabContent(
             ),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 1. 원형 게이지 표시
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(72.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "장기 목표 달성 현황",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = if (totalGoals > 0) "${totalGoals}개 중 ${completedGoals}개 완료" else "등록된 목표 없음",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-                        )
-                    }
-                    
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                    CircularProgressIndicator(
+                        progress = { animatedProgress },
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        strokeWidth = 7.dp,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Text(
+                        text = "${(progressRatio * 100).toInt()}%",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.width(18.dp))
 
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
-                    color = MaterialTheme.colorScheme.primary,
-                    trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(CircleShape)
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${(progressRatio * 100).toInt()}% 완료",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.End,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // B. 목표 작성 바
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-            ),
-            border = BorderStroke(
-                width = 1.dp,
-                color = if (isInputFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) 
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                OutlinedTextField(
-                    value = newGoalText,
-                    onValueChange = onTextChange,
-                    placeholder = { Text(text = "새로운 장기 목표 설정하기...", fontSize = 14.sp) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent,
-                        disabledBorderColor = Color.Transparent,
-                        errorBorderColor = Color.Transparent
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { onAddGoal() }),
-                    modifier = Modifier
-                        .weight(1f)
-                        .onFocusChanged { isInputFocused = it.isFocused }
-                )
-                
-                IconButton(
-                    onClick = onAddGoal,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "추가",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                // 2. 동적 메시지
+                Column(modifier = Modifier.weight(1f)) {
+                    val welcomeMsg = when {
+                        progressRatio >= 1.0f -> "와! 모든 목표를 달성하셨어요! 🎉"
+                        progressRatio >= 0.7f -> "정말 멋진 성취입니다! 목표 달성이 코앞이에요. 👏"
+                        progressRatio >= 0.3f -> "좋은 속도로 나아가고 있습니다. 힘내세요! 💪"
+                        progressRatio > 0f -> "시작이 반이에요! 매일 다짐을 이뤄보세요. ✨"
+                        else -> "나만의 성장 목표를 세우고 채워 나가볼까요? 🎯"
+                    }
+                    Text(
+                        text = welcomeMsg,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        lineHeight = 19.sp
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = if (totalGoals > 0) "${totalGoals}개 중 ${completedGoals}개 완료" else "등록된 다짐이 없습니다.",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -1531,45 +1652,192 @@ fun GoalsTabContent(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // C. 목표 목록
+        // B. 목표 작성 카드 (카테고리 선택 토글바 내포)
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (isInputFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                // 1. 카테고리 셀렉터 바
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    categories.forEach { (catName, catColor) ->
+                        val isCatSelected = selectedCategory == catName
+                        val catBg = if (isCatSelected) catColor.copy(alpha = 0.18f) else Color.Transparent
+                        val catBorder = if (isCatSelected) catColor.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(catBg)
+                                .border(1.dp, catBorder, RoundedCornerShape(8.dp))
+                                .clickable { selectedCategory = catName }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = catName,
+                                fontSize = 11.sp,
+                                fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isCatSelected) catColor else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 2. 텍스트 입력창
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    val currentThemeColor = categories.find { it.first == selectedCategory }?.second ?: MaterialTheme.colorScheme.primary
+                    OutlinedTextField(
+                        value = newGoalText,
+                        onValueChange = onTextChange,
+                        placeholder = { Text(text = "새로운 장기 다짐 설정하기...", fontSize = 13.5.sp) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
+                            disabledBorderColor = Color.Transparent,
+                            errorBorderColor = Color.Transparent
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            if (newGoalText.isNotBlank()) {
+                                onAddGoal(newGoalText, selectedCategory)
+                            }
+                        }),
+                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .onFocusChanged { isInputFocused = it.isFocused }
+                    )
+                    
+                    IconButton(
+                        onClick = {
+                            if (newGoalText.isNotBlank()) {
+                                onAddGoal(newGoalText, selectedCategory)
+                            }
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = currentThemeColor
+                        ),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "추가",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // C. 목표 목록 및 명예의 전당 아카이빙
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.weight(1f)
         ) {
+            // C-1. 진행 중인 다짐 섹션
             item {
                 Text(
-                    text = "나의 마일스톤 목표",
-                    fontSize = 15.sp,
+                    text = "나의 활성 다짐 (${activeGoals.size}개)",
+                    fontSize = 14.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
 
-            if (state.goals.isEmpty()) {
+            if (activeGoals.isEmpty()) {
                 item {
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(180.dp)
+                            .height(120.dp)
                     ) {
                         Text(
-                            text = "작성된 다이어리 목표가 없습니다.\n나를 성장시키는 매일의 다짐을 기록해 보세요!",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.5.sp,
-                            lineHeight = 20.sp,
+                            text = "현재 진행 중인 다짐이 없습니다.\n상단에서 나를 빛내줄 새로운 목표를 세워보세요!",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
                             textAlign = TextAlign.Center
                         )
                     }
                 }
             } else {
-                items(state.goals, key = { it.id }) { goal ->
+                items(activeGoals, key = { it.id }) { goal ->
                     GoalItemRow(
                         goal = goal,
                         onToggle = { onToggleGoal(goal.id) },
                         onDelete = { onDeleteGoal(goal.id) }
                     )
+                }
+            }
+
+            // C-2. 명예의 전당 (달성 완료 섹션)
+            if (completedGoalsList.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        onClick = { isFinishedExpanded = !isFinishedExpanded },
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "🏆 명예의 전당 (달성 완료 ${completedGoalsList.size}개)",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Icon(
+                                imageVector = if (isFinishedExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (isFinishedExpanded) {
+                    items(completedGoalsList, key = { it.id }) { goal ->
+                        GoalItemRow(
+                            goal = goal,
+                            onToggle = { onToggleGoal(goal.id) },
+                            onDelete = { onDeleteGoal(goal.id) }
+                        )
+                    }
                 }
             }
             
@@ -1581,7 +1849,7 @@ fun GoalsTabContent(
 }
 
 /**
- * 목표 목록 행 아이템
+ * 목표 목록 행 아이템 (이모지 카테고리 뱃지 및 AI 코멘트 말풍선 확장)
  */
 @Composable
 fun GoalItemRow(
@@ -1590,7 +1858,7 @@ fun GoalItemRow(
     onDelete: () -> Unit
 ) {
     val alpha by animateFloatAsState(
-        targetValue = if (goal.isCompleted) 0.55f else 1.0f,
+        targetValue = if (goal.isCompleted) 0.65f else 1.0f,
         animationSpec = tween(durationMillis = 200),
         label = "GoalAlpha"
     )
@@ -1602,76 +1870,137 @@ fun GoalItemRow(
         label = "GoalCheckScale"
     )
     val cardBgColor by animateColorAsState(
-        targetValue = if (goal.isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+        targetValue = if (goal.isCompleted) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.12f)
                       else MaterialTheme.colorScheme.surface,
         animationSpec = tween(durationMillis = 200),
         label = "GoalCardBgColor"
     )
 
+    // 카테고리별 이모지 및 색상 매핑
+    val (catEmoji, catColor) = remember(goal.category) {
+        when (goal.category) {
+            "건강" -> "🏃‍♂️" to Color(0xFF66BB6A)
+            "공부" -> "📚" to Color(0xFF42A5F5)
+            "커리어" -> "💼" to Color(0xFFAB47BC)
+            "자산" -> "💰" to Color(0xFFFFA726)
+            "취미" -> "🎨" to Color(0xFFEC407A)
+            else -> "🎯" to Color(0xFF78909C)
+        }
+    }
+
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = cardBgColor),
         border = BorderStroke(
             width = 1.dp,
-            color = if (goal.isCompleted) Color.Transparent
-                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+            color = if (goal.isCompleted) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.08f)
+                    else catColor.copy(alpha = 0.25f)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (goal.isCompleted) 0.dp else 1.5.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (goal.isCompleted) 0.dp else 2.dp),
         modifier = Modifier
             .fillMaxWidth()
             .scale(if (goal.isCompleted) 0.98f else 1.0f)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(16.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .scale(checkScale)
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (goal.isCompleted) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
-                    .clickable { onToggle() },
-                contentAlignment = Alignment.Center
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                if (goal.isCompleted) {
+                // 1. 체크박스
+                Box(
+                    modifier = Modifier
+                        .scale(checkScale)
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (goal.isCompleted) catColor
+                            else catColor.copy(alpha = 0.12f)
+                        )
+                        .clickable { onToggle() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (goal.isCompleted) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "완료",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // 2. 카테고리 이모지 뱃지
+                Text(
+                    text = catEmoji,
+                    fontSize = 15.sp,
+                    modifier = Modifier.padding(end = 4.dp)
+                )
+
+                // 3. 목표 텍스트
+                Text(
+                    text = goal.text,
+                    fontSize = 14.sp,
+                    color = if (goal.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant 
+                            else MaterialTheme.colorScheme.onSurface,
+                    textDecoration = if (goal.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
+                    fontWeight = if (goal.isCompleted) FontWeight.Normal else FontWeight.SemiBold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .alpha(alpha)
+                )
+
+                // 4. 삭제 버튼
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(28.dp)
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "완료",
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp)
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "삭제",
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Text(
-                text = goal.text,
-                fontSize = 14.sp,
-                color = if (goal.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant 
-                        else MaterialTheme.colorScheme.onSurface,
-                textDecoration = if (goal.isCompleted) TextDecoration.LineThrough else TextDecoration.None,
-                modifier = Modifier
-                    .weight(1f)
-                    .alpha(alpha)
-            )
-
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "삭제",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
+            // 5. 완료 시 AI 축하 코멘트 말풍선 영역 노출
+            if (goal.isCompleted && !goal.aiCongratulationText.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                Surface(
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
+                    color = catColor.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, catColor.copy(alpha = 0.15f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 28.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Text(
+                            text = "🤖 AI 멘토:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = catColor,
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                        Text(
+                            text = goal.aiCongratulationText,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                            lineHeight = 17.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
         }
     }

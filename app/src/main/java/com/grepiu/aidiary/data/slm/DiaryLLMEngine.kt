@@ -340,6 +340,21 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     /**
+     * 완료된 장기 목표를 축하하는 온디바이스 AI 멘토의 응원 한마디를 생성합니다.
+     */
+    suspend fun generateCongratulation(
+        goalText: String
+    ): String = withContext(Dispatchers.Default) {
+        val systemPrompt = "당신은 따뜻하고 다정하게 유저의 장기 다짐/목표 성취를 격려해주는 AI 멘토입니다. 줄바꿈 없이 반드시 1줄의 정중하고 깊은 울림을 주는 존댓말 응원 메시지만 심플하게 작성해 주세요."
+        val userPrompt = "[달성한 목표: $goalText] 를 유저가 성공적으로 마쳤습니다. 달성을 축하하고, 더 성장할 앞날을 응원하는 1줄 멘토 코멘트를 적어주세요."
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 128, temperature = 0.5)
+            .trim()
+            .removeSurrounding("\"")
+            .removeSurrounding("\'")
+            .trim()
+    }
+
+    /**
      * 리소스 정리
      */
     fun dispose() {

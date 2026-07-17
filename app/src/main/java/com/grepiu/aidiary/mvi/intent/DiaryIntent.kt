@@ -82,7 +82,7 @@ sealed interface DiaryIntent {
     /** 활성화된 탭을 변경합니다 (DIARY, PLANNER, GOALS). */
     data class ChangeTab(val tab: String) : DiaryIntent
     /** 새로운 목표를 추가합니다. */
-    data class AddGoal(val text: String) : DiaryIntent
+    data class AddGoal(val text: String, val category: String) : DiaryIntent
     /** 목표의 완료 여부를 토글합니다. */
     data class ToggleGoal(val id: String) : DiaryIntent
     /** 특정 목표를 삭제합니다. */
@@ -93,7 +93,10 @@ sealed interface DiaryIntent {
         val dateString: String,
         val startTime: String? = null,
         val endTime: String? = null,
-        val location: String? = null
+        val location: String? = null,
+        val isRepeat: Boolean = false,
+        val repeatDays: List<Int> = emptyList(),
+        val repeatEndDateString: String? = null
     ) : DiaryIntent
     /** 할 일의 완료 여부를 토글합니다. */
     data class TogglePlannerTask(val id: String) : DiaryIntent

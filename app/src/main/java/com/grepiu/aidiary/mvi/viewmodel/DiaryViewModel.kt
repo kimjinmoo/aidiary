@@ -338,17 +338,32 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.AddGoal -> {
                 _state.update { current ->
-                    val updatedGoals = current.goals + Goal(text = intent.text)
+                    val updatedGoals = current.goals + Goal(text = intent.text, category = intent.category)
                     plannerRepository.saveGoals(updatedGoals)
                     current.copy(goals = updatedGoals)
                 }
             }
             is DiaryIntent.ToggleGoal -> {
                 _state.update { current ->
+                    val targetGoal = current.goals.find { it.id == intent.id }
+                    val willBeCompleted = targetGoal?.isCompleted == false
+                    val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                    
                     val updatedGoals = current.goals.map {
-                        if (it.id == intent.id) it.copy(isCompleted = !it.isCompleted) else it
+                        if (it.id == intent.id) {
+                            it.copy(
+                                isCompleted = willBeCompleted,
+                                completedDateString = if (willBeCompleted) todayStr else null,
+                                aiCongratulationText = if (willBeCompleted) "AI 멘토가 응원 메시지를 작성하는 중입니다... 📝" else null
+                            )
+                        } else it
                     }
                     plannerRepository.saveGoals(updatedGoals)
+                    
+                    if (willBeCompleted && targetGoal != null) {
+                        generateAiCongratulation(targetGoal.id, targetGoal.text)
+                    }
+                    
                     current.copy(goals = updatedGoals)
                 }
             }
@@ -361,13 +376,51 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.AddPlannerTask -> {
                 _state.update { current ->
-                    val updatedTasks = current.plannerTasks + PlannerTask(
-                        text = intent.text,
-                        dateString = intent.dateString,
-                        startTime = intent.startTime,
-                        endTime = intent.endTime,
-                        location = intent.location
-                    )
+                    val newTasks = if (intent.isRepeat && !intent.repeatEndDateString.isNullOrBlank() && intent.repeatDays.isNotEmpty()) {
+                        try {
+                            val start = java.time.LocalDate.parse(intent.dateString)
+                            val end = java.time.LocalDate.parse(intent.repeatEndDateString)
+                            var curr = start
+                            val list = mutableListOf<PlannerTask>()
+                            while (!curr.isAfter(end)) {
+                                val dayOfWeekVal = curr.dayOfWeek.value // 1 (월) ~ 7 (일)
+                                if (intent.repeatDays.contains(dayOfWeekVal)) {
+                                    list.add(
+                                        PlannerTask(
+                                            text = intent.text,
+                                            dateString = curr.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
+                                            startTime = intent.startTime,
+                                            endTime = intent.endTime,
+                                            location = intent.location
+                                        )
+                                    )
+                                }
+                                curr = curr.plusDays(1)
+                            }
+                            list
+                        } catch (e: Exception) {
+                            listOf(
+                                PlannerTask(
+                                    text = intent.text,
+                                    dateString = intent.dateString,
+                                    startTime = intent.startTime,
+                                    endTime = intent.endTime,
+                                    location = intent.location
+                                )
+                            )
+                        }
+                    } else {
+                        listOf(
+                            PlannerTask(
+                                text = intent.text,
+                                dateString = intent.dateString,
+                                startTime = intent.startTime,
+                                endTime = intent.endTime,
+                                location = intent.location
+                            )
+                        )
+                    }
+                    val updatedTasks = current.plannerTasks + newTasks
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }
@@ -1321,6 +1374,48 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         "불안" -> "Anxiety"
         "평온" -> "Calm"
         else -> "Neutral"
+    }
+
+    /**
+     * 목표 완료 시 비동기적으로 온디바이스 AI 축하 코멘트를 생성하여 갱신합니다.
+     */
+    private fun generateAiCongratulation(goalId: String, goalText: String) {
+        if (llmEngine == null || !_state.value.isModelReady) {
+            // 모델 미준비 시 기본 멘트 매핑
+            viewModelScope.launch {
+                _state.update { current ->
+                    val updated = current.goals.map {
+                        if (it.id == goalId) it.copy(aiCongratulationText = "목표 달성을 진심으로 축하합니다! 앞으로의 여정도 응원합니다. 🎉") else it
+                    }
+                    plannerRepository.saveGoals(updated)
+                    current.copy(goals = updated)
+                }
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val message = engine.generateCongratulation(goalText)
+                _state.update { current ->
+                    val updated = current.goals.map {
+                        if (it.id == goalId) it.copy(aiCongratulationText = if (message.isNotBlank()) message else "목표 달성을 응원합니다! 고생하셨어요. 👏") else it
+                    }
+                    plannerRepository.saveGoals(updated)
+                    current.copy(goals = updated)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DiaryViewModel", "Error generating goal congratulation: ${e.message}")
+                _state.update { current ->
+                    val updated = current.goals.map {
+                        if (it.id == goalId) it.copy(aiCongratulationText = "목표 달성을 진심으로 축하합니다! 고생 많으셨습니다. 🏆") else it
+                    }
+                    plannerRepository.saveGoals(updated)
+                    current.copy(goals = updated)
+                }
+            }
+        }
     }
 
     override fun onCleared() {

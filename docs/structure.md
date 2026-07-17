@@ -55,10 +55,11 @@ app/src/main/java/com/grepiu/aidiary/
     │   ├── BlockRenderer.kt         # 읽기 전용 블록 렌더러 (TextFormatting 반영)
     │   ├── BlockEditor.kt           # 작성 화면용 블록 입력/편집 + AddBlockBar
     │   ├── RichTextField.kt         # 인라인 서식 프리뷰가 있는 텍스트 에디터 (Text + BasicTextField 오버레이)
-    │   └── RichTextToolbar.kt       # B/I/U/S 토글 + 색상 팔레트 + 크기 셀렉터
+    │   ├── RichTextToolbar.kt       # B/I/U/S 토글 + 색상 팔레트 + 크기 셀렉터
+    │   └── ConfettiOverlay.kt       # [NEW] 목표 완료 시 화면 전체에 날리는 꽃가루 애니메이션 효과 레이어
     ├── screens/
     │   ├── DiarySplashScreen.kt     # [NEW] 애니메이션 스플래시 화면
-    │   ├── DiaryListScreen.kt       # 목록 + 썸네일 + 다운로드 카드 (UI/UX 전면 개편, 감정 통계 제거, 책갈피 필터 추가)
+    │   ├── DiaryListScreen.kt       # 목록 + 썸네일 + 다운로드 카드 (UI/UX 전면 개편, 감정 통계 제거, 책갈피 필터 추가, Confetti 연동)
     │   ├── DiaryWriteScreen.kt      # 상단 제목 입력(draftTitle) + 글 타입 + 제목 스타일 + 블록 기반 작성/녹음/AI 분석 트리거
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트 (블록 렌더러 사용)
     └── theme/                       # Material3 Color/Type/Theme (Pretendard 폰트 패밀리)
