@@ -2810,135 +2810,161 @@ fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vec
 }
 
 /**
- * 상업 서비스 수준의 하단 고정 글쓰기 허브 바.
+ * 상업 서비스 수준 하단 글쓰기 허브 바 (재설계 v2).
  *
- * - [일기] [새 글] [메모] 세 타입 버튼이 가로로 배치
- * - 탭 시 해당 ContentType이 사전 선택된 채로 Write 화면 진입
- * - Glassmorphism 반투명 배경 + 상단 라운드 모서리
- * - 각 버튼: hover 스프링 스케일 애니메이션
- * - 중앙(일기) 버튼: 그라디언트 Primary 강조
+ * 구조:
+ *  1행 — "✍️ 기록하기" 대형 그라디언트 CTA 버튼 (타입 선택 없이 즉시 작성 화면 진입)
+ *  2행 — 타입 퀵셀렉 칩 [일기 · 새 글 · 메모] (선택 시 해당 타입으로 바로 진입, 강제 아님)
+ *
+ * UX 철학:
+ *  - 메인 플로우는 "기록하기" → 작성 화면 → 타입은 내부에서 AI 자동 분류 or 수동 변경
+ *  - 타입을 미리 알고 있을 때만 퀵셀렉 칩 활용
  */
 @Composable
 fun WriteActionBar(
     onWriteDiary: (ContentType) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val types = listOf(
-        Triple(ContentType.NOTE, Icons.Default.NoteAlt, "메모"),
-        Triple(ContentType.DIARY, Icons.AutoMirrored.Filled.MenuBook, "일기"),
-        Triple(ContentType.POST, Icons.Default.EditNote, "새 글")
+    // 메인 버튼 인터랙션
+    val mainInteraction = remember { MutableInteractionSource() }
+    val isMainPressed by mainInteraction.collectIsPressedAsState()
+    val mainScale by animateFloatAsState(
+        targetValue = if (isMainPressed) 0.96f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessHigh
+        ),
+        label = "MainButtonScale"
+    )
+
+    val typeChips = listOf(
+        Pair(ContentType.DIARY, "일기"),
+        Pair(ContentType.POST, "새 글"),
+        Pair(ContentType.NOTE, "메모")
     )
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
-        shadowElevation = 20.dp,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        tonalElevation = 4.dp
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 24.dp,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        tonalElevation = 3.dp
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // 상단 핸들 인디케이터
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 상단 핸들
             Box(
                 modifier = Modifier
-                    .padding(top = 10.dp)
-                    .width(36.dp)
+                    .padding(top = 12.dp, bottom = 16.dp)
+                    .width(32.dp)
                     .height(3.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f))
-                    .align(Alignment.CenterHorizontally)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // 상단 라벨
-            Text(
-                text = "새 기록 작성",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                letterSpacing = 1.sp,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(bottom = 10.dp)
-            )
-
-            // 타입별 버튼 Row
-            Row(
+            // ── 1행: 메인 CTA 버튼 ──────────────────────────────────
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .height(56.dp)
+                    .scale(mainScale)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.80f)
+                            )
+                        )
+                    )
+                    .clickable(
+                        interactionSource = mainInteraction,
+                        indication = null,
+                        onClick = { onWriteDiary(ContentType.DIARY)
+                        }
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                types.forEach { (type, _, label) ->
-                    val isCenterDiary = type == ContentType.DIARY
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EditNote,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "기록하기",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        letterSpacing = 0.3.sp
+                    )
+                }
+            }
 
-                    // 터치 인터랙션 소스
-                    val interactionSource = remember { MutableInteractionSource() }
-                    val isPressed by interactionSource.collectIsPressedAsState()
-                    val scale by animateFloatAsState(
-                        targetValue = if (isPressed) 0.93f else 1f,
+            Spacer(Modifier.height(12.dp))
+
+            // ── 2행: 타입 퀵셀렉 칩 ────────────────────────────────
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                typeChips.forEach { (type, label) ->
+                    val chipInteraction = remember { MutableInteractionSource() }
+                    val isChipPressed by chipInteraction.collectIsPressedAsState()
+                    val chipScale by animateFloatAsState(
+                        targetValue = if (isChipPressed) 0.93f else 1f,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioMediumBouncy,
                             stiffness = Spring.StiffnessHigh
                         ),
-                        label = "WriteBarButtonScale_$label"
+                        label = "ChipScale_$label"
                     )
-
-                    val (typeIcon, _, typeColor) = getContentTypeUI(type)
+                    val (chipIcon, _, chipColor) = getContentTypeUI(type)
 
                     Box(
                         modifier = Modifier
-                            .weight(if (isCenterDiary) 1.4f else 1f)
-                            .height(if (isCenterDiary) 72.dp else 64.dp)
-                            .scale(scale)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(
-                                if (isCenterDiary) {
-                                    Brush.linearGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)
-                                        )
-                                    )
-                                } else {
-                                    Brush.linearGradient(
-                                        colors = listOf(
-                                            typeColor.copy(alpha = 0.10f),
-                                            typeColor.copy(alpha = 0.06f)
-                                        )
-                                    )
-                                }
-                            )
+                            .weight(1f)
+                            .height(40.dp)
+                            .scale(chipScale)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(chipColor.copy(alpha = 0.08f))
                             .border(
-                                width = if (isCenterDiary) 0.dp else 1.dp,
-                                color = if (isCenterDiary) Color.Transparent
-                                else typeColor.copy(alpha = 0.20f),
-                                shape = RoundedCornerShape(18.dp)
+                                width = 1.dp,
+                                color = chipColor.copy(alpha = 0.18f),
+                                shape = RoundedCornerShape(12.dp)
                             )
                             .clickable(
-                                interactionSource = interactionSource,
+                                interactionSource = chipInteraction,
                                 indication = null,
-                                onClick = { onWriteDiary(type) },
-                                onClickLabel = "$label 작성"
+                                onClick = { onWriteDiary(type) }
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = typeIcon,
+                                imageVector = chipIcon,
                                 contentDescription = label,
-                                tint = if (isCenterDiary) Color.White else typeColor,
-                                modifier = Modifier.size(if (isCenterDiary) 26.dp else 22.dp)
+                                tint = chipColor,
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.height(5.dp))
+                            Spacer(Modifier.width(5.dp))
                             Text(
                                 text = label,
-                                fontSize = if (isCenterDiary) 13.sp else 11.5.sp,
-                                fontWeight = if (isCenterDiary) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isCenterDiary) Color.White else typeColor
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = chipColor
                             )
                         }
                     }
@@ -2946,7 +2972,7 @@ fun WriteActionBar(
             }
 
             // 시스템 네비게이션 바 여백
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
