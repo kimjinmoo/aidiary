@@ -18,6 +18,9 @@ import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryRepository
 import com.grepiu.aidiary.data.repository.ImageStorageManager
+import com.grepiu.aidiary.data.repository.PlannerRepository
+import com.grepiu.aidiary.data.repository.Goal
+import com.grepiu.aidiary.data.repository.PlannerTask
 import com.grepiu.aidiary.data.slm.DeviceCapabilityChecker
 import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
@@ -26,6 +29,7 @@ import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
 import com.grepiu.aidiary.mvi.state.DiaryState
+import com.grepiu.aidiary.mvi.state.ChatMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -53,12 +57,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private val downloader = ModelDownloaderV2(application)
     private val repository = DiaryRepository(application)
     private val imageStore = ImageStorageManager(application)
+    private val plannerRepository = PlannerRepository(application)
     private var llmEngine: DiaryLLMEngine? = null
     private var sherpaEngine: SherpaEngine? = null
 
     private var downloadJob: Job? = null
     private var analysisJob: Job? = null
     private var recordingJob: Job? = null
+    private var chatJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -73,6 +79,19 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     init {
         // 앱 구동 시 일기 데이터 불러오기 및 AI 모델 검사 실행
         processIntent(DiaryIntent.LoadDiaries)
+        
+        // 플래너 및 목표 데이터 불러오기
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val initialGoals = plannerRepository.loadGoals()
+        val initialTasks = plannerRepository.loadTasks()
+        _state.update { 
+            it.copy(
+                selectedDateString = todayStr,
+                goals = initialGoals,
+                plannerTasks = initialTasks
+            ) 
+        }
+
         viewModelScope.launch {
             ensureModelReady()
         }
@@ -210,6 +229,68 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.CameraImageCaptured -> {
                 importCapturedImage(intent.tempFilePath)
+            }
+
+            // ===== 플래너 및 목표 기록 =====
+            is DiaryIntent.SelectDate -> {
+                _state.update { it.copy(selectedDateString = intent.dateString) }
+            }
+            is DiaryIntent.ChangeTab -> {
+                _state.update { it.copy(activeTab = intent.tab) }
+            }
+            is DiaryIntent.AddGoal -> {
+                _state.update { current ->
+                    val updatedGoals = current.goals + Goal(text = intent.text)
+                    plannerRepository.saveGoals(updatedGoals)
+                    current.copy(goals = updatedGoals)
+                }
+            }
+            is DiaryIntent.ToggleGoal -> {
+                _state.update { current ->
+                    val updatedGoals = current.goals.map {
+                        if (it.id == intent.id) it.copy(isCompleted = !it.isCompleted) else it
+                    }
+                    plannerRepository.saveGoals(updatedGoals)
+                    current.copy(goals = updatedGoals)
+                }
+            }
+            is DiaryIntent.DeleteGoal -> {
+                _state.update { current ->
+                    val updatedGoals = current.goals.filter { it.id != intent.id }
+                    plannerRepository.saveGoals(updatedGoals)
+                    current.copy(goals = updatedGoals)
+                }
+            }
+            is DiaryIntent.AddPlannerTask -> {
+                _state.update { current ->
+                    val updatedTasks = current.plannerTasks + PlannerTask(text = intent.text, dateString = intent.dateString)
+                    plannerRepository.saveTasks(updatedTasks)
+                    current.copy(plannerTasks = updatedTasks)
+                }
+            }
+            is DiaryIntent.TogglePlannerTask -> {
+                _state.update { current ->
+                    val updatedTasks = current.plannerTasks.map {
+                        if (it.id == intent.id) it.copy(isCompleted = !it.isCompleted) else it
+                    }
+                    plannerRepository.saveTasks(updatedTasks)
+                    current.copy(plannerTasks = updatedTasks)
+                }
+            }
+            is DiaryIntent.DeletePlannerTask -> {
+                _state.update { current ->
+                    val updatedTasks = current.plannerTasks.filter { it.id != intent.id }
+                    plannerRepository.saveTasks(updatedTasks)
+                    current.copy(plannerTasks = updatedTasks)
+                }
+            }
+
+            // ===== 온디바이스 AI 챗봇 =====
+            is DiaryIntent.SendChatMessage -> {
+                runOnDeviceChat(intent.text)
+            }
+            is DiaryIntent.ClearChatHistory -> {
+                _state.update { it.copy(chatMessages = emptyList()) }
             }
         }
     }
@@ -494,6 +575,141 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 _state.update { it.copy(isGeneratingAnalysis = false) }
                 sendEffect(DiaryEffect.ShowToast("AI 분석 오류: ${e.message}"))
+            }
+        }
+    }
+
+    /**
+     * 사용자가 입력한 대화 내용을 바탕으로 캘린더 일기, 플래너, 목표 리스트로부터 로컬 RAG 검색을 수집한 뒤
+     * 온디바이스 Gemma 4 언어 모델에게 질문 및 답변 유도를 수행합니다. (스트리밍 방식 피드백)
+     */
+    private fun runOnDeviceChat(query: String) {
+        val currentState = _state.value
+        val engine = llmEngine
+        if (engine == null || !currentState.isModelReady) {
+            sendEffect(DiaryEffect.ShowToast("AI 모델이 아직 준비되지 않았습니다."))
+            return
+        }
+
+        chatJob?.cancel()
+
+        // 1. 사용자 메시지 및 AI 대기 상태 메시지를 리스트에 적재
+        val userMsg = ChatMessage("USER", query)
+        val aiMsg = ChatMessage("AI", "생각 중...")
+        _state.update { it.copy(chatMessages = it.chatMessages + userMsg + aiMsg) }
+
+        // 2. RAG 검색 수행 (텍스트 키워드 매칭)
+        val cleanQuery = query.trim().lowercase()
+        val keywords = cleanQuery.split("\\s+".toRegex())
+            .filter { it.length > 1 }
+            .map { it.replace(Regex("[은는이가을를에에서으로]"), "") }
+            .filter { it.isNotBlank() }
+
+        // 일기 매칭
+        val matchedDiaries = currentState.diaries.filter { diary ->
+            keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
+        }.take(3)
+
+        // 할 일 매칭
+        val matchedTasks = currentState.plannerTasks.filter { task ->
+            keywords.any { kw -> task.text.lowercase().contains(kw) }
+        }.take(3)
+
+        // 목표 매칭
+        val matchedGoals = currentState.goals.filter { goal ->
+            keywords.any { kw -> goal.text.lowercase().contains(kw) }
+        }.take(3)
+
+        // 매칭 결과가 전혀 없는 경우 최근 3개 데이터를 폴백 컨텍스트로 지정
+        val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) {
+            currentState.diaries.take(3)
+        } else matchedDiaries
+
+        val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) {
+            currentState.plannerTasks.take(3)
+        } else matchedTasks
+
+        val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) {
+            currentState.goals.take(3)
+        } else matchedGoals
+
+        // 3. 온디바이스 전용 프롬프트 조합 (RAG 정보 주입)
+        val systemPrompt = "당신은 사용자의 일기 내용과 일정을 기억하는 다이어리 인공지능 비서예요. " +
+                "제공되는 [컨텍스트 기록] 정보에 기반하여 사용자의 질문에만 솔직하게 답해 주세요. " +
+                "컨텍스트에 정보가 없고 대답할 수 없는 질문인 경우, 소설을 쓰지 말고 '다이어리 기록 내에서 관련 정보를 찾을 수 없어요'라고 대답하세요. " +
+                "반드시 100% 한국어로만 답변하고, '~해요'체로 상냥하고 조리 있게 대답하세요."
+
+        val userPrompt = buildString {
+            append("[컨텍스트 기록]\n")
+            if (finalDiaries.isEmpty() && finalTasks.isEmpty() && finalGoals.isEmpty()) {
+                append("- 관련 다이어리 및 플래너 기록이 없습니다.\n")
+            } else {
+                if (finalDiaries.isNotEmpty()) {
+                    append("■ 일기 기록:\n")
+                    finalDiaries.forEach { diary ->
+                        val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
+                        append("  - 날짜: $dateStr, 제목: ${diary.title}, 내용: ${diary.contentText}, 감정: ${diary.emotion}\n")
+                    }
+                }
+                if (finalTasks.isNotEmpty()) {
+                    append("■ 플래너 할 일:\n")
+                    finalTasks.forEach { task ->
+                        append("  - 계획날짜: ${task.dateString}, 내용: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
+                    }
+                }
+                if (finalGoals.isNotEmpty()) {
+                    append("■ 장기 목표:\n")
+                    finalGoals.forEach { goal ->
+                        append("  - 목표: ${goal.text}, 상태: ${if (goal.isCompleted) "완료" else "미완료"}\n")
+                    }
+                }
+            }
+            append("\n[사용자 질문]\n")
+            append("$query\n")
+        }
+
+        val prompt = "<start_of_turn>system\n$systemPrompt<end_of_turn>\n" +
+                "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
+                "<start_of_turn>model\n"
+
+        // 4. streaming 토큰 누적 수집 콜백 등록
+        var hasStartedOutput = false
+        engine.onTokenReceived = { token, done ->
+            _state.update { current ->
+                val list = current.chatMessages.toMutableList()
+                if (list.isNotEmpty()) {
+                    val last = list.last()
+                    if (last.sender == "AI") {
+                        val newText = if (!hasStartedOutput) {
+                            hasStartedOutput = true
+                            token
+                        } else {
+                            last.text + token
+                        }
+                        list[list.size - 1] = last.copy(
+                            text = newText.replace("\\n", "\n").replace("\\t", " ")
+                        )
+                    }
+                }
+                current.copy(
+                    chatMessages = list,
+                    isGeneratingChat = !done
+                )
+            }
+        }
+
+        // 5. 비동기 백그라운드 추론 구동
+        chatJob = viewModelScope.launch {
+            try {
+                engine.generateChatResponse(prompt)
+            } catch (e: Exception) {
+                _state.update { current ->
+                    val list = current.chatMessages.toMutableList()
+                    if (list.isNotEmpty() && list.last().sender == "AI") {
+                        list[list.size - 1] = list.last().copy(text = "[답변을 생성할 수 없습니다: ${e.message}]")
+                    }
+                    current.copy(chatMessages = list, isGeneratingChat = false)
+                }
             }
         }
     }

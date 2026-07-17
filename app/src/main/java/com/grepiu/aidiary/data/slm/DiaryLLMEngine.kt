@@ -123,6 +123,43 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     /**
+     * 비동기 방식으로 RAG 조합 프롬프트를 전송하여 챗봇 답변 결과를 스트리밍 형태로 콜백 전달합니다.
+     */
+    suspend fun generateChatResponse(
+        prompt: String
+    ): String = withContext(Dispatchers.Default) {
+        val builder = StringBuilder()
+        try {
+            val conversation = engine.createConversation(
+                ConversationConfig(
+                    samplerConfig = SamplerConfig(
+                        topK = 25,
+                        topP = 0.7,
+                        temperature = 0.4
+                    )
+                )
+            )
+
+            // Flow 형태로 반환되는 스트리밍 결과를 수집하여 콜백으로 전달
+            conversation.sendMessageAsync(prompt).collect { message ->
+                val token = message.toString()
+                builder.append(token)
+                onTokenReceived?.invoke(token, false)
+            }
+
+            val finalResult = builder.toString()
+            onTokenReceived?.invoke("", true) // 완료 표시 전달
+
+            conversation.close()
+            finalResult
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating chat response (backend=$backendType)", e)
+            onTokenReceived?.invoke("", true)
+            "[오류가 발생하여 답변할 수 없어요. 모델 연결 상태를 확인해 주세요]"
+        }
+    }
+
+    /**
      * 리소스 정리
      */
     fun dispose() {

@@ -31,7 +31,8 @@ app/src/main/java/com/grepiu/aidiary/
 │   │   └── TextFormatting.kt        # 인라인 서식 (bold/italic/underline/strikethrough/color/size) + AnnotatedString 변환
 │   ├── repository/
 │   │   ├── DiaryRepository.kt       # JSON 직렬화, 인메모리 캐시, 200개 상한, 일기 삭제 시 이미지 정리
-│   │   └── ImageStorageManager.kt   # URI/파일 → filesDir/diary_images/ 복사, 블록 경로 resolve/delete
+│   │   ├── ImageStorageManager.kt   # URI/파일 → filesDir/diary_images/ 복사, 블록 경로 resolve/delete
+│   │   └── PlannerRepository.kt     # 플래너 할 일(Tasks) 및 장기 목표(Goals)의 로컬 JSON 파일 영속화 관리
 │   └── slm/
 │       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
 │       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백)
@@ -140,7 +141,8 @@ app/src/main/java/com/grepiu/aidiary/
 | `DiaryLLMEngine` | LiteRT-LM 세션, 토큰 단위 스트리밍 | `dispose()` 호출 전 메모리 누수 |
 | `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM | `sherpa-onnx-zipformer-korean-2024-06-24` 고정 |
 | `ModelDownloaderV2` | HuggingFace 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 콜백 |
-| `DiaryState` | 모든 UI 상태의 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실, 평문은 `draftPlainText` 로 노출 |
+| `DiaryState` | 모든 UI 상태의 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실, 플래너/목표 및 AI 챗봇 대화 기록 동시 관리 |
+| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 | 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |
 
 ## 6. 의존성/플러그인 위치
 

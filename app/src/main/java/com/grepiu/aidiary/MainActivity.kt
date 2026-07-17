@@ -292,6 +292,7 @@ fun DiaryAppNavigationRouter(
                 onDismissWifiWarning = {
                     viewModel.processIntent(DiaryIntent.ShowWifiWarning(false))
                 },
+                onIntent = { intent -> viewModel.processIntent(intent) },
                 modifier = modifier
             )
         }

@@ -49,4 +49,28 @@ sealed interface DiaryIntent {
     data class ImagePicked(val uri: Uri) : DiaryIntent
     /** 카메라 촬영이 완료된 임시 파일을 내부 저장소로 가져와 ImageBlock 으로 추가합니다. */
     data class CameraImageCaptured(val tempFilePath: String) : DiaryIntent
+
+    // ===== 플래너 및 목표 기록 =====
+    /** 선택한 캘린더 날짜를 변경합니다. */
+    data class SelectDate(val dateString: String) : DiaryIntent
+    /** 활성화된 탭을 변경합니다 (DIARY, PLANNER, GOALS). */
+    data class ChangeTab(val tab: String) : DiaryIntent
+    /** 새로운 목표를 추가합니다. */
+    data class AddGoal(val text: String) : DiaryIntent
+    /** 목표의 완료 여부를 토글합니다. */
+    data class ToggleGoal(val id: String) : DiaryIntent
+    /** 특정 목표를 삭제합니다. */
+    data class DeleteGoal(val id: String) : DiaryIntent
+    /** 특정 날짜에 새로운 할 일을 추가합니다. */
+    data class AddPlannerTask(val text: String, val dateString: String) : DiaryIntent
+    /** 할 일의 완료 여부를 토글합니다. */
+    data class TogglePlannerTask(val id: String) : DiaryIntent
+    /** 특정 할 일을 삭제합니다. */
+    data class DeletePlannerTask(val id: String) : DiaryIntent
+
+    // ===== 온디바이스 AI 챗봇 =====
+    /** 챗봇에게 메시지를 전송합니다. */
+    data class SendChatMessage(val text: String) : DiaryIntent
+    /** 챗봇 대화 기록을 초기화합니다. */
+    data object ClearChatHistory : DiaryIntent
 }
