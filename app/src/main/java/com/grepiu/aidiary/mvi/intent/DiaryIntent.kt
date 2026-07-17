@@ -15,7 +15,6 @@ sealed interface DiaryIntent {
     data object CancelDownload : DiaryIntent
     data class NavigateTo(val phase: DiaryPhase, val selectedDiary: DiaryEntry? = null) : DiaryIntent
     data class UpdateDraft(
-        val title: String? = null,
         val content: String? = null,
         val emotion: String? = null
     ) : DiaryIntent

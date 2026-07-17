@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -158,8 +159,11 @@ fun DiaryDetailScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // 3. 일기 본문 (블록 렌더러)
+            // - 첫 HeadingBlock 의 텍스트가 세션 제목과 동일하면 중복이므로 스킵
             com.grepiu.aidiary.ui.components.BlockList(
-                blocks = diary.blocks,
+                blocks = diary.blocks.dropWhile {
+                    it is ContentBlock.HeadingBlock && it.text.trim() == diary.title.trim()
+                },
                 textColor = MaterialTheme.colorScheme.onSurface
             )
 

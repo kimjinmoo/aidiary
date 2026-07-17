@@ -395,6 +395,7 @@ fun AddBlockBar(
     onAdd: (ContentBlock) -> Unit,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
+    hasHeading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -409,7 +410,12 @@ fun AddBlockBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            AddChip(icon = Icons.Default.Title, label = "제목", onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) })
+            AddChip(
+                icon = Icons.Default.Title,
+                label = if (hasHeading) "제목(추가됨)" else "제목",
+                onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) },
+                enabled = !hasHeading
+            )
             AddChip(icon = Icons.AutoMirrored.Filled.Notes, label = "본문", onClick = { onAdd(ContentBlock.TextBlock(text = "")) })
             AddChip(icon = Icons.Default.FormatQuote, label = "인용", onClick = { onAdd(ContentBlock.QuoteBlock(text = "")) })
         }

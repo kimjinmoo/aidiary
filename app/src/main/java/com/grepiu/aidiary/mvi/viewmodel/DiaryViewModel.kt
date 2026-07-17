@@ -127,7 +127,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         // 화면 전환 시 기존 AI 피드백 텍스트 리셋
                         aiAnalysisText = if (intent.phase == DiaryPhase.WRITE) null else currentState.aiAnalysisText,
                         // 새 일기 작성 화면 진입 시 draft 값 초기화
-                        draftTitle = if (intent.phase == DiaryPhase.WRITE) "" else currentState.draftTitle,
                         draftBlocks = if (intent.phase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
                         draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
                         draftContentType = if (intent.phase == DiaryPhase.WRITE) com.grepiu.aidiary.data.model.ContentType.DIARY else currentState.draftContentType
@@ -137,7 +136,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             is DiaryIntent.UpdateDraft -> {
                 _state.update { currentState ->
                     currentState.copy(
-                        draftTitle = intent.title ?: currentState.draftTitle,
                         draftEmotion = intent.emotion ?: currentState.draftEmotion
                     )
                 }
@@ -185,6 +183,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
             // ===== 블록 기반 콘텐츠 =====
             is DiaryIntent.AddBlock -> {
+                // HeadingBlock 은 단일만 허용 (두 번째 추가는 무시 + 토스트)
+                if (intent.block is ContentBlock.HeadingBlock && _state.value.hasHeadingBlock) {
+                    sendEffect(DiaryEffect.ShowToast("제목 블록은 한 글에 1개만 추가할 수 있어요."))
+                    return
+                }
                 _state.update { it.copy(draftBlocks = it.draftBlocks + intent.block) }
             }
             is DiaryIntent.InsertBlock -> {
@@ -588,7 +591,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val dateStr = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN).format(Date())
                 engine.generateAnalysis(
-                    title = currentState.draftTitle,
+                    title = currentState.sessionTitle,
                     content = plain,
                     dateString = dateStr
                 )
@@ -611,13 +614,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun suggestTitleFromBody() {
-        val plain = _state.value.draftPlainText
+        val state = _state.value
+        val plain = state.draftPlainText
         if (plain.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("제목 추천을 위해 본문을 먼저 작성해주세요."))
             return
         }
         if (!requireReadyModel()) return
-        if (_state.value.isSuggestingTitle) return
+        if (state.isSuggestingTitle) return
 
         _state.update { it.copy(isSuggestingTitle = true) }
         viewModelScope.launch {
@@ -625,7 +629,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 val engine = llmEngine ?: return@launch
                 val title = engine.suggestTitle(plain)
                 if (title.isNotBlank()) {
-                    _state.update { it.copy(draftTitle = title) }
+                    applyTitleToFirstHeading(title)
                     sendEffect(DiaryEffect.ShowToast("AI 추천 제목을 적용했어요."))
                 } else {
                     sendEffect(DiaryEffect.ShowToast("제목을 만들지 못했어요. 다시 시도해 주세요."))
@@ -635,6 +639,24 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _state.update { it.copy(isSuggestingTitle = false) }
             }
+        }
+    }
+
+    /**
+     * AI 추천 제목을 첫 HeadingBlock 에 적용합니다. 없으면 새로 만듭니다.
+     * (단일 HeadingBlock 정책 - 두 번째 생성은 차단)
+     */
+    private fun applyTitleToFirstHeading(title: String) {
+        _state.update { current ->
+            val blocks = current.draftBlocks.toMutableList()
+            val firstHeadingIdx = blocks.indexOfFirst { it is ContentBlock.HeadingBlock }
+            if (firstHeadingIdx >= 0) {
+                val existing = blocks[firstHeadingIdx] as ContentBlock.HeadingBlock
+                blocks[firstHeadingIdx] = existing.copy(text = title)
+            } else {
+                blocks.add(0, ContentBlock.HeadingBlock(text = title))
+            }
+            current.copy(draftBlocks = blocks)
         }
     }
 
@@ -1144,9 +1166,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 제목이 비어 있으면 자동 입력 유도 (저장 차단 + 사용자에게 알림)
-        if (currentState.draftTitle.isBlank()) {
-            sendEffect(DiaryEffect.ShowToast("제목을 입력하거나 'AI 제목' 버튼으로 자동 생성해주세요."))
+        // 세션 제목(첫 HeadingBlock) 비어있으면 자동 입력 유도
+        if (currentState.sessionTitle.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("제목 블록을 추가하고 입력하거나 'AI 제목' 버튼으로 자동 생성해주세요."))
             return
         }
 
@@ -1157,7 +1179,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val newEntry = DiaryEntry(
-            title = currentState.draftTitle.trim(),
+            title = currentState.sessionTitle,
             blocks = currentState.draftBlocks,
             content = plain,
             emotion = finalEmotion,
@@ -1170,7 +1192,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 diaries = updated,
                 phase = DiaryPhase.LIST,
-                draftTitle = "",
                 draftBlocks = emptyList(),
                 draftEmotion = "Neutral",
                 draftContentType = com.grepiu.aidiary.data.model.ContentType.DIARY,

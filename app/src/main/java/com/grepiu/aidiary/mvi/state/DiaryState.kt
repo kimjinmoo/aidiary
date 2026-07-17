@@ -32,8 +32,7 @@ data class DiaryState(
     val activeTab: String = "DIARY",                         // 현재 활성화된 탭 (DIARY, PLANNER, GOALS)
 
     // 작성/수정 중인 임시 일기 상태
-    val draftTitle: String = "",
-    val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문
+    val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문 (HeadingBlock 첫 항목이 세션 제목)
     val draftEmotion: String = "Neutral",
     val draftContentType: ContentType = ContentType.DIARY,
 
@@ -82,6 +81,20 @@ data class DiaryState(
      */
     val draftPlainText: String
         get() = draftBlocks.extractPlainText()
+
+    /**
+     * 세션 제목으로 사용되는 첫 HeadingBlock 의 텍스트.
+     * 없으면 빈 문자열 (저장 차단 트리거에 사용).
+     */
+    val sessionTitle: String
+        get() = (draftBlocks.firstOrNull { it is ContentBlock.HeadingBlock } as? ContentBlock.HeadingBlock)
+            ?.text
+            ?.trim()
+            .orEmpty()
+
+    /** 첫 HeadingBlock 존재 여부 (AddBlockBar 의 제목 칩 활성/비활성 가드). */
+    val hasHeadingBlock: Boolean
+        get() = draftBlocks.any { it is ContentBlock.HeadingBlock }
 }
 
 /**

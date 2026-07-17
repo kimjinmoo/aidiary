@@ -299,9 +299,6 @@ fun DiaryAppNavigationRouter(
         DiaryPhase.WRITE -> {
             DiaryWriteScreen(
                 state = state,
-                onTitleChange = { title ->
-                    viewModel.processIntent(DiaryIntent.UpdateDraft(title = title))
-                },
                 onContentTypeChange = { contentType ->
                     viewModel.processIntent(DiaryIntent.UpdateDraftType(contentType))
                 },

@@ -72,7 +72,6 @@ import com.grepiu.aidiary.ui.components.BlockEditor
 @Composable
 fun DiaryWriteScreen(
     state: DiaryState,
-    onTitleChange: (String) -> Unit,
     onContentTypeChange: (ContentType) -> Unit,
     onAddBlock: (ContentBlock) -> Unit,
     onInsertBlock: (Int, ContentBlock) -> Unit,
@@ -97,14 +96,14 @@ fun DiaryWriteScreen(
     val view = LocalView.current
     view.keepScreenOn = state.isRecording
 
-    val canSave = state.draftBlocks.any { block ->
-        when (block) {
-            is ContentBlock.HeadingBlock -> block.text.isNotBlank()
-            is ContentBlock.TextBlock -> block.text.isNotBlank()
-            is ContentBlock.QuoteBlock -> block.text.isNotBlank()
-            else -> true
-        }
-    } && !state.isGeneratingAnalysis
+    val canSave = state.sessionTitle.isNotBlank() &&
+        state.draftBlocks.any { block ->
+            when (block) {
+                is ContentBlock.TextBlock -> block.text.isNotBlank()
+                is ContentBlock.QuoteBlock -> block.text.isNotBlank()
+                else -> false
+            }
+        } && !state.isGeneratingAnalysis
 
     Scaffold(
         topBar = {
@@ -151,44 +150,8 @@ fun DiaryWriteScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 1. 일기 제목 입력 + AI 추천 버튼 (필수)
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = state.draftTitle,
-                    onValueChange = onTitleChange,
-                    label = { Text("일기 제목 *") },
-                    placeholder = { Text("직접 입력하거나 'AI 제목' 버튼") },
-                    supportingText = {
-                        Text(
-                            text = "저장하려면 제목이 필요해요",
-                            fontSize = 11.sp,
-                            color = if (state.draftTitle.isBlank())
-                                MaterialTheme.colorScheme.error
-                            else
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    isError = state.draftTitle.isBlank(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    modifier = Modifier.weight(1f)
-                )
-                AiAssistIconButton(
-                    label = "AI 제목",
-                    loading = state.isSuggestingTitle,
-                    enabled = state.isModelReady && !state.isSuggestingTitle && state.draftPlainText.isNotBlank(),
-                    onClick = onSuggestTitle
-                )
-            }
+            // (제목은 블록 에디터의 첫 HeadingBlock 으로 통합 — 상단 별도 입력란 제거)
 
-            Spacer(modifier = Modifier.height(16.dp))
 
             // 1.5 콘텐츠 타입 선택 + AI 자동 분류 버튼
             ContentTypeSelector(
@@ -207,13 +170,30 @@ fun DiaryWriteScreen(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "아래 + 버튼으로 첫 블록을 추가해 보세요. 본문·제목·인용·이미지·구분선을 자유롭게 조합할 수 있어요.",
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(14.dp)
-                    )
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "본문은 블록 단위로 구성돼요. 첫 블록은 '제목' (한 글에 1개) 으로 시작해서 글의 성격을 정해주세요.",
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AiAssistIconButton(
+                                label = "AI 제목",
+                                loading = state.isSuggestingTitle,
+                                enabled = state.isModelReady && !state.isSuggestingTitle,
+                                onClick = onSuggestTitle
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "본문 없이도 AI 가 추천 제목을 만들어 첫 블록으로 추가해요.",
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -253,7 +233,8 @@ fun DiaryWriteScreen(
                 canAddImage = !state.isImportingImage,
                 onAdd = onAddBlock,
                 onPickGallery = onPickGallery,
-                onTakePhoto = onTakePhoto
+                onTakePhoto = onTakePhoto,
+                hasHeading = state.hasHeadingBlock
             )
 
             if (state.isImportingImage) {
