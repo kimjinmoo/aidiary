@@ -291,27 +291,29 @@ object LLMContextBuilder {
 
     /**
      * 직전 N 턴 + 그 이전 요약을 결합한 멀티턴 chat 컨텍스트 빌더.
-     * @param priorSummary 이전 N+1 번째 턴 이전의 누적 요약
-     * @param olderTurns 우선순위에서 밀린 과거 턴 (최근 1~2개만 raw, 더 오래된 건 summary 됨)
+     * 2B 모델(1024 토큰) 환경에서 토큰 폭주를 막기 위해 각 turn 200자로 제한한다.
+     *
+     * @param priorSummary 이전 N+1 번째 턴 이전의 누적 요약 (이미 60자 이내로 압축됨)
+     * @param allTurns 전체 (USER,AI) 페어
      * @param maxRecentRaw 최근 raw 로 유지할 최대 (사용자,AI) 페어 수
      */
     fun buildChatMultiTurnContext(
         priorSummary: String?,
         allTurns: List<Pair<String, String>>,
-        maxRecentRaw: Int = 2
+        maxRecentRaw: Int = 1
     ): String {
         if (allTurns.isEmpty() && priorSummary.isNullOrBlank()) return ""
         val sb = StringBuilder()
         if (!priorSummary.isNullOrBlank()) {
-            sb.append("[이전 대화 요약]\n").append(priorSummary.trim()).append("\n\n")
+            sb.append("[이전 대화 요약]\n").append(priorSummary.trim().take(120)).append("\n\n")
         }
         val olderForSummary = if (allTurns.size > maxRecentRaw) allTurns.dropLast(maxRecentRaw) else emptyList()
         if (olderForSummary.isNotEmpty() && priorSummary.isNullOrBlank()) {
             // priorSummary 가 비어 있으면 한 줄 fallback 요약을 만들어 둔다
             sb.append("[이전 대화 요약]\n")
-            olderForSummary.takeLast(6).forEach { (role, text) ->
+            olderForSummary.takeLast(4).forEach { (role, text) ->
                 sb.append(if (role == "USER") "사용자: " else "AI: ")
-                sb.append(text.trim().take(120))
+                sb.append(text.trim().take(80))
                 sb.append('\n')
             }
             sb.append("\n")
@@ -321,7 +323,7 @@ object LLMContextBuilder {
             sb.append("[최근 대화]\n")
             recent.forEach { (role, text) ->
                 sb.append(if (role == "USER") "사용자: " else "AI: ")
-                sb.append(text.trim().take(500))
+                sb.append(text.trim().take(200))
                 sb.append('\n')
             }
         }

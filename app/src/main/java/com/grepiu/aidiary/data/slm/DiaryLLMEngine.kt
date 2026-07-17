@@ -49,11 +49,24 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
          */
         const val MAX_BLOCK_AI_INPUT_CHARS = 600
 
-        /** 챗봇 멀티턴 윈도우: 최근 raw 로 유지할 (user,ai) 페어 수. */
-        const val CHAT_RECENT_RAW_TURNS = 2
+        /** 챗봇 멀티턴 윈도우: 최근 raw 로 유지할 (user,ai) 페어 수. 2B 모델은 1 페어가 안전. */
+        const val CHAT_RECENT_RAW_TURNS = 1
 
         /** 챗봇 이력 누적 임계치. 이보다 커지면 앞쪽을 1줄 요약으로 압축. */
-        const val CHAT_SUMMARY_TRIGGER_TURNS = 6
+        const val CHAT_SUMMARY_TRIGGER_TURNS = 4
+
+        /**
+         * 챗봇 user prompt 안전 상한 (문자수). 1024 토큰 한도에서
+         *  - system 200자 / 출력 예약 200 토큰 / 여유 100 토큰 제외 →
+         *  입력 가능 ≈ 700 토큰 ≈ 1000~1100자 (한국어 1.5 chars/token).
+         */
+        const val MAX_CHAT_PROMPT_CHARS = 1100
+
+        /**
+         * 챗봇 Conversation 내부 누적 토큰 폭주 방지용 리셋 주기.
+         * N 턴마다 close + 재생성하여 LiteRT-LM Conversation 의 내부 history 를 비운다.
+         */
+        const val CHAT_CONVERSATION_RESET_TURNS = 4
 
         /**
          * 통합 (분류+감정) 결과.
@@ -295,11 +308,19 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
 
     // ===== 챗봇 멀티턴 =====
 
+    private var chatTurnCounter: Int = 0
+
     /**
      * RAG 컨텍스트를 주입한 멀티턴 챗봇 응답. 동일 Conversation 을 재사용하여
      * 최근 raw N턴 + 그 이전 요약을 컨텍스트로 보존한다.
      *
-     * @param contextBlock [LLMContextBuilder.chat] 형식으로 빌드된 컨텍스트
+     * v2.1 안전장치:
+     *  - 매 N 턴마다 Conversation 을 close + 재생성하여 LiteRT-LM 내부 history 누적 방지
+     *  - user prompt 총 문자수가 [MAX_CHAT_PROMPT_CHARS] 를 넘으면
+     *    1) 멀티턴 컨텍스트 제거 → 2) RAG 컨텍스트 절반 축소 → 3) 그래도 안되면 query 만 전송
+     *    순으로 점진적 드롭하여 1024 토큰 한도 초과 방지
+     *
+     * @param contextBlock [DiaryLLMEngine.buildChatContextBlock] 으로 빌드된 RAG 컨텍스트
      * @param userQuery 현재 사용자 질문
      * @return AI 응답
      */
@@ -307,58 +328,97 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
         contextBlock: String,
         userQuery: String
     ): String = withContext(Dispatchers.Default) {
-        // 1) Conversation 확보/재생성
-        val conversation = ensureChatConversation()
-        // 2) 사용자 발화 누적
-        chatHistory.add("USER" to userQuery)
-
-        // 3) 임계치 초과 시 앞쪽을 1줄 요약으로 압축
-        if (chatHistory.size > CHAT_SUMMARY_TRIGGER_TURNS) {
-            compressChatHistory()
-        }
-
-        // 4) 현재 컨텍스트 블록 (이전 요약 + 최근 raw 턴 + RAG + 현재 질문)
-        val rollingContext = LLMContextBuilder.buildChatMultiTurnContext(
-            priorSummary = chatPriorSummary,
-            allTurns = chatHistory.takeLast(CHAT_RECENT_RAW_TURNS * 2),
-            maxRecentRaw = CHAT_RECENT_RAW_TURNS
-        )
         val system = "당신은 사용자의 일기 내용과 일정을 기억하는 다이어리 인공지능 비서예요. " +
                 "제공되는 [컨텍스트] 와 [이전 대화] 에 기반하여 사용자의 질문에만 정직하게 대답해야 해요. " +
                 "**필독 규칙**: 절대로 사용자의 일정이나 일기를 상상해서 지어내어 거짓으로 답변하지 마세요. " +
                 "오늘의 할 일 목록에 해당하는 일정이 없다면, 가상 일정을 만들지 말고 '오늘 계획된 일정이 등록되어 있지 않아요'라고 솔직하게 대답하세요. " +
                 "반드시 100% 한국어로만 답변하고, '~해요'체로 상냥하고 간결하게 대답하세요."
 
-        val userPrompt = buildString {
-            if (rollingContext.isNotBlank()) {
-                append(rollingContext).append("\n\n")
-            }
-            append(contextBlock).append("\n\n")
-            append("[현재 질문]\n").append(userQuery).append("\n\n[답변]")
+        // 1) 주기적 Conversation 리셋 (내부 history 누적 방지)
+        if (chatTurnCounter >= CHAT_CONVERSATION_RESET_TURNS) {
+            try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
+            chatTurnCounter = 0
+        }
+        val conversation = ensureChatConversation()
+        chatTurnCounter++
+
+        // 2) 사용자 발화 누적
+        chatHistory.add("USER" to userQuery)
+        if (chatHistory.size > CHAT_SUMMARY_TRIGGER_TURNS) {
+            compressChatHistory()
         }
 
-        val prompt = "<start_of_turn>system\n$system<end_of_turn>\n" +
-                "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
-                "<start_of_turn>model\n"
+        // 3) 컨텍스트 조합: 3단계 점진 드롭 (full → RAG only → query only)
+        val strategies = listOf(
+            ContextStrategy.FULL,
+            ContextStrategy.RAG_ONLY,
+            ContextStrategy.QUERY_ONLY
+        )
+        var lastError: Throwable? = null
+        var response: String? = null
 
-        val builder = StringBuilder()
-        try {
-            conversation.sendMessageAsync(prompt).collect { message ->
-                val token = message.toString()
-                builder.append(token)
-                onTokenReceived?.invoke(token, false)
+        for (strategy in strategies) {
+            val userPrompt = buildChatUserPrompt(strategy, contextBlock, userQuery)
+            val totalChars = system.length + userPrompt.length
+            if (totalChars > MAX_CHAT_PROMPT_CHARS && strategy == ContextStrategy.QUERY_ONLY) {
+                // 마지막 단계(QUERY_ONLY)도 너무 길면 그냥 안전 메시지
+                Log.w(TAG, "Chat prompt overflow: $totalChars > $MAX_CHAT_PROMPT_CHARS chars (query=${userQuery.length})")
+                response = "질문이 너무 길거나 컨텍스트가 너무 커서 답변할 수 없어요. 짧게 다시 질문해 주세요."
+                onTokenReceived?.invoke(response, true)
+                return@withContext response
             }
-            onTokenReceived?.invoke("", true)
-            val final = builder.toString()
-            chatHistory.add("AI" to final)
-            final
-        } catch (e: Exception) {
-            Log.e(TAG, "Error generating chat response (backend=$backendType)", e)
-            onTokenReceived?.invoke("", true)
-            // 실패 시 컨버세이션 리셋하여 다음 턴부터 깨끗하게 시작
-            try { conversation.close() } catch (_: Exception) {}
-            chatConversation.set(null)
-            "[오류가 발생하여 답변할 수 없어요. 모델 연결 상태를 확인해 주세요]"
+            val prompt = "<start_of_turn>system\n$system<end_of_turn>\n" +
+                    "<start_of_turn>user\n$userPrompt<end_of_turn>\n" +
+                    "<start_of_turn>model\n"
+            Log.d(TAG, "Chat prompt strategy=$strategy chars=$totalChars")
+
+            val builder = StringBuilder()
+            try {
+                conversation.sendMessageAsync(prompt).collect { message ->
+                    val token = message.toString()
+                    builder.append(token)
+                    onTokenReceived?.invoke(token, false)
+                }
+                onTokenReceived?.invoke("", true)
+                val final = builder.toString()
+                chatHistory.add("AI" to final)
+                return@withContext final
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(TAG, "Chat prompt failed at strategy=$strategy (${e.message}); trying next fallback")
+                // 다음 전략 시도 — Conversation 은 그대로 두고 (LiteRT-LM 이 내부 상태는 유지)
+            }
+        }
+
+        // 모든 전략 실패 → 컨버세이션 리셋 후 안전 메시지
+        Log.e(TAG, "Error generating chat response (backend=$backendType)", lastError)
+        onTokenReceived?.invoke("", true)
+        try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
+        chatTurnCounter = 0
+        "[오류가 발생하여 답변할 수 없어요. 잠시 후 다시 시도해 주세요]"
+    }
+
+    private enum class ContextStrategy { FULL, RAG_ONLY, QUERY_ONLY }
+
+    private fun buildChatUserPrompt(
+        strategy: ContextStrategy,
+        contextBlock: String,
+        userQuery: String
+    ): String {
+        if (strategy == ContextStrategy.QUERY_ONLY) {
+            return "[현재 질문]\n$userQuery\n\n[답변]"
+        }
+        val rollingContext = if (strategy == ContextStrategy.FULL) {
+            LLMContextBuilder.buildChatMultiTurnContext(
+                priorSummary = chatPriorSummary,
+                allTurns = chatHistory.takeLast(CHAT_RECENT_RAW_TURNS * 2),
+                maxRecentRaw = CHAT_RECENT_RAW_TURNS
+            )
+        } else ""
+        return buildString {
+            if (rollingContext.isNotBlank()) append(rollingContext).append("\n\n")
+            append(contextBlock).append("\n\n")
+            append("[현재 질문]\n").append(userQuery).append("\n\n[답변]")
         }
     }
 
@@ -411,10 +471,11 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
      * 챗봇 이력 초기화 (ClearChatHistory 인텐트에서 호출).
      */
     fun clearChat() {
-        try { chatConversation.get()?.close() } catch (_: Exception) {}
+        try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
         chatConversation.set(null)
         chatHistory.clear()
         chatPriorSummary = null
+        chatTurnCounter = 0
     }
 
     private fun ensureChatConversation(): Conversation {
@@ -521,6 +582,7 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
         try { chatConversation.getAndSet(null)?.close() } catch (_: Exception) {}
         chatHistory.clear()
         chatPriorSummary = null
+        chatTurnCounter = 0
         try {
             engine.close()
         } catch (e: Exception) {

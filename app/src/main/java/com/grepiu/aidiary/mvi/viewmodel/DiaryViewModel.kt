@@ -1470,34 +1470,36 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             .map { it.replace(Regex("[은는이가을를에에서으로]"), "") }
             .filter { it.isNotBlank() }
 
+        // 챗봇 전용 RAG 한도 (2B 모델 + 멀티턴 컨텍스트 환경에 맞춤)
         val ftsHits = repository.searchDiaries(query, limit = 30)
         val matchedDiaries: List<DiaryEntry> = when {
             ftsHits.isNotEmpty() -> ftsHits.mapNotNull { hit -> currentState.diaries.firstOrNull { it.id == hit.id } }
-                .take(DIARY_CONTEXT_LIMIT)
+                .take(CHAT_DIARY_CONTEXT_LIMIT)
             keywords.isNotEmpty() -> currentState.diaries.filter { diary ->
                 keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
-            }.take(DIARY_CONTEXT_LIMIT)
-            else -> currentState.diaries.take(DIARY_CONTEXT_LIMIT)
+            }.take(CHAT_DIARY_CONTEXT_LIMIT)
+            else -> currentState.diaries.take(CHAT_DIARY_CONTEXT_LIMIT)
         }
         val matchedTasks = currentState.plannerTasks.filter { task ->
             keywords.any { kw -> task.text.lowercase().contains(kw) }
-        }.take(TASK_CONTEXT_LIMIT)
+        }.take(CHAT_TASK_CONTEXT_LIMIT)
         val matchedGoals = currentState.goals.filter { goal ->
             keywords.any { kw -> goal.text.lowercase().contains(kw) }
-        }.take(GOAL_CONTEXT_LIMIT)
+        }.take(CHAT_GOAL_CONTEXT_LIMIT)
 
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val todayTasks = currentState.plannerTasks.filter { it.dateString == todayStr }
         val selectedDateStr = currentState.selectedDateString
         val selectedDateTasks = currentState.plannerTasks.filter { it.dateString == selectedDateStr }
 
-        val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) currentState.diaries.take(DIARY_CONTEXT_LIMIT) else matchedDiaries
-        val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) currentState.plannerTasks.take(TASK_CONTEXT_LIMIT) else matchedTasks
-        val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) currentState.goals.take(GOAL_CONTEXT_LIMIT) else matchedGoals
+        val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) currentState.diaries.take(CHAT_DIARY_CONTEXT_LIMIT) else matchedDiaries
+        val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) currentState.plannerTasks.take(CHAT_TASK_CONTEXT_LIMIT) else matchedTasks
+        val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) currentState.goals.take(CHAT_GOAL_CONTEXT_LIMIT) else matchedGoals
 
+        // 일기 본문은 80자로 강제 truncate → 토큰 폭주 방지
         val diaryLines = finalDiaries.map { diary ->
             val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
-            "날짜: $dateStr, 제목: ${diary.title}, 본문: ${com.grepiu.aidiary.data.slm.LLMContextBuilder.truncateChars(diary.contentText, 280)}, 감정: ${diary.emotion}"
+            "날짜: $dateStr, 제목: ${diary.title}, 본문: ${com.grepiu.aidiary.data.slm.LLMContextBuilder.truncateChars(diary.contentText, CHAT_DIARY_CONTENT_CHARS)}, 감정: ${diary.emotion}"
         }
         val taskLinesToday = todayTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
         val taskLinesSelected = selectedDateTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
@@ -1514,7 +1516,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             matchedGoals = goalLines
         )
 
-        // 4. streaming 토큰 누적 수집 콜백 등록
         var hasStartedOutput = false
         engine.onTokenReceived = { token, done ->
             _state.update { current ->
@@ -1540,7 +1541,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // 5. 비동기 백그라운드 추론 구동 (멀티턴 Conversation 내부 재사용)
         chatJob = viewModelScope.launch {
             try {
                 engine.generateChatResponse(contextBlock, query)
@@ -2079,6 +2079,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         private const val DIARY_CONTEXT_LIMIT = 15
         private const val TASK_CONTEXT_LIMIT = 5
         private const val GOAL_CONTEXT_LIMIT = 5
+
+        // 챗봇 RAG 전용 한도. 2B 모델(1024 토큰) 환경에서 RAG 컨텍스트가
+        // system + 멀티턴 + query 와 합쳐 한도를 넘지 않도록 더 작게 설정.
+        // 일기 본문은 [CHAT_DIARY_CONTENT_CHARS] 자로 강제 truncate.
+        private const val CHAT_DIARY_CONTEXT_LIMIT = 3
+        private const val CHAT_TASK_CONTEXT_LIMIT = 3
+        private const val CHAT_GOAL_CONTEXT_LIMIT = 3
+        private const val CHAT_DIARY_CONTENT_CHARS = 80
 
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
