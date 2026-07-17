@@ -451,7 +451,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             is DiaryIntent.SuggestPlannerTask -> {
-                suggestPlannerTaskName()
+                suggestPlannerTaskName(
+                    startTime = intent.startTime,
+                    endTime = intent.endTime,
+                    location = intent.location,
+                    isRepeat = intent.isRepeat,
+                    repeatDays = intent.repeatDays,
+                    repeatEndDateString = intent.repeatEndDateString
+                )
             }
             is DiaryIntent.ClearSuggestedPlannerTask -> {
                 _state.update { it.copy(suggestedPlannerTaskText = null) }
@@ -760,17 +767,33 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 선택된 날짜의 기존 계획(시간·장소 포함), 장기 목표, 최근 일기 내용을
-     * LLM 컨텍스트로 조합해 오늘의 플래너 할 일 1건을 추천하도록 요청합니다.
+     * 선택된 날짜 + 사용자가 지금 입력 중인 시간/장소/반복 조건(1순위),
+     * 같은 날 기존 계획/장기 목표/최근 일기(2~4순위) 를 종합해
+     * 오늘의 플래너 할 일 1건을 LLM 으로 추천하도록 요청합니다.
      * 결과는 [DiaryState.suggestedPlannerTaskText] 에 1회성으로 저장되어
      * UI 가 [DiaryIntent.ClearSuggestedPlannerTask] 를 보내면 비워집니다.
      */
-    private fun suggestPlannerTaskName() {
+    private fun suggestPlannerTaskName(
+        startTime: String?,
+        endTime: String?,
+        location: String?,
+        isRepeat: Boolean,
+        repeatDays: List<Int>,
+        repeatEndDateString: String?
+    ) {
         val state = _state.value
         if (!requireReadyModel()) return
         if (state.isSuggestingPlannerTask) return
 
-        val context = buildPlannerTaskContext(state)
+        val context = buildPlannerTaskContext(
+            state = state,
+            startTime = startTime,
+            endTime = endTime,
+            location = location,
+            isRepeat = isRepeat,
+            repeatDays = repeatDays,
+            repeatEndDateString = repeatEndDateString
+        )
         if (context.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("추천을 위한 컨텍스트가 부족해요."))
             return
@@ -797,12 +820,21 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * LLM 에게 줄 플래너 추천 컨텍스트 문자열을 만듭니다.
-     *  - 날짜/요일
-     *  - 같은 날 이미 등록된 계획(시간/장소 포함)
-     *  - 미완료 장기 목표
-     *  - 최근 일기 평문 (최대 3건)
+     * 우선순위는 다음과 같습니다.
+     *  - 1순위: 사용자가 지금 입력 중인 조건 (날짜, 시작/종료 시간, 장소, 반복 요일·종료일)
+     *  - 2순위: 같은 날 이미 등록된 계획(시간·장소 포함)
+     *  - 3순위: 미완료 장기 목표 (최대 5건)
+     *  - 4순위: 최근 일기 평문 (최대 3건, 각 120자)
      */
-    private fun buildPlannerTaskContext(state: DiaryState): String {
+    private fun buildPlannerTaskContext(
+        state: DiaryState,
+        startTime: String?,
+        endTime: String?,
+        location: String?,
+        isRepeat: Boolean,
+        repeatDays: List<Int>,
+        repeatEndDateString: String?
+    ): String {
         val dayOfWeek = try {
             val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREAN)
                 .parse(state.selectedDateString)
@@ -813,6 +845,34 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             state.selectedDateString
         }
 
+        // 1순위: 사용자가 지금 입력 중인 조건
+        val currentInput = buildString {
+            append("- 날짜: $dayOfWeek\n")
+            val hasTime = !startTime.isNullOrBlank() || !endTime.isNullOrBlank()
+            if (hasTime) {
+                val timeText = buildString {
+                    if (!startTime.isNullOrBlank()) append(startTime)
+                    if (!endTime.isNullOrBlank()) {
+                        if (isNotEmpty()) append(" ~ ")
+                        append(endTime)
+                    }
+                }
+                append("- 시간: $timeText\n")
+            }
+            if (!location.isNullOrBlank()) {
+                append("- 장소: $location\n")
+            }
+            if (isRepeat && repeatDays.isNotEmpty()) {
+                val dayNames = repeatDays.sorted()
+                    .joinToString(", ") { plannerDayOfWeekName(it) }
+                append("- 반복 요일: $dayNames\n")
+                if (!repeatEndDateString.isNullOrBlank()) {
+                    append("- 반복 종료일: $repeatEndDateString\n")
+                }
+            }
+        }
+
+        // 2순위: 같은 날 이미 등록된 계획
         val existingTasks = state.plannerTasks
             .filter { it.dateString == state.selectedDateString }
             .joinToString("\n") { task ->
@@ -824,11 +884,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 "- ${task.text}$timePart$locPart"
             }
 
+        // 3순위: 미완료 장기 목표
         val openGoals = state.goals
             .filter { !it.isCompleted }
             .take(5)
             .joinToString("\n") { "- ${it.text}" }
 
+        // 4순위: 최근 일기 평문
         val recentDiaries = state.diaries
             .take(3)
             .joinToString("\n") { entry ->
@@ -837,19 +899,33 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
 
         return buildString {
-            append("날짜: $dayOfWeek\n")
+            append("[1순위: 사용자가 지금 입력 중인 조건]\n")
+            append(currentInput)
             if (existingTasks.isNotBlank()) {
-                append("\n[이 날 이미 등록된 계획]\n$existingTasks\n")
+                append("\n[2순위: 이 날 이미 등록된 계획]\n$existingTasks\n")
             }
             if (openGoals.isNotBlank()) {
-                append("\n[아직 완료하지 않은 장기 목표]\n$openGoals\n")
+                append("\n[3순위: 아직 완료하지 않은 장기 목표]\n$openGoals\n")
             }
             if (recentDiaries.isNotBlank()) {
-                append("\n[최근 일기]\n$recentDiaries\n")
+                append("\n[4순위: 최근 일기]\n$recentDiaries\n")
             }
-            append("\n위 맥락을 고려해 1개의 새 계획을 한국어 1줄로 추천해 주세요. ")
-            append("기존 계획과 중복되지 않고, 시간·장소가 어울린다면 포함해도 좋습니다.")
+            append("\n위 1순위 조건을 가장 우선으로 반영해 1개의 새 계획을 한국어 1줄로 추천해 주세요. ")
+            append("시간·장소·반복 요일이 정해져 있다면 그에 맞게 어울리는 내용으로, ")
+            append("기존 계획과 중복되지 않게 해주세요.")
         }
+    }
+
+    /** java.time.DayOfWeek 1(월)~7(일) → 한글 요일명 */
+    private fun plannerDayOfWeekName(value: Int): String = when (value) {
+        1 -> "월"
+        2 -> "화"
+        3 -> "수"
+        4 -> "목"
+        5 -> "금"
+        6 -> "토"
+        7 -> "일"
+        else -> "?"
     }
 
     private fun classifyDraftContentType() {

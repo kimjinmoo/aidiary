@@ -104,8 +104,19 @@ sealed interface DiaryIntent {
     data class DeletePlannerTask(val id: String) : DiaryIntent
     /** 반복 계획 일괄 등록 시리즈 전체를 삭제합니다. */
     data class DeletePlannerTaskSeries(val seriesId: String) : DiaryIntent
-    /** AI 가 날짜/기존 계획/목표/최근 일기를 보고 오늘의 플래너 할 일 1건을 추천하도록 요청합니다. */
-    data object SuggestPlannerTask : DiaryIntent
+    /**
+     * AI 가 선택 날짜 + 사용자가 지금 입력 중인 시간/장소/반복 조건(1순위),
+     * 같은 날 기존 계획/장기 목표/최근 일기(2~4순위)를 보고
+     * 오늘의 플래너 할 일 1건을 추천하도록 요청합니다.
+     */
+    data class SuggestPlannerTask(
+        val startTime: String? = null,
+        val endTime: String? = null,
+        val location: String? = null,
+        val isRepeat: Boolean = false,
+        val repeatDays: List<Int> = emptyList(),
+        val repeatEndDateString: String? = null
+    ) : DiaryIntent
     /** AI 가 추천한 플래너 할 일을 입력란에 반영한 뒤, 상태의 1회성 추천 텍스트를 비웁니다. */
     data object ClearSuggestedPlannerTask : DiaryIntent
 

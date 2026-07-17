@@ -163,7 +163,8 @@ UI 규약:
 - 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
 - AI 강조 색상은 6색 팔레트(`#D32F2F #E65100 #F9A825 #2E7D32 #0277BD #6A1B9A`) 중 모델이 선택
 - 모델 응답이 잘못된 JSON/빈 문자열인 경우 안전 폴백 (원본 유지 + 토스트 안내)
-- **AI 플래너 추천 컨텍스트**: `buildPlannerTaskContext` 가 다음 4종을 조합해 LLM 프롬프트로 전달 — (1) 선택된 날짜/요일, (2) 같은 날 이미 등록된 계획(시간·장소 포함), (3) 미완료 장기 목표(최대 5건), (4) 최근 일기 평문(최대 3건, 각 120자). 결과는 한국어 1줄, 따옴표·접두사·이모지·번호·마침표 없이 30자 내로 잘라낸다.
+- **AI 플래너 추천 컨텍스트**: `buildPlannerTaskContext` 가 우선순위대로 4개 섹션을 조합해 LLM 프롬프트로 전달 — (1순위) `DiaryIntent.SuggestPlannerTask` 의 입력 필드 (날짜, 시작/종료 시간, 장소, 반복 요일·종료일), (2순위) 같은 날 이미 등록된 계획(시간·장소 포함), (3순위) 미완료 장기 목표(최대 5건), (4순위) 최근 일기 평문(최대 3건, 각 120자). 1순위가 비어 있어도 (날짜는 항상 포함) 동작. 결과는 한국어 1줄, 따옴표·접두사·이모지·번호·마침표 없이 30자 내로 잘라낸다.
+- **키보드 가림 방지 (탭 입력)**: `DiaryListScreen` 의 모든 탭(PLANNER/GOALS 등) 입력 폼은 단일 `LazyColumn` (또는 `verticalScroll`) 안에 들어가야 `BringIntoViewRequester` 로 포커스 시 자동 스크롤된다. PLANNER 는 첫 아이템이 입력 카드라 자연 동작. GOALS 는 대시보드/입력/목록을 모두 단일 LazyColumn 으로 통합 + 입력 카드에 `bringIntoViewRequester` 부착 + `onFocusChanged` 에서 `bringIntoView()` 호출.
 
 ## 5. 핵심 컴포넌트 책임
 
