@@ -54,6 +54,7 @@ import com.grepiu.aidiary.mvi.viewmodel.DiaryViewModel
 import com.grepiu.aidiary.ui.screens.DiaryDetailScreen
 import com.grepiu.aidiary.ui.screens.DiaryListScreen
 import com.grepiu.aidiary.ui.screens.DiaryWriteScreen
+import com.grepiu.aidiary.ui.screens.DiarySplashScreen
 import com.grepiu.aidiary.ui.theme.AIDiaryTheme
 
 /**
@@ -262,6 +263,14 @@ fun DiaryAppNavigationRouter(
     modifier: Modifier = Modifier
 ) {
     when (state.phase) {
+        DiaryPhase.SPLASH -> {
+            DiarySplashScreen(
+                onTimeout = {
+                    viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
+                },
+                modifier = modifier
+            )
+        }
         DiaryPhase.LIST -> {
             DiaryListScreen(
                 state = state,

@@ -8,6 +8,7 @@ import com.grepiu.aidiary.data.model.extractPlainText
  * 일기 앱의 화면 단계(Phase)를 정의하는 열거형입니다.
  */
 enum class DiaryPhase {
+    SPLASH, // 스플래시 화면 단계
     LIST,   // 일기 목록 및 대시보드 화면
     WRITE,  // 새 일기 작성 화면
     DETAIL  // 일기 상세 보기 및 AI 해석 결과 감상 화면
@@ -17,7 +18,7 @@ enum class DiaryPhase {
  * MVI 단방향 데이터 흐름을 위한 불변(Immutable) 상태 데이터 클래스입니다.
  */
 data class DiaryState(
-    val phase: DiaryPhase = DiaryPhase.LIST,                // 현재 화면 단계
+    val phase: DiaryPhase = DiaryPhase.SPLASH,               // 현재 화면 단계
     val diaries: List<DiaryEntry> = emptyList(),             // 저장된 일기 목록
     val selectedDiary: DiaryEntry? = null,                   // 상세 보기용 선택된 일기
 

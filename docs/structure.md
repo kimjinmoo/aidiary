@@ -40,8 +40,7 @@ app/src/main/java/com/grepiu/aidiary/
 │
 ├── mvi/
 │   ├── state/
-│   │   ├── DiaryPhase.kt            # 화면 단계 (LIST / WRITE / DETAIL)
-│   │   └── DiaryState.kt            # 모든 UI 상태의 단일 진실 공급원 (draftBlocks 포함)
+│   │   └── DiaryState.kt            # 모든 UI 상태의 단일 진실 공급원 및 DiaryPhase 정의 (SPLASH / LIST / WRITE / DETAIL)
 │   ├── intent/DiaryIntent.kt        # 사용자 의도 (UpdateBlockText 가 text+formatting 동시 갱신)
 │   ├── effect/DiaryEffect.kt        # 1회성 부수 효과 (카메라 권한/촬영 요청)
 │   └── viewmodel/DiaryViewModel.kt  # 비즈니스 로직·엔진·이미지 import 라이프사이클
@@ -54,6 +53,7 @@ app/src/main/java/com/grepiu/aidiary/
     │   ├── RichTextField.kt         # 인라인 서식 프리뷰가 있는 텍스트 에디터 (Text + BasicTextField 오버레이)
     │   └── RichTextToolbar.kt       # B/I/U/S 토글 + 색상 팔레트 + 크기 셀렉터
     ├── screens/
+    │   ├── DiarySplashScreen.kt     # [NEW] 애니메이션 스플래시 화면
     │   ├── DiaryListScreen.kt       # 목록 + 감정 통계 + 썸네일 + 다운로드 카드
     │   ├── DiaryWriteScreen.kt      # 블록 기반 작성/녹음/AI 분석 트리거
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트 (블록 렌더러 사용)
@@ -157,7 +157,8 @@ app/src/main/java/com/grepiu/aidiary/
 
 | Phase | 진입 Intent | 사용 화면 |
 |---|---|---|
-| `LIST` | 앱 시작 / 뒤로가기 / 저장 완료 | `DiaryListScreen` |
+| `SPLASH` | 앱 시작 (기본 상태) | `DiarySplashScreen` |
+| `LIST` | 스플래시 완료 / 뒤로가기 / 저장 완료 | `DiaryListScreen` |
 | `WRITE` | FAB / `NavigateTo(WRITE)` | `DiaryWriteScreen` |
 | `DETAIL` | `NavigateTo(DETAIL, diary)` | `DiaryDetailScreen` |
 
