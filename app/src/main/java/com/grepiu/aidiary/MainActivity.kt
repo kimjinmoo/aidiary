@@ -275,8 +275,10 @@ fun DiaryAppNavigationRouter(
                 onSelectDiary = { diary ->
                     viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.DETAIL, diary))
                 },
-                onWriteDiary = {
-                    viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.WRITE))
+                onWriteDiary = { contentType ->
+                    viewModel.processIntent(
+                        DiaryIntent.NavigateTo(DiaryPhase.WRITE, initialContentType = contentType)
+                    )
                 },
                 onStartDownload = {
                     viewModel.processIntent(DiaryIntent.StartDownload)

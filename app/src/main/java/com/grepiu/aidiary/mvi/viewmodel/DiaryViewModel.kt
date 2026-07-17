@@ -139,7 +139,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         draftBlocks = if (intent.phase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
                         draftTitleStyle = if (intent.phase == DiaryPhase.WRITE) TitleStyle.Default else currentState.draftTitleStyle,
                         draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
-                        draftContentType = if (intent.phase == DiaryPhase.WRITE) com.grepiu.aidiary.data.model.ContentType.DIARY else currentState.draftContentType,
+                        // initialContentType이 지정된 경우 해당 타입으로, 아니면 DIARY 기본값
+                        draftContentType = if (intent.phase == DiaryPhase.WRITE) {
+                            intent.initialContentType ?: com.grepiu.aidiary.data.model.ContentType.DIARY
+                        } else currentState.draftContentType,
                         isGeneratingAnalysis = if (intent.phase == DiaryPhase.WRITE) false else currentState.isGeneratingAnalysis
                     )
                 }

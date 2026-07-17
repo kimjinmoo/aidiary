@@ -14,7 +14,12 @@ sealed interface DiaryIntent {
     data object LoadDiaries : DiaryIntent
     data object StartDownload : DiaryIntent
     data object CancelDownload : DiaryIntent
-    data class NavigateTo(val phase: DiaryPhase, val selectedDiary: DiaryEntry? = null) : DiaryIntent
+    data class NavigateTo(
+        val phase: DiaryPhase,
+        val selectedDiary: DiaryEntry? = null,
+        /** Write 화면 진입 시 사전 선택할 콘텐츠 타입 (null = 기본값 유지) */
+        val initialContentType: ContentType? = null
+    ) : DiaryIntent
     data class UpdateDraft(
         val content: String? = null,
         val emotion: String? = null

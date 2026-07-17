@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -75,7 +77,7 @@ data class CalendarDay(
 fun DiaryListScreen(
     state: DiaryState,
     onSelectDiary: (DiaryEntry) -> Unit,
-    onWriteDiary: () -> Unit,
+    onWriteDiary: (ContentType) -> Unit,
     onStartDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
@@ -136,21 +138,9 @@ fun DiaryListScreen(
     }
 
     Scaffold(
-        floatingActionButton = {
+        bottomBar = {
             if (state.activeTab == "DIARY") {
-                FloatingActionButton(
-                    onClick = onWriteDiary,
-                    shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.shadow(8.dp, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "새 기록 쓰기",
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
+                WriteActionBar(onWriteDiary = onWriteDiary)
             }
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -306,7 +296,7 @@ fun DiaryListScreen(
                             selectedTypeFilter = selectedTypeFilter,
                             onTypeFilterChange = { selectedTypeFilter = it },
                             onSelectDiary = onSelectDiary,
-                            onWriteDiary = onWriteDiary,
+            onWriteDiary = { contentType -> onWriteDiary(contentType) },
                             onStartDownload = onStartDownload,
                             onCancelDownload = onCancelDownload,
                             onDismissNotice = onDismissNotice,
@@ -681,7 +671,7 @@ fun DiaryTabContent(
     selectedTypeFilter: ContentType?,
     onTypeFilterChange: (ContentType?) -> Unit,
     onSelectDiary: (DiaryEntry) -> Unit,
-    onWriteDiary: () -> Unit,
+    onWriteDiary: (ContentType) -> Unit,
     onStartDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
@@ -902,7 +892,7 @@ fun DiaryTabContent(
                         )
                         Spacer(modifier = Modifier.height(20.dp))
                         Button(
-                            onClick = onWriteDiary,
+                            onClick = { onWriteDiary(ContentType.DIARY) },
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
@@ -2816,5 +2806,147 @@ fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vec
         ContentType.DIARY -> Triple(Icons.AutoMirrored.Filled.MenuBook, "일기", Color(0xFF1565C0))
         ContentType.POST -> Triple(Icons.Default.EditNote, "새 글", Color(0xFF6A1B9A))
         ContentType.NOTE -> Triple(Icons.Default.NoteAlt, "메모", Color(0xFF2E7D32))
+    }
+}
+
+/**
+ * 상업 서비스 수준의 하단 고정 글쓰기 허브 바.
+ *
+ * - [일기] [새 글] [메모] 세 타입 버튼이 가로로 배치
+ * - 탭 시 해당 ContentType이 사전 선택된 채로 Write 화면 진입
+ * - Glassmorphism 반투명 배경 + 상단 라운드 모서리
+ * - 각 버튼: hover 스프링 스케일 애니메이션
+ * - 중앙(일기) 버튼: 그라디언트 Primary 강조
+ */
+@Composable
+fun WriteActionBar(
+    onWriteDiary: (ContentType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val types = listOf(
+        Triple(ContentType.NOTE, Icons.Default.NoteAlt, "메모"),
+        Triple(ContentType.DIARY, Icons.AutoMirrored.Filled.MenuBook, "일기"),
+        Triple(ContentType.POST, Icons.Default.EditNote, "새 글")
+    )
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+        shadowElevation = 20.dp,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        tonalElevation = 4.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 상단 핸들 인디케이터
+            Box(
+                modifier = Modifier
+                    .padding(top = 10.dp)
+                    .width(36.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f))
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 상단 라벨
+            Text(
+                text = "새 기록 작성",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                letterSpacing = 1.sp,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 10.dp)
+            )
+
+            // 타입별 버튼 Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                types.forEach { (type, _, label) ->
+                    val isCenterDiary = type == ContentType.DIARY
+
+                    // 터치 인터랙션 소스
+                    val interactionSource = remember { MutableInteractionSource() }
+                    val isPressed by interactionSource.collectIsPressedAsState()
+                    val scale by animateFloatAsState(
+                        targetValue = if (isPressed) 0.93f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessHigh
+                        ),
+                        label = "WriteBarButtonScale_$label"
+                    )
+
+                    val (typeIcon, _, typeColor) = getContentTypeUI(type)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(if (isCenterDiary) 1.4f else 1f)
+                            .height(if (isCenterDiary) 72.dp else 64.dp)
+                            .scale(scale)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                if (isCenterDiary) {
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            MaterialTheme.colorScheme.primary,
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)
+                                        )
+                                    )
+                                } else {
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            typeColor.copy(alpha = 0.10f),
+                                            typeColor.copy(alpha = 0.06f)
+                                        )
+                                    )
+                                }
+                            )
+                            .border(
+                                width = if (isCenterDiary) 0.dp else 1.dp,
+                                color = if (isCenterDiary) Color.Transparent
+                                else typeColor.copy(alpha = 0.20f),
+                                shape = RoundedCornerShape(18.dp)
+                            )
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = null,
+                                onClick = { onWriteDiary(type) },
+                                onClickLabel = "$label 작성"
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = typeIcon,
+                                contentDescription = label,
+                                tint = if (isCenterDiary) Color.White else typeColor,
+                                modifier = Modifier.size(if (isCenterDiary) 26.dp else 22.dp)
+                            )
+                            Spacer(modifier = Modifier.height(5.dp))
+                            Text(
+                                text = label,
+                                fontSize = if (isCenterDiary) 13.sp else 11.5.sp,
+                                fontWeight = if (isCenterDiary) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isCenterDiary) Color.White else typeColor
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 시스템 네비게이션 바 여백
+            Spacer(modifier = Modifier.height(12.dp))
+        }
     }
 }
