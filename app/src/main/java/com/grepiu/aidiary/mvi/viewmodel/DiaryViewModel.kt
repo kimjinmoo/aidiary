@@ -1144,6 +1144,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        // 제목이 비어 있으면 자동 입력 유도 (저장 차단 + 사용자에게 알림)
+        if (currentState.draftTitle.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("제목을 입력하거나 'AI 제목' 버튼으로 자동 생성해주세요."))
+            return
+        }
+
         val finalEmotion = if (!currentState.aiAnalysisText.isNullOrBlank()) {
             parseEmotionFromAnalysis(currentState.aiAnalysisText)
         } else {
@@ -1151,7 +1157,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val newEntry = DiaryEntry(
-            title = currentState.draftTitle.ifBlank { "오늘의 기록" },
+            title = currentState.draftTitle.trim(),
             blocks = currentState.draftBlocks,
             content = plain,
             emotion = finalEmotion,

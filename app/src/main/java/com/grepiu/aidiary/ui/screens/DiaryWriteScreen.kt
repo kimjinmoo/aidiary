@@ -151,7 +151,7 @@ fun DiaryWriteScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 1. 일기 제목 입력 + AI 추천 버튼
+            // 1. 일기 제목 입력 + AI 추천 버튼 (필수)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -159,8 +159,19 @@ fun DiaryWriteScreen(
                 OutlinedTextField(
                     value = state.draftTitle,
                     onValueChange = onTitleChange,
-                    label = { Text("일기 제목") },
-                    placeholder = { Text("오늘 하루의 한 줄 키워드") },
+                    label = { Text("일기 제목 *") },
+                    placeholder = { Text("직접 입력하거나 'AI 제목' 버튼") },
+                    supportingText = {
+                        Text(
+                            text = "저장하려면 제목이 필요해요",
+                            fontSize = 11.sp,
+                            color = if (state.draftTitle.isBlank())
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    isError = state.draftTitle.isBlank(),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
