@@ -27,6 +27,7 @@ data class PlannerTask(
     val startTime: String? = null,
     val endTime: String? = null,
     val location: String? = null,
+    val seriesId: String? = null, // 반복 계획 일괄 등록 그룹 식별자 (단일 등록은 null)
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -120,6 +121,7 @@ class PlannerRepository(private val context: Context) {
                     startTime = if (obj.isNull("startTime")) null else obj.opt("startTime") as? String,
                     endTime = if (obj.isNull("endTime")) null else obj.opt("endTime") as? String,
                     location = if (obj.isNull("location")) null else obj.opt("location") as? String,
+                    seriesId = if (obj.isNull("seriesId")) null else obj.opt("seriesId") as? String,
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis())
                 )
             }
@@ -143,6 +145,7 @@ class PlannerRepository(private val context: Context) {
                     put("startTime", task.startTime ?: JSONObject.NULL)
                     put("endTime", task.endTime ?: JSONObject.NULL)
                     put("location", task.location ?: JSONObject.NULL)
+                    put("seriesId", task.seriesId ?: JSONObject.NULL)
                     put("timestamp", task.timestamp)
                 }
                 arr.put(obj)

@@ -102,6 +102,12 @@ sealed interface DiaryIntent {
     data class TogglePlannerTask(val id: String) : DiaryIntent
     /** 특정 할 일을 삭제합니다. */
     data class DeletePlannerTask(val id: String) : DiaryIntent
+    /** 반복 계획 일괄 등록 시리즈 전체를 삭제합니다. */
+    data class DeletePlannerTaskSeries(val seriesId: String) : DiaryIntent
+    /** AI 가 날짜/기존 계획/목표/최근 일기를 보고 오늘의 플래너 할 일 1건을 추천하도록 요청합니다. */
+    data object SuggestPlannerTask : DiaryIntent
+    /** AI 가 추천한 플래너 할 일을 입력란에 반영한 뒤, 상태의 1회성 추천 텍스트를 비웁니다. */
+    data object ClearSuggestedPlannerTask : DiaryIntent
 
     // ===== 온디바이스 AI 챗봇 =====
     /** 챗봇에게 메시지를 전송합니다. */

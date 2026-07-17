@@ -149,10 +149,11 @@ app/src/main/java/com/grepiu/aidiary/
 | 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 다듬기` | `proofreadText(text)` | 해당 블록의 `text` (formatting 유지) |
 | 본문 강조 추천 (굵게/색) | 블록 헤더의 `✦` 메뉴 → `AI 강조` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프) |
 | 마음 분석 + 감정 자동 태그 (TAG AI) | **저장 시 자동 실행** (수동 버튼 없음) | `detectEmotion(title, content, date)` → `DiaryLLMEngine.EmotionResult(raw, emotion)` | 본문 끝에 `ContentBlock.TagAiBlock(emotion)` 자동 추가 + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문 생성은 제거되어 단순 1-토큰 분류만 수행 (저장 지연 최소화) |
+| 플래너 할 일명 AI 자동 추천 | 플래너 탭 입력란 옆 `AI 자동 플래너명` 아이콘 버튼 (AutoAwesome) | `suggestPlannerTaskName(context)` | `state.suggestedPlannerTaskText` 에 1회성 저장 → UI `LaunchedEffect` 가 입력란에 반영 후 `ClearSuggestedPlannerTask` 인텐트로 비움 |
 
 상태/Intent:
-- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` / `isGeneratingAnalysis` (저장 시 AI TAG 생성 진행 표시)
-- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)` / `UpdateDraftTitle(text)` / `SaveDiary`
+- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` / `isSuggestingPlannerTask` / `isGeneratingAnalysis` (저장 시 AI TAG 생성 진행 표시) / `suggestedPlannerTaskText` (1회성 추천 결과)
+- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)` / `SuggestPlannerTask` / `ClearSuggestedPlannerTask` / `UpdateDraftTitle(text)` / `SaveDiary`
 - 수동 `AnalyzeDiary` 인텐트/버튼 제거됨 — 마음 분석은 `SaveDiary` 흐름에 흡수되어 자동 실행
 - **상단 제목 입력란**: 키보드 입력이 기본. `state.draftTitle` 에 직접 바인딩되며 AI 추천(`SuggestTitle`) 도 같은 필드를 갱신
 - 제목 스타일 피커(`draftTitleStyle`): `state.draftTitle.isNotBlank()` 일 때만 노출 (예전 `hasHeadingBlock` 가드 대체)
@@ -162,6 +163,7 @@ UI 규약:
 - 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
 - AI 강조 색상은 6색 팔레트(`#D32F2F #E65100 #F9A825 #2E7D32 #0277BD #6A1B9A`) 중 모델이 선택
 - 모델 응답이 잘못된 JSON/빈 문자열인 경우 안전 폴백 (원본 유지 + 토스트 안내)
+- **AI 플래너 추천 컨텍스트**: `buildPlannerTaskContext` 가 다음 4종을 조합해 LLM 프롬프트로 전달 — (1) 선택된 날짜/요일, (2) 같은 날 이미 등록된 계획(시간·장소 포함), (3) 미완료 장기 목표(최대 5건), (4) 최근 일기 평문(최대 3건, 각 120자). 결과는 한국어 1줄, 따옴표·접두사·이모지·번호·마침표 없이 30자 내로 잘라낸다.
 
 ## 5. 핵심 컴포넌트 책임
 
@@ -174,7 +176,7 @@ UI 규약:
 | `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM | `sherpa-onnx-zipformer-korean-2024-06-24` 고정 |
 | `ModelDownloaderV2` | HuggingFace 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 콜백 |
 | `DiaryState` | 모든 UI 상태의 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실, 플래너/목표 및 AI 챗봇 대화 기록 동시 관리 |
-| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 (PlannerTask에 시작/종료 시간, 장소 필드 제공) | 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |
+| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 (`PlannerTask` 필드: id / text / isCompleted / dateString / startTime / endTime / location / **seriesId** / timestamp) | `seriesId` 는 반복 계획 일괄 등록 그룹 식별자. 같은 시리즈의 모든 일자에 동일 UUID 가 부여되어 시리즈 단위 삭제가 가능. 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |
 
 ## 6. 의존성/플러그인 위치
 

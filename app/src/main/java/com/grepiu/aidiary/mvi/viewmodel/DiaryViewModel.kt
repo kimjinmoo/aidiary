@@ -380,6 +380,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             val start = java.time.LocalDate.parse(intent.dateString)
                             val end = java.time.LocalDate.parse(intent.repeatEndDateString)
+                            val seriesId = java.util.UUID.randomUUID().toString()
                             var curr = start
                             val list = mutableListOf<PlannerTask>()
                             while (!curr.isAfter(end)) {
@@ -391,7 +392,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                                             dateString = curr.format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
                                             startTime = intent.startTime,
                                             endTime = intent.endTime,
-                                            location = intent.location
+                                            location = intent.location,
+                                            seriesId = seriesId
                                         )
                                     )
                                 }
@@ -440,6 +442,19 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }
+            }
+            is DiaryIntent.DeletePlannerTaskSeries -> {
+                _state.update { current ->
+                    val updatedTasks = current.plannerTasks.filter { it.seriesId != intent.seriesId }
+                    plannerRepository.saveTasks(updatedTasks)
+                    current.copy(plannerTasks = updatedTasks)
+                }
+            }
+            is DiaryIntent.SuggestPlannerTask -> {
+                suggestPlannerTaskName()
+            }
+            is DiaryIntent.ClearSuggestedPlannerTask -> {
+                _state.update { it.copy(suggestedPlannerTaskText = null) }
             }
 
             // ===== 온디바이스 AI 챗봇 =====
@@ -742,6 +757,99 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun applyDraftTitle(title: String) {
         _state.update { current -> current.copy(draftTitle = title) }
+    }
+
+    /**
+     * 선택된 날짜의 기존 계획(시간·장소 포함), 장기 목표, 최근 일기 내용을
+     * LLM 컨텍스트로 조합해 오늘의 플래너 할 일 1건을 추천하도록 요청합니다.
+     * 결과는 [DiaryState.suggestedPlannerTaskText] 에 1회성으로 저장되어
+     * UI 가 [DiaryIntent.ClearSuggestedPlannerTask] 를 보내면 비워집니다.
+     */
+    private fun suggestPlannerTaskName() {
+        val state = _state.value
+        if (!requireReadyModel()) return
+        if (state.isSuggestingPlannerTask) return
+
+        val context = buildPlannerTaskContext(state)
+        if (context.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("추천을 위한 컨텍스트가 부족해요."))
+            return
+        }
+
+        _state.update { it.copy(isSuggestingPlannerTask = true) }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val suggestion = engine.suggestPlannerTaskName(context)
+                if (suggestion.isNotBlank()) {
+                    _state.update { it.copy(suggestedPlannerTaskText = suggestion) }
+                    sendEffect(DiaryEffect.ShowToast("AI 추천 계획을 입력했어요. 필요하면 수정하세요."))
+                } else {
+                    sendEffect(DiaryEffect.ShowToast("추천할 계획을 만들지 못했어요. 다시 시도해 주세요."))
+                }
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("AI 플래너 추천 오류: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isSuggestingPlannerTask = false) }
+            }
+        }
+    }
+
+    /**
+     * LLM 에게 줄 플래너 추천 컨텍스트 문자열을 만듭니다.
+     *  - 날짜/요일
+     *  - 같은 날 이미 등록된 계획(시간/장소 포함)
+     *  - 미완료 장기 목표
+     *  - 최근 일기 평문 (최대 3건)
+     */
+    private fun buildPlannerTaskContext(state: DiaryState): String {
+        val dayOfWeek = try {
+            val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREAN)
+                .parse(state.selectedDateString)
+            if (date != null) {
+                java.text.SimpleDateFormat("M월 d일 (E)", java.util.Locale.KOREAN).format(date)
+            } else state.selectedDateString
+        } catch (e: Exception) {
+            state.selectedDateString
+        }
+
+        val existingTasks = state.plannerTasks
+            .filter { it.dateString == state.selectedDateString }
+            .joinToString("\n") { task ->
+                val timePart = buildString {
+                    if (!task.startTime.isNullOrBlank()) append(" ${task.startTime}")
+                    if (!task.endTime.isNullOrBlank()) append("~${task.endTime}")
+                }
+                val locPart = if (!task.location.isNullOrBlank()) " (장소: ${task.location})" else ""
+                "- ${task.text}$timePart$locPart"
+            }
+
+        val openGoals = state.goals
+            .filter { !it.isCompleted }
+            .take(5)
+            .joinToString("\n") { "- ${it.text}" }
+
+        val recentDiaries = state.diaries
+            .take(3)
+            .joinToString("\n") { entry ->
+                val plain = entry.contentText.take(120)
+                if (plain.isBlank()) "- (제목만: ${entry.title})" else "- ${entry.title}: $plain"
+            }
+
+        return buildString {
+            append("날짜: $dayOfWeek\n")
+            if (existingTasks.isNotBlank()) {
+                append("\n[이 날 이미 등록된 계획]\n$existingTasks\n")
+            }
+            if (openGoals.isNotBlank()) {
+                append("\n[아직 완료하지 않은 장기 목표]\n$openGoals\n")
+            }
+            if (recentDiaries.isNotBlank()) {
+                append("\n[최근 일기]\n$recentDiaries\n")
+            }
+            append("\n위 맥락을 고려해 1개의 새 계획을 한국어 1줄로 추천해 주세요. ")
+            append("기존 계획과 중복되지 않고, 시간·장소가 어울린다면 포함해도 좋습니다.")
+        }
     }
 
     private fun classifyDraftContentType() {

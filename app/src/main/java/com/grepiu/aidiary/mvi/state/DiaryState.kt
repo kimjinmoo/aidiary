@@ -63,6 +63,10 @@ data class DiaryState(
     val isProofreadingBlockId: String? = null,
     /** true: 특정 블록의 강조(색/굵게) 추천 진행 중 */
     val isDecoratingBlockId: String? = null,
+    /** true: 플래너 할 일명 AI 추천 진행 중 */
+    val isSuggestingPlannerTask: Boolean = false,
+    /** AI 가 추천한 플래너 할 일명 (1회성, UI 에서 소비 후 클리어) */
+    val suggestedPlannerTaskText: String? = null,
 
     // Sherpa 음성 녹음 및 변환 상태
     val isSherpaModelReady: Boolean = false,

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -139,6 +140,13 @@ fun DiaryListScreen(
     
     // 기록 필터링을 위한 선택된 타입 상태 (null은 전체)
     var selectedTypeFilter by remember { mutableStateOf<ContentType?>(null) }
+
+    // AI 가 추천한 플래너 할 일을 입력란에 1회성으로 반영하고, 사용 후엔 상태를 비웁니다.
+    LaunchedEffect(state.suggestedPlannerTaskText) {
+        val suggested = state.suggestedPlannerTaskText ?: return@LaunchedEffect
+        newTaskText = suggested
+        onIntent(DiaryIntent.ClearSuggestedPlannerTask)
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -343,7 +351,11 @@ fun DiaryListScreen(
                                 }
                             },
                             onToggleTask = { onIntent(DiaryIntent.TogglePlannerTask(it)) },
-                            onDeleteTask = { onIntent(DiaryIntent.DeletePlannerTask(it)) }
+                            onDeleteTask = { task -> onIntent(DiaryIntent.DeletePlannerTask(task.id)) },
+                            onDeleteTaskSeries = { task ->
+                                task.seriesId?.let { sid -> onIntent(DiaryIntent.DeletePlannerTaskSeries(sid)) }
+                            },
+                            onSuggestTask = { onIntent(DiaryIntent.SuggestPlannerTask) }
                         )
                     }
                     "GOALS" -> {
@@ -925,7 +937,9 @@ fun PlannerTabContent(
     onTextChange: (String) -> Unit,
     onAddTask: (String, String?, String?, String?, Boolean, List<Int>, String?) -> Unit,
     onToggleTask: (String) -> Unit,
-    onDeleteTask: (String) -> Unit
+    onDeleteTask: (PlannerTask) -> Unit,
+    onDeleteTaskSeries: (PlannerTask) -> Unit,
+    onSuggestTask: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -955,6 +969,9 @@ fun PlannerTabContent(
     var isRepeat by remember { mutableStateOf(false) }
     val selectedDays = remember { mutableStateListOf<Int>() } // 1(월) .. 7(일)
     var repeatEndDateStr by remember { mutableStateOf<String?>(null) }
+
+    // 반복 계획 삭제 확인 다이얼로그 대상 (null 이면 다이얼로그 미표시)
+    var taskPendingDelete by remember { mutableStateOf<PlannerTask?>(null) }
 
     val showTimePicker = { isStart: Boolean ->
         val cal = Calendar.getInstance()
@@ -1069,7 +1086,18 @@ fun PlannerTabContent(
                                 .weight(1f)
                                 .onFocusChanged { isInputFocused = it.isFocused }
                         )
-                        
+
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        // AI 자동 플래너명 추천 버튼
+                        AiSuggestPlannerTaskButton(
+                            isModelReady = state.isModelReady,
+                            isSuggesting = state.isSuggestingPlannerTask,
+                            onClick = onSuggestTask
+                        )
+
+                        Spacer(modifier = Modifier.width(2.dp))
+
                         // 상세 정보 확장 토글 버튼
                         IconButton(
                             onClick = { isExpanded = !isExpanded },
@@ -1369,7 +1397,13 @@ fun PlannerTabContent(
                 PlannerTaskItemRow(
                     task = task,
                     onToggle = { onToggleTask(task.id) },
-                    onDelete = { onDeleteTask(task.id) }
+                    onDelete = {
+                        if (task.seriesId != null) {
+                            taskPendingDelete = task
+                        } else {
+                            onDeleteTask(task)
+                        }
+                    }
                 )
             }
         }
@@ -1378,6 +1412,22 @@ fun PlannerTabContent(
         item {
             Spacer(modifier = Modifier.height(60.dp))
         }
+    }
+
+    // 반복 계획 일괄 등록된 할 일의 삭제 옵션 선택 다이얼로그
+    taskPendingDelete?.let { pending ->
+        PlannerSeriesDeleteDialog(
+            task = pending,
+            onDeleteAll = {
+                onDeleteTaskSeries(pending)
+                taskPendingDelete = null
+            },
+            onDeleteThisOnly = {
+                onDeleteTask(pending)
+                taskPendingDelete = null
+            },
+            onCancel = { taskPendingDelete = null }
+        )
     }
 }
 
@@ -1539,6 +1589,113 @@ fun PlannerTaskItemRow(
                     modifier = Modifier.size(16.dp)
                 )
             }
+        }
+    }
+}
+
+/**
+ * 반복 계획(일괄 등록된 시리즈) 의 삭제 옵션을 묻는 3버튼 다이얼로그.
+ * - 전체 삭제: 같은 seriesId 의 모든 할 일 제거
+ * - 이 날만 삭제: 현재 선택한 날짜의 1건만 제거
+ * - 취소: 변경 없음
+ */
+@Composable
+fun PlannerSeriesDeleteDialog(
+    task: PlannerTask,
+    onDeleteAll: () -> Unit,
+    onDeleteThisOnly: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        shape = RoundedCornerShape(20.dp),
+        icon = {
+            Icon(
+                imageVector = Icons.Default.DateRange,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = "반복 계획을 어떻게 삭제할까요?",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        },
+        text = {
+            Text(
+                text = "\"${task.text}\" 는 반복 계획으로 등록되어 있어요.\n전체 반복 일정을 모두 지울지, 오늘 일정만 지울지 선택해 주세요.",
+                fontSize = 13.sp,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDeleteAll,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("전체 삭제", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onDeleteThisOnly) {
+                    Text("이 날만 삭제", color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f))
+                }
+                TextButton(onClick = onCancel) {
+                    Text("취소")
+                }
+            }
+        }
+    )
+}
+
+/**
+ * 플래너 입력란 옆에 붙는 AI 자동 플래너명 추천 버튼.
+ *  - 모델 미준비: dimmed 처리 + "AI 모델 미준비" 안내
+ *  - 추천 중: 작은 CircularProgressIndicator 표시
+ *  - 준비 완료: AutoAwesome 아이콘 (primary tint), 클릭 시 추천 요청
+ */
+@Composable
+private fun AiSuggestPlannerTaskButton(
+    isModelReady: Boolean,
+    isSuggesting: Boolean,
+    onClick: () -> Unit
+) {
+    val active = isModelReady && !isSuggesting
+    val tint = when {
+        isSuggesting -> MaterialTheme.colorScheme.primary
+        isModelReady -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    }
+    val description = when {
+        isSuggesting -> "AI 추천 생성 중"
+        !isModelReady -> "AI 모델 미준비"
+        else -> "AI 자동 플래너명"
+    }
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .clickable(enabled = active, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isSuggesting) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(16.dp),
+                color = tint
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = description,
+                tint = tint,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }

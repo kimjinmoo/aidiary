@@ -340,6 +340,29 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     /**
+     * 사용자의 날짜/기존 계획/장기 목표/최근 일기 맥락을 보고,
+     * 오늘의 플래너에 어울리는 1건의 한국어 할 일을 추천합니다.
+     */
+    suspend fun suggestPlannerTaskName(
+        context: String
+    ): String = withContext(Dispatchers.Default) {
+        if (context.isBlank()) return@withContext ""
+        val systemPrompt = "당신은 한국어 스마트 플래너 코치 AI입니다. " +
+                "주어진 날짜(요일), 같은 날 이미 등록된 계획(시간·장소 포함), " +
+                "사용자의 장기 목표, 최근 일기 내용을 종합적으로 고려해 " +
+                "오늘의 플래너에 추가할 1건의 한국어 할 일을 추천하세요. " +
+                "구체적이고 실행 가능해야 하며, 기존 계획과 중복되지 않아야 합니다. " +
+                "출력은 1줄 한국어 텍스트만. 따옴표·접두사·이모지·번호·마침표 없이 본문 텍스트만 출력하세요."
+        val userPrompt = "$context\n\n추천할 1개의 계획:"
+
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = 48, temperature = 0.6)
+            .trim()
+            .trim('"', '\'', '“', '”', '‘', '’', '《', '》')
+            .let { stripPrefixes(it) }
+            .let { if (it.length > 30) it.substring(0, 30) else it }
+    }
+
+    /**
      * 완료된 장기 목표를 축하하는 온디바이스 AI 멘토의 응원 한마디를 생성합니다.
      */
     suspend fun generateCongratulation(
