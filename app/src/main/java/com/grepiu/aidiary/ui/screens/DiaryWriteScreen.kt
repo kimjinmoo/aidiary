@@ -1,9 +1,9 @@
 package com.grepiu.aidiary.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,17 +25,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -43,54 +46,64 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.graphics.vector.ImageVector
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.TitleStyle
+import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.AddBlockBar
 import com.grepiu.aidiary.ui.components.BlockEditor
 
 /**
- * 일기 작성 및 수정, AI 분석 요청을 진행하는 화면 컴포저블입니다.
+ * 일기/포스트/메모 작성 화면. 기업용 SaaS 톤의 정제된 레이아웃을 제공합니다.
  *
- * - 본문은 블록(제목/본문/인용/이미지/구분선) 단위로 구성됩니다.
- * - 음성 녹음은 마지막 본문(TextBlock) 의 끝에 텍스트로 이어붙입니다.
+ *  구성 (위→아래)
+ *  1. 스크롤 진행 바 + 스크롤 그림자 TopAppBar (뒤로/저장)
+ *  2. 글 타입 필터칩 + AI 자동 분류 인라인 액션
+ *  3. 히어로 제목 입력 (AI 추천 trailing)
+ *  4. 제목 스타일 (컬러 팔레트 + 사이즈 칩, 제목이 비어있지 않을 때만)
+ *  5. 본문 섹션 — 블록 에디터 + 비어있을 때의 작성 가이드
+ *  6. 블록 추가 섹션 — AddBlockBar
+ *  7. 음성 입력 섹션
+ *  8. 저장 안내 알림 (AI TAG 안내 / 저장 진행 상태)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiaryWriteScreen(
     state: DiaryState,
-    onContentTypeChange: (ContentType) -> Unit,
-    onUpdateTitleStyle: (TitleStyle) -> Unit,
-    onAddBlock: (ContentBlock) -> Unit,
-    onInsertBlock: (Int, ContentBlock) -> Unit,
-    onUpdateBlockText: (String, String, com.grepiu.aidiary.data.model.TextFormatting) -> Unit,
-    onUpdateBlockCaption: (String, String) -> Unit,
-    onRemoveBlock: (String) -> Unit,
-    onMoveBlock: (String, Int) -> Unit,
-    onPickGallery: () -> Unit,
-    onTakePhoto: () -> Unit,
-    onSaveDiary: () -> Unit,
-    onBack: () -> Unit,
-    onStartRecording: () -> Unit,
-    onStopRecording: () -> Unit,
-    onSuggestTitle: () -> Unit,
-    onUpdateTitle: (String) -> Unit,
-    onClassifyType: () -> Unit,
-    onProofreadBlock: (String) -> Unit,
-    onDecorateBlock: (String) -> Unit,
+    onIntent: (DiaryIntent) -> Unit = {},
+    onContentTypeChange: (ContentType) -> Unit = {},
+    onUpdateTitleStyle: (TitleStyle) -> Unit = {},
+    onAddBlock: (ContentBlock) -> Unit = {},
+    onInsertBlock: (Int, ContentBlock) -> Unit = { _, _ -> },
+    onUpdateBlockText: (String, String, com.grepiu.aidiary.data.model.TextFormatting) -> Unit = { _, _, _ -> },
+    onUpdateBlockCaption: (String, String) -> Unit = { _, _ -> },
+    onRemoveBlock: (String) -> Unit = {},
+    onMoveBlock: (String, Int) -> Unit = { _, _ -> },
+    onPickGallery: () -> Unit = {},
+    onTakePhoto: () -> Unit = {},
+    onSaveDiary: () -> Unit = {},
+    onBack: () -> Unit = {},
+    onStartRecording: () -> Unit = {},
+    onStopRecording: () -> Unit = {},
+    onSuggestTitle: () -> Unit = {},
+    onUpdateTitle: (String) -> Unit = {},
+    onClassifyType: () -> Unit = {},
+    onProofreadBlock: (String) -> Unit = {},
+    onDecorateBlock: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -106,36 +119,23 @@ fun DiaryWriteScreen(
             }
         } && !state.isGeneratingAnalysis
 
+    val scrollProgress = if (scrollState.maxValue > 0) {
+        scrollState.value.toFloat() / scrollState.maxValue
+    } else 0f
+
+    val (typeIcon, typeLabel, typeColor) = getContentTypeUI(state.draftContentType)
+
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    val (icon, label) = contentTypeMeta(state.draftContentType)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "${label} 작성", fontWeight = FontWeight.Bold)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onSaveDiary, enabled = canSave) {
-                        Icon(
-                            imageVector = Icons.Default.Done,
-                            contentDescription = "저장",
-                            tint = if (canSave) MaterialTheme.colorScheme.primary else Color.Gray
-                        )
-                    }
-                }
+            WriteTopBar(
+                typeIcon = typeIcon,
+                typeLabel = typeLabel,
+                typeColor = typeColor,
+                canSave = canSave,
+                isSaving = state.isGeneratingAnalysis,
+                scrollProgress = scrollProgress,
+                onBack = onBack,
+                onSave = onSaveDiary
             )
         },
         containerColor = MaterialTheme.colorScheme.background,
@@ -146,13 +146,32 @@ fun DiaryWriteScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .imePadding()
-                .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
-            Spacer(modifier = Modifier.height(8.dp))
+            // 1) 글 타입 선택
+            SectionLabel(
+                icon = Icons.Outlined.Lightbulb,
+                label = "글 타입",
+                trailing = {
+                    InlineAiAction(
+                        label = if (state.isClassifyingType) "분류 중…" else "AI 자동 분류",
+                        loading = state.isClassifyingType,
+                        enabled = !state.isClassifyingType,
+                        onClick = onClassifyType
+                    )
+                }
+            )
+            Spacer(Modifier.height(8.dp))
+            TypeFilterChips(
+                selected = state.draftContentType,
+                onSelect = onContentTypeChange
+            )
 
-            // 1. 상단 제목 입력란 (키보드 입력 기본, 우측 AI 버튼으로 보조)
-            TitleInputField(
+            // 2) 히어로 제목 입력
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(icon = Icons.AutoMirrored.Filled.MenuBook, label = "제목")
+            Spacer(Modifier.height(8.dp))
+            TitleHeroField(
                 title = state.draftTitle,
                 titleStyle = state.draftTitleStyle,
                 isModelReady = state.isModelReady,
@@ -162,138 +181,247 @@ fun DiaryWriteScreen(
                 onSuggestClick = onSuggestTitle
             )
 
-            // 1.5 콘텐츠 타입 선택 + AI 자동 분류 버튼
-            ContentTypeSelector(
-                selected = state.draftContentType,
-                onSelect = onContentTypeChange,
-                isClassifying = state.isClassifyingType,
-                onClassifyClick = onClassifyType
-            )
-
+            // 3) 제목 스타일 (제목이 입력됐을 때만)
             if (state.draftTitle.isNotBlank()) {
-                TitleStylePicker(
+                Spacer(Modifier.height(12.dp))
+                TitleStyleInline(
                     currentStyle = state.draftTitleStyle,
                     onStyleChange = onUpdateTitleStyle
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 2. 블록 에디터
-            if (state.draftBlocks.isEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "제목은 상단 입력란에, 본문은 아래 블록으로 자유롭게 작성해 보세요. '섹션 제목' 블록을 추가해 본문 안에서 소제목으로 활용할 수도 있어요.",
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    state.draftBlocks.forEachIndexed { index, block ->
-                        BlockEditor(
-                            block = block,
-                            index = index,
-                            totalCount = state.draftBlocks.size,
-                            isProofreading = state.isProofreadingBlockId == block.id,
-                            isDecorating = state.isDecoratingBlockId == block.id,
-                            aiAssistEnabled = state.isModelReady,
-                            onUpdateText = { newText, newFmt -> onUpdateBlockText(block.id, newText, newFmt) },
-                            onUpdateCaption = { newCap -> onUpdateBlockCaption(block.id, newCap) },
-                            onRemove = { onRemoveBlock(block.id) },
-                            onMoveUp = { onMoveBlock(block.id, -1) },
-                            onMoveDown = { onMoveBlock(block.id, +1) },
-                            onProofread = { onProofreadBlock(block.id) },
-                            onDecorate = { onDecorateBlock(block.id) }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 2.5 음성 녹음 영역
-            VoiceRecordingRow(
+            // 4) 본문 섹션
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(icon = Icons.Filled.EditNote, label = "본문")
+            Spacer(Modifier.height(8.dp))
+            BodySection(
                 state = state,
-                onStartRecording = onStartRecording,
-                onStopRecording = onStopRecording
+                onUpdateBlockText = onUpdateBlockText,
+                onUpdateBlockCaption = onUpdateBlockCaption,
+                onRemoveBlock = onRemoveBlock,
+                onMoveBlock = onMoveBlock,
+                onProofreadBlock = onProofreadBlock,
+                onDecorateBlock = onDecorateBlock,
+                onTableCellChange = { id, r, c, t ->
+                    onIntent(DiaryIntent.UpdateTableCell(id, r, c, t))
+                },
+                onTableAddRow = { id -> onIntent(DiaryIntent.AddTableRow(id)) },
+                onTableRemoveRow = { id, r -> onIntent(DiaryIntent.RemoveTableRow(id, r)) },
+                onTableAddColumn = { id -> onIntent(DiaryIntent.AddTableColumn(id)) },
+                onTableRemoveColumn = { id, c -> onIntent(DiaryIntent.RemoveTableColumn(id, c)) }
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 2.6 블록 추가 바
+            // 5) 블록 추가
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(icon = Icons.Outlined.Add, label = "블록 추가")
+            Spacer(Modifier.height(8.dp))
             AddBlockBar(
                 canAddImage = !state.isImportingImage,
                 onAdd = onAddBlock,
                 onPickGallery = onPickGallery,
                 onTakePhoto = onTakePhoto,
-                hasHeading = state.hasHeadingBlock
+                hasHeading = state.hasHeadingBlock,
+                modifier = Modifier.padding(horizontal = 24.dp)
             )
-
             if (state.isImportingImage) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "이미지를 가져오는 중…",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Spacer(Modifier.height(10.dp))
+                InlineStatusRow(text = "이미지를 가져오는 중…")
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Spacer(modifier = Modifier.height(20.dp))
+            // 6) 음성 입력
+            Spacer(Modifier.height(24.dp))
+            SectionLabel(icon = Icons.Filled.Mic, label = "음성 입력")
+            Spacer(Modifier.height(8.dp))
+            VoiceCard(
+                state = state,
+                onStartRecording = onStartRecording,
+                onStopRecording = onStopRecording
+            )
 
-            // 3. 저장 안내 + AI 자동 TAG 안내 (일기 타입일 때만 AI TAG 자동 추가 안내)
-            SaveHintSection(
+            // 7) 저장 안내 알림
+            Spacer(Modifier.height(28.dp))
+            SaveHintCard(
                 isModelReady = state.isModelReady,
                 supportsAiAnalysis = state.draftContentType.supportsAiAnalysis,
                 isSavingWithAi = state.isGeneratingAnalysis
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(Modifier.height(48.dp))
+        }
+    }
+}
+
+/* ====================== 내부 컴포저블 ====================== */
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WriteTopBar(
+    typeIcon: ImageVector,
+    typeLabel: String,
+    typeColor: Color,
+    canSave: Boolean,
+    isSaving: Boolean,
+    scrollProgress: Float,
+    onBack: () -> Unit,
+    onSave: () -> Unit
+) {
+    val elevation = if (scrollProgress > 0.02f) 4.dp else 0.dp
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = elevation,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            if (scrollProgress > 0f) {
+                LinearProgressIndicator(
+                    progress = { scrollProgress.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = typeColor,
+                    trackColor = Color.Transparent,
+                    strokeCap = StrokeCap.Butt
+                )
+            }
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = typeColor.copy(alpha = 0.12f),
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = typeIcon,
+                                    contentDescription = null,
+                                    tint = typeColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = "${typeLabel} 작성",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "뒤로가기"
+                        )
+                    }
+                },
+                actions = {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .size(20.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        TextButtonSave(enabled = canSave, onClick = onSave)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                )
+            )
         }
     }
 }
 
 @Composable
-private fun SaveHintSection(
-    isModelReady: Boolean,
-    supportsAiAnalysis: Boolean,
-    isSavingWithAi: Boolean
-) {
-    val (icon, message) = when {
-        isSavingWithAi -> "✨" to "AI 가 감정을 분석하고 있어요. 잠시만 기다려 주세요…"
-        supportsAiAnalysis && isModelReady -> "✨" to "저장하면 AI 가 기쁨/슬픔/평온/불안/분노 중 하나로 감정을 태그해 'TAG AI' 블록을 추가해요. (AI 모델 준비 완료)"
-        supportsAiAnalysis && !isModelReady -> "💡" to "목록 화면에서 온디바이스 AI 모델을 다운로드하면, 저장 시 AI 가 감정을 자동으로 태그해 줘요."
-        else -> "💡" to "저장하면 일기가 목록에 기록돼요."
-    }
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-        modifier = Modifier.fillMaxWidth()
+private fun TextButtonSave(enabled: Boolean, onClick: () -> Unit) {
+    val color = if (enabled) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .padding(end = 8.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .background(
+                if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                else Color.Transparent
+            )
+            .padding(horizontal = 14.dp, vertical = 6.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
-            Text(text = icon, fontSize = 16.sp)
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = message,
-                fontSize = 12.sp,
-                lineHeight = 18.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Icon(
+            imageVector = Icons.Filled.Check,
+            contentDescription = "저장",
+            tint = color,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = "저장",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = color
+        )
+    }
+}
+
+@Composable
+private fun SectionLabel(
+    icon: ImageVector,
+    label: String,
+    trailing: @Composable (() -> Unit)? = null
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 0.3.sp
+        )
+        if (trailing != null) {
+            Spacer(Modifier.weight(1f))
+            trailing()
+        }
+    }
+}
+
+@Composable
+private fun TypeFilterChips(
+    selected: ContentType,
+    onSelect: (ContentType) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        ContentType.values().forEach { type ->
+            val (icon, label) = contentTypeMeta(type)
+            val isSelected = type == selected
+            TypeFilterChip(
+                icon = icon,
+                label = label,
+                selected = isSelected,
+                onClick = { onSelect(type) },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -301,157 +429,7 @@ private fun SaveHintSection(
 }
 
 @Composable
-private fun VoiceRecordingRow(
-    state: DiaryState,
-    onStartRecording: () -> Unit,
-    onStopRecording: () -> Unit
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        when {
-            state.isRecording -> {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFE53935))
-                ) {
-                    IconButton(onClick = onStopRecording) {
-                        Icon(
-                            imageVector = Icons.Filled.Stop,
-                            contentDescription = "녹음 중지",
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                Column(modifier = Modifier.padding(start = 4.dp)) {
-                    Text(
-                        text = "녹음 중... ${state.recordingSeconds}초",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = Color(0xFFE53935)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(120.dp)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(Color(0xFF333333))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(state.recordingVolume)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(
-                                    when {
-                                        state.recordingVolume < 0.3f -> Color(0xFF4CAF50)
-                                        state.recordingVolume < 0.7f -> Color(0xFFFFC107)
-                                        else -> Color(0xFFE53935)
-                                    }
-                                )
-                        )
-                    }
-                }
-            }
-            state.isTranscribing -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "음성 변환 중...",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            state.isSherpaModelReady -> {
-                FilledTonalIconButton(
-                    onClick = onStartRecording,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Mic,
-                        contentDescription = "음성 녹음",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Text(
-                    text = "음성으로 일기 쓰기 (마지막 본문 블록에 추가)",
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            state.isDownloadingModel -> {
-                Text(
-                    text = "음성 인식 모델 다운로드 중...",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-/**
- * 콘텐츠 타입 선택 가로 칩바.
- */
-@Composable
-private fun ContentTypeSelector(
-    selected: ContentType,
-    onSelect: (ContentType) -> Unit,
-    isClassifying: Boolean,
-    onClassifyClick: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 4.dp, bottom = 6.dp)
-        ) {
-            Text(
-                text = "글 타입",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            AiAssistTextButton(
-                label = if (isClassifying) "분류 중…" else "AI 자동 분류",
-                loading = isClassifying,
-                onClick = onClassifyClick
-            )
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            ContentType.values().forEach { type ->
-                val (icon, label) = contentTypeMeta(type)
-                ContentTypeChip(
-                    icon = icon,
-                    label = label,
-                    selected = type == selected,
-                    onClick = { onSelect(type) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContentTypeChip(
+private fun TypeFilterChip(
     icon: ImageVector,
     label: String,
     selected: Boolean,
@@ -459,51 +437,611 @@ private fun ContentTypeChip(
     modifier: Modifier = Modifier
 ) {
     val accent = MaterialTheme.colorScheme.primary
-    val containerColor = if (selected) accent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-    val borderColor = if (selected) accent else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-    val contentColor = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
+    val container = if (selected) accent.copy(alpha = 0.14f)
+    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+    val border = if (selected) accent.copy(alpha = 0.55f)
+    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+    val content = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = container,
+        border = BorderStroke(1.dp, border),
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(containerColor)
-            .border(if (selected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                fontSize = 13.sp,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                color = content
+            )
+        }
+    }
+}
+
+@Composable
+private fun TitleHeroField(
+    title: String,
+    titleStyle: TitleStyle,
+    isModelReady: Boolean,
+    isSuggesting: Boolean,
+    hasBody: Boolean,
+    onValueChange: (String) -> Unit,
+    onSuggestClick: () -> Unit
+) {
+    val titleColor = titleStyle.color?.let {
+        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+    } ?: MaterialTheme.colorScheme.onSurface
+    val titleSize = (titleStyle.sizeSp ?: 24).coerceIn(18, 34)
+
+    OutlinedTextField(
+        value = title,
+        onValueChange = onValueChange,
+        placeholder = {
+            Text(
+                text = "오늘의 제목을 입력하세요",
+                fontSize = titleSize.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+            )
+        },
+        textStyle = TextStyle(
+            fontSize = titleSize.sp,
+            fontWeight = FontWeight.ExtraBold,
+            lineHeight = (titleSize + 6).sp,
+            color = titleColor
+        ),
+        singleLine = true,
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+            focusedContainerColor = MaterialTheme.colorScheme.surface,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+        ),
+        trailingIcon = {
+            TitleAiTrailing(
+                isModelReady = isModelReady,
+                isSuggesting = isSuggesting,
+                hasBody = hasBody,
+                onClick = onSuggestClick
+            )
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    )
+}
+
+@Composable
+private fun TitleAiTrailing(
+    isModelReady: Boolean,
+    isSuggesting: Boolean,
+    hasBody: Boolean,
+    onClick: () -> Unit
+) {
+    val active = isModelReady && hasBody && !isSuggesting
+    val tint = when {
+        isSuggesting -> MaterialTheme.colorScheme.primary
+        active -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    }
+    val description = when {
+        isSuggesting -> "AI 제목 생성 중"
+        !isModelReady -> "AI 모델 미준비"
+        !hasBody -> "본문을 먼저 작성해주세요"
+        else -> "AI 제목 추천"
+    }
+    Box(
+        modifier = Modifier
+            .padding(end = 6.dp)
+            .size(36.dp)
+            .clip(CircleShape)
+            .clickable(enabled = active, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isSuggesting) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
+                color = tint
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = description,
+                tint = tint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TitleStyleInline(
+    currentStyle: TitleStyle,
+    onStyleChange: (TitleStyle) -> Unit
+) {
+    val colorOptions = listOf(
+        null,
+        "#D32F2F",
+        "#E65100",
+        "#388E3C",
+        "#1976D2",
+        "#7B1FA2",
+        "#00838F",
+        "#C2185B"
+    )
+    val sizeOptions = listOf(
+        null to "M",
+        18 to "S",
+        22 to "M",
+        26 to "L",
+        30 to "XL"
+    ).distinctBy { it.second }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        // 색상
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            colorOptions.forEach { hex ->
+                val isSelected = currentStyle.color == hex
+                val swatchColor = hex?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(if (swatchColor != null) swatchColor else Color.Transparent)
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else if (hex == null) MaterialTheme.colorScheme.outlineVariant
+                            else (swatchColor ?: MaterialTheme.colorScheme.outlineVariant).copy(alpha = 0.4f),
+                            shape = CircleShape
+                        )
+                        .clickable { onStyleChange(currentStyle.copy(color = hex)) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (hex == null) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .border(
+                                    1.5.dp,
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                    CircleShape
+                                )
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            // 사이즈
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                sizeOptions.forEach { (sizeSp, label) ->
+                    val isSelected = currentStyle.sizeSp == sizeSp
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        border = BorderStroke(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        ),
+                        modifier = Modifier
+                            .width(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onStyleChange(currentStyle.copy(sizeSp = sizeSp)) }
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BodySection(
+    state: DiaryState,
+    onUpdateBlockText: (String, String, com.grepiu.aidiary.data.model.TextFormatting) -> Unit,
+    onUpdateBlockCaption: (String, String) -> Unit,
+    onRemoveBlock: (String) -> Unit,
+    onMoveBlock: (String, Int) -> Unit,
+    onProofreadBlock: (String) -> Unit,
+    onDecorateBlock: (String) -> Unit,
+    onTableCellChange: (String, Int, Int, String) -> Unit,
+    onTableAddRow: (String) -> Unit,
+    onTableRemoveRow: (String, Int) -> Unit,
+    onTableAddColumn: (String) -> Unit,
+    onTableRemoveColumn: (String, Int) -> Unit
+) {
+    if (state.draftBlocks.isEmpty()) {
+        EmptyBodyHint()
+    } else {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+        ) {
+            state.draftBlocks.forEachIndexed { index, block ->
+                BlockEditor(
+                    block = block,
+                    index = index,
+                    totalCount = state.draftBlocks.size,
+                    isProofreading = state.isProofreadingBlockId == block.id,
+                    isDecorating = state.isDecoratingBlockId == block.id,
+                    aiAssistEnabled = state.isModelReady,
+                    onUpdateText = { newText, newFmt -> onUpdateBlockText(block.id, newText, newFmt) },
+                    onUpdateCaption = { newCap -> onUpdateBlockCaption(block.id, newCap) },
+                    onRemove = { onRemoveBlock(block.id) },
+                    onMoveUp = { onMoveBlock(block.id, -1) },
+                    onMoveDown = { onMoveBlock(block.id, +1) },
+                    onProofread = { onProofreadBlock(block.id) },
+                    onDecorate = { onDecorateBlock(block.id) },
+                    onTableCellChange = { r, c, t -> onTableCellChange(block.id, r, c, t) },
+                    onTableAddRow = { onTableAddRow(block.id) },
+                    onTableRemoveRow = { r -> onTableRemoveRow(block.id, r) },
+                    onTableAddColumn = { onTableAddColumn(block.id) },
+                    onTableRemoveColumn = { c -> onTableRemoveColumn(block.id, c) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyBodyHint() {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                text = "본문을 시작해 볼까요?",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "아래 '블록 추가'에서 본문·인용·이미지·구분선을 선택해 쌓거나, '음성 입력'으로 말하며 작성할 수 있어요. 본문 안에서 '섹션 제목' 블록은 소제목으로 활용해 보세요.",
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceCard(
+    state: DiaryState,
+    onStartRecording: () -> Unit,
+    onStopRecording: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(14.dp)
+        ) {
+            when {
+                state.isRecording -> RecordingActiveBody(
+                    seconds = state.recordingSeconds,
+                    volume = state.recordingVolume,
+                    onStop = onStopRecording,
+                    modifier = Modifier.weight(1f)
+                )
+                state.isTranscribing -> TranscribingBody()
+                state.isSherpaModelReady -> RecordIdleBody(
+                    onStart = onStartRecording,
+                    modifier = Modifier.weight(1f)
+                )
+                state.isDownloadingModel -> DownloadingModelBody(modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecordingActiveBody(
+    seconds: Int,
+    volume: Float,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val recColor = Color(0xFFE53935)
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(recColor),
+        contentAlignment = Alignment.Center
+    ) {
+        IconButton(onClick = onStop) {
+            Icon(
+                imageVector = Icons.Filled.Stop,
+                contentDescription = "녹음 중지",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+    Column(modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(recColor)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "녹음 중 · ${seconds}초",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = recColor
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(Color(0xFF333333))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(volume)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(
+                        when {
+                            volume < 0.3f -> Color(0xFF4CAF50)
+                            volume < 0.7f -> Color(0xFFFFC107)
+                            else -> Color(0xFFE53935)
+                        }
+                    )
+            )
+        }
+    }
+}
+
+@Composable
+private fun TranscribingBody() {
+    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+    Spacer(Modifier.width(2.dp))
+    Text(
+        text = "음성을 텍스트로 변환하고 있어요…",
+        fontSize = 13.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+@Composable
+private fun RecordIdleBody(
+    onStart: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FilledTonalIconButton(
+        onClick = onStart,
+        modifier = Modifier.size(44.dp)
     ) {
         Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = contentColor
+            imageVector = Icons.Filled.Mic,
+            contentDescription = "음성 녹음 시작",
+            modifier = Modifier.size(20.dp)
         )
-        Spacer(modifier = Modifier.width(6.dp))
+    }
+    Column(modifier = modifier) {
+        Text(
+            text = "음성으로 일기 쓰기",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "마이크를 누르고 말하면 마지막 본문 블록 끝에 자동 추가돼요.",
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun DownloadingModelBody(modifier: Modifier = Modifier) {
+    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+    Text(
+        text = "음성 인식 모델을 다운로드하고 있어요…",
+        fontSize = 12.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun InlineStatusRow(text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 24.dp)
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(14.dp),
+            strokeWidth = 2.dp
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SaveHintCard(
+    isModelReady: Boolean,
+    supportsAiAnalysis: Boolean,
+    isSavingWithAi: Boolean
+) {
+    val (icon, message, container, content) = when {
+        isSavingWithAi -> Quadruple(
+            Icons.Default.AutoAwesome,
+            "AI 가 감정을 분석하고 있어요. 잠시만 기다려 주세요…",
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.45f),
+            MaterialTheme.colorScheme.onTertiaryContainer
+        )
+        supportsAiAnalysis && isModelReady -> Quadruple(
+            Icons.Default.AutoAwesome,
+            "저장 시 AI 가 기쁨/슬픔/평온/불안/분노 중 하나로 감정을 태그해 'TAG AI' 블록을 자동 추가해요.",
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+            MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        supportsAiAnalysis && !isModelReady -> Quadruple(
+            Icons.Outlined.Info,
+            "목록 화면에서 온디바이스 AI 모델을 다운로드하면, 저장 시 AI 가 감정을 자동으로 태그해 줘요.",
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        else -> Quadruple(
+            Icons.Outlined.Info,
+            "저장하면 일기가 목록에 기록돼요.",
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = container,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = content,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = message,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = content
+            )
+        }
+    }
+}
+
+private data class Quadruple<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+@Composable
+private fun InlineAiAction(
+    label: String,
+    loading: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val active = enabled && !loading
+    val contentColor = if (active) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .clickable(enabled = active, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                strokeWidth = 1.5.dp,
+                modifier = Modifier.size(12.dp),
+                color = contentColor
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(12.dp)
+            )
+        }
+        Spacer(Modifier.width(4.dp))
         Text(
             text = label,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
             color = contentColor
         )
     }
 }
 
-/**
- * 콘텐츠 타입별 아이콘/라벨 매핑.
- */
+/* ----- 공유 헬퍼: ContentType 메타 (List/Detail 과 동일 룩 유지) ----- */
 private fun contentTypeMeta(type: ContentType): Pair<ImageVector, String> = when (type) {
     ContentType.DIARY -> Icons.AutoMirrored.Filled.MenuBook to ContentType.DIARY.label
     ContentType.POST -> Icons.Default.EditNote to ContentType.POST.label
     ContentType.NOTE -> Icons.Default.NoteAlt to ContentType.NOTE.label
 }
 
-/**
- * 보조 입력 옆에 붙는 작은 아이콘형 AI 버튼.
- *
- * - [loading] 이 true 면 진행 표시 스피너 노출 + 비활성
- * - [enabled] 가 false 면 회색
- */
+/* ----- legacy API 호환 (이전 화면 코드에서 import 가능했던 public composable) ----- */
 @Composable
 fun AiAssistIconButton(
     label: String,
@@ -513,11 +1051,10 @@ fun AiAssistIconButton(
 ) {
     val active = enabled && !loading
     val containerColor = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
     val borderColor = if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     val contentColor = if (active) MaterialTheme.colorScheme.primary else Color.Gray
-
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -543,7 +1080,7 @@ fun AiAssistIconButton(
                 tint = contentColor
             )
         }
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(Modifier.width(4.dp))
         Text(
             text = label,
             fontSize = 11.sp,
@@ -551,253 +1088,5 @@ fun AiAssistIconButton(
             color = contentColor,
             maxLines = 1
         )
-    }
-}
-
-/**
- * 글 타입 라벨 우측에 붙는 인라인 텍스트형 AI 버튼.
- */
-@Composable
-fun AiAssistTextButton(
-    label: String,
-    loading: Boolean,
-    onClick: () -> Unit
-) {
-    val active = !loading
-    val contentColor = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = active, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-    ) {
-        if (loading) {
-            CircularProgressIndicator(
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(12.dp),
-                color = contentColor
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                modifier = Modifier.size(12.dp),
-                tint = contentColor
-            )
-        }
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = contentColor
-        )
-    }
-}
-
-/**
- * 상단 제목 입력란. 키보드 입력이 기본이고, 우측 트레일링 아이콘의 AI 버튼으로
- * 본문 기반 제목을 추천받을 수 있습니다.
- */
-@Composable
-private fun TitleInputField(
-    title: String,
-    titleStyle: TitleStyle,
-    isModelReady: Boolean,
-    isSuggesting: Boolean,
-    hasBody: Boolean,
-    onValueChange: (String) -> Unit,
-    onSuggestClick: () -> Unit
-) {
-    val titleColor = titleStyle.color?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
-        ?: MaterialTheme.colorScheme.onSurface
-    val titleSize = (titleStyle.sizeSp ?: 22).coerceIn(14, 32)
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "제목",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-        )
-        OutlinedTextField(
-            value = title,
-            onValueChange = onValueChange,
-            placeholder = {
-                Text(
-                    text = "글의 제목을 입력하세요",
-                    fontSize = titleSize.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                )
-            },
-            textStyle = TextStyle(
-                fontSize = titleSize.sp,
-                fontWeight = FontWeight.ExtraBold,
-                lineHeight = (titleSize + 6).sp,
-                color = titleColor
-            ),
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-            ),
-            trailingIcon = {
-                TitleAiButton(
-                    isModelReady = isModelReady,
-                    isSuggesting = isSuggesting,
-                    hasBody = hasBody,
-                    onClick = onSuggestClick
-                )
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-/**
- * 제목 입력란 우측에 붙는 AI 추천 버튼.
- * - 모델 준비 + 본문 존재 + 진행중이 아닐 때만 활성
- * - 비활성 시에도 안내용으로 보이도록 흐릿하게 표시
- */
-@Composable
-private fun TitleAiButton(
-    isModelReady: Boolean,
-    isSuggesting: Boolean,
-    hasBody: Boolean,
-    onClick: () -> Unit
-) {
-    val active = isModelReady && hasBody && !isSuggesting
-    val tint = when {
-        isSuggesting -> MaterialTheme.colorScheme.primary
-        active -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-    }
-    val description = when {
-        isSuggesting -> "AI 제목 생성 중"
-        !isModelReady -> "AI 모델 미준비"
-        !hasBody -> "본문을 먼저 작성해주세요"
-        else -> "AI 제목 추천"
-    }
-    IconButton(onClick = onClick, enabled = active) {
-        if (isSuggesting) {
-            CircularProgressIndicator(
-                strokeWidth = 2.dp,
-                modifier = Modifier.size(18.dp),
-                color = tint
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = description,
-                tint = tint,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun TitleStylePicker(
-    currentStyle: TitleStyle,
-    onStyleChange: (TitleStyle) -> Unit
-) {
-    val colorOptions = listOf(
-        null to Color.Unspecified,
-        "#D32F2F" to Color(0xFFD32F2F),
-        "#E65100" to Color(0xFFE65100),
-        "#388E3C" to Color(0xFF388E3C),
-        "#1976D2" to Color(0xFF1976D2),
-        "#7B1FA2" to Color(0xFF7B1FA2),
-        "#00838F" to Color(0xFF00838F),
-        "#C2185B" to Color(0xFFC2185B)
-    )
-
-    val sizeOptions = listOf(
-        null to "M",
-        18 to "S",
-        22 to "M",
-        26 to "L",
-        30 to "XL"
-    ).distinctBy { it.second }
-
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-        Text(
-            text = "제목 스타일",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            colorOptions.forEach { (hex, color) ->
-                val isSelected = currentStyle.color == hex
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (hex != null) color else Color.Transparent
-                        )
-                        .border(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary
-                                    else if (hex == null) MaterialTheme.colorScheme.outlineVariant
-                                    else color.copy(alpha = 0.4f),
-                            shape = CircleShape
-                        )
-                        .clickable { onStyleChange(currentStyle.copy(color = hex)) }
-                ) {
-                    if (hex == null) {
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clip(CircleShape)
-                                .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                                .align(Alignment.Center)
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            sizeOptions.forEach { (sizeSp, label) ->
-                val isSelected = currentStyle.sizeSp == sizeSp
-                val displaySz = (sizeSp ?: 22).coerceIn(11, 30)
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    border = BorderStroke(
-                        width = if (isSelected) 1.5.dp else 1.dp,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier
-                        .width(44.dp)
-                        .clickable { onStyleChange(currentStyle.copy(sizeSp = sizeSp)) }
-                ) {
-                    Text(
-                        text = label,
-                        fontSize = displaySz.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                    )
-                }
-            }
-        }
     }
 }

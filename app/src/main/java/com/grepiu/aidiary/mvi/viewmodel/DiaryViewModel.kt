@@ -251,6 +251,76 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
+            // ===== 표 =====
+            is DiaryIntent.UpdateTableCell -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block !is ContentBlock.TableBlock || block.id != intent.blockId) return@map block
+                            val r = intent.row.coerceIn(0, block.rows - 1)
+                            val c = intent.col.coerceIn(0, block.cols - 1)
+                            val newCells = block.cells.mapIndexed { ri, row ->
+                                if (ri != r) row
+                                else row.mapIndexed { ci, cell -> if (ci == c) intent.text else cell }
+                            }
+                            block.copy(cells = newCells)
+                        }
+                    )
+                }
+            }
+            is DiaryIntent.AddTableRow -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block !is ContentBlock.TableBlock || block.id != intent.blockId) return@map block
+                            if (block.rows >= TABLE_MAX_ROWS) return@map block
+                            val newRow = List(block.cols) { "" }
+                            block.copy(rows = block.rows + 1, cells = block.cells + listOf(newRow))
+                        }
+                    )
+                }
+            }
+            is DiaryIntent.RemoveTableRow -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block !is ContentBlock.TableBlock || block.id != intent.blockId) return@map block
+                            if (block.rows <= 1) return@map block
+                            val r = intent.rowIndex.coerceIn(0, block.rows - 1)
+                            val newCells = block.cells.toMutableList().also { it.removeAt(r) }
+                            block.copy(rows = block.rows - 1, cells = newCells)
+                        }
+                    )
+                }
+            }
+            is DiaryIntent.AddTableColumn -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block !is ContentBlock.TableBlock || block.id != intent.blockId) return@map block
+                            if (block.cols >= TABLE_MAX_COLS) return@map block
+                            val newCells = block.cells.map { row -> row + "" }
+                            block.copy(cols = block.cols + 1, cells = newCells)
+                        }
+                    )
+                }
+            }
+            is DiaryIntent.RemoveTableColumn -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block !is ContentBlock.TableBlock || block.id != intent.blockId) return@map block
+                            if (block.cols <= 1) return@map block
+                            val c = intent.colIndex.coerceIn(0, block.cols - 1)
+                            val newCells = block.cells.map { row ->
+                                row.toMutableList().also { it.removeAt(c) }
+                            }
+                            block.copy(cols = block.cols - 1, cells = newCells)
+                        }
+                    )
+                }
+            }
+
             // ===== 이미지 픽업/촬영 =====
             is DiaryIntent.ImagePicked -> {
                 importPickedImage(intent.uri)
@@ -1233,5 +1303,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         private const val SHERPA_DOWNLOAD_URL =
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2"
+
+        /** 표 블록 UI 안전 범위. */
+        private const val TABLE_MAX_ROWS = 30
+        private const val TABLE_MAX_COLS = 10
     }
 }

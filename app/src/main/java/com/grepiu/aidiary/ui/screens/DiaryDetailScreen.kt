@@ -1,21 +1,54 @@
 package com.grepiu.aidiary.ui.screens
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -23,7 +56,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.grepiu.aidiary.data.model.ContentBlock
-import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.ui.components.BlockRenderer
 import java.io.File
@@ -32,8 +64,16 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 일기 상세 내역 및 AI 피드백을 조회하는 화면 컴포저블입니다.
- * 앱 전체의 일관성 있고 깔끔한 Material 3 테마를 기반으로 한 단순성(Simplicity)을 강조합니다.
+ * 일기 상세 화면. 기업용 SaaS(Bear / Notion / Linear) 수준의 미니멀·정제된 레이아웃을 제공합니다.
+ *
+ *  구성 (위→아래)
+ *  1. 상단 스크롤 진행 바 + 스크롤 시 그림자가 생기는 TopAppBar (뒤로/삭제 액션)
+ *  2. 첫 첨부 이미지 기반 Hero (이미지가 있을 때만)
+ *  3. 콘텐츠 타입 / 감정 칩 라인
+ *  4. Display 스타일 제목
+ *  5. 날짜 + 읽기 시간 메타 행
+ *  6. 블록 단위 본문 (Heading/Text/Quote/Image/Divider/TagAI)
+ *  7. 삭제 확인 다이얼로그 (즉시 삭제, 되돌릴 수 없음 안내)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,61 +85,66 @@ fun DiaryDetailScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
-    
-    // 상세 날짜 포맷
-    val dateFullText = remember(diary.timestamp) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // --- 1. 파생 데이터: 날짜/읽기시간/커버 이미지/본문 정리 ---
+    val dateText = remember(diary.timestamp) {
         SimpleDateFormat("yyyy년 M월 d일 (EEEE)", Locale.KOREAN).format(Date(diary.timestamp))
     }
-
-    // 첫 이미지 블록을 인라인 커버 이미지로 사용
-    val firstImageBlock = remember(diary.id) {
+    val readTimeText = remember(diary.blocks) {
+        val charCount = diary.blocks.sumOf { block ->
+            when (block) {
+                is ContentBlock.TextBlock -> block.text.length
+                is ContentBlock.HeadingBlock -> block.text.length
+                is ContentBlock.QuoteBlock -> block.text.length
+                else -> 0
+            }
+        }
+        val minutes = (charCount / 400).coerceAtLeast(1)
+        "읽기 약 ${minutes}분"
+    }
+    val firstImage = remember(diary.id) {
         diary.blocks.firstOrNull { it is ContentBlock.ImageBlock } as? ContentBlock.ImageBlock
     }
-    val headerImageFile: File? = remember(firstImageBlock?.relativePath) {
-        val rel = firstImageBlock?.relativePath
+    val headerImageFile: File? = remember(firstImage?.relativePath) {
+        val rel = firstImage?.relativePath
         if (rel.isNullOrBlank()) null
         else File(context.filesDir, rel).takeIf { it.exists() }
     }
+    // 제목이 본문 첫 HeadingBlock 으로 저장된 구버전 호환: 제목과 같은 첫 Heading 은 본문에서 제외
+    val finalBlocks = remember(diary.blocks, diary.title) {
+        diary.blocks.dropWhile {
+            it is ContentBlock.HeadingBlock && it.text.trim() == diary.title.trim()
+        }
+    }
+    val scrollProgress = if (scrollState.maxValue > 0) {
+        scrollState.value.toFloat() / scrollState.maxValue
+    } else 0f
 
     val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
-    val isDark = isSystemInDarkTheme()
-    val cleanBackgroundColor = if (isDark) MaterialTheme.colorScheme.background else Color.White
+    val (emotionText, emotionColor) = getEmotionUI(diary.emotion)
+
+    if (showDeleteDialog) {
+        DeleteConfirmDialog(
+            onConfirm = {
+                showDeleteDialog = false
+                onDelete()
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = typeIcon,
-                            contentDescription = null,
-                            tint = typeColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "${typeLabel} 상세", fontWeight = FontWeight.Bold)
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onDelete) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "삭제",
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = cleanBackgroundColor
-                )
+            DetailTopBar(
+                typeLabel = typeLabel,
+                typeColor = typeColor,
+                scrollProgress = scrollProgress,
+                onBack = onBack,
+                onDelete = { showDeleteDialog = true }
             )
         },
-        containerColor = cleanBackgroundColor,
+        containerColor = MaterialTheme.colorScheme.background,
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
@@ -107,147 +152,319 @@ fun DiaryDetailScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .imePadding()
-                .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 1. 헤더 이미지 (이미지가 있을 경우에만 깔끔하게 상단 라운드 카드로 표시)
+            // 1) Hero 이미지 (첨부된 이미지가 있을 때만)
             if (headerImageFile != null) {
-                AsyncImage(
-                    model = headerImageFile,
-                    contentDescription = "일기 커버 이미지",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                DetailHeroImage(file = headerImageFile)
             }
 
-            // 2. 날짜 및 감정 태그 행
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = dateFullText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                
-                val (emotionText, emotionColor) = getEmotionUI(diary.emotion)
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = emotionColor.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = emotionText,
-                        color = emotionColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 3. 일기 제목
-            Text(
-                text = diary.title,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 4. 일기 본문 (블록 렌더링, 12.dp 간격으로 가독성 있고 일관되게 정렬)
-            val finalBlocks = remember(diary.blocks, diary.title) {
-                diary.blocks.dropWhile {
-                    it is ContentBlock.HeadingBlock && it.text.trim() == diary.title.trim()
-                }
-            }
-
+            // 2) 본문 컨테이너
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        PaddingValues(
+                            horizontal = 24.dp,
+                            vertical = if (headerImageFile != null) 8.dp else 24.dp
+                        )
+                    )
             ) {
-                finalBlocks.forEach { block ->
-                    BlockRenderer(block = block, textColor = MaterialTheme.colorScheme.onSurface)
-                }
-            }
+                // 2-1) 콘텐츠 타입 / 감정 칩
+                DetailChipsRow(
+                    typeIcon = typeIcon,
+                    typeLabel = typeLabel,
+                    typeColor = typeColor,
+                    emotionText = emotionText,
+                    emotionColor = emotionColor
+                )
 
-            // 5. AI 피드백 구역 (일치하는 카드 디자인)
-            if (diary.contentType.supportsAiAnalysis && diary.aiAnalysis != null) {
-                val (_, emotionColor) = getEmotionUI(diary.emotion)
-                Spacer(modifier = Modifier.height(28.dp))
-                
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                    ),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = emotionColor.copy(alpha = 0.25f)
-                    ),
+                Spacer(Modifier.height(20.dp))
+
+                // 2-2) 디스플레이 제목
+                Text(
+                    text = diary.title.ifBlank { "제목 없음" },
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 34.sp
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                // 2-3) 날짜 + 읽기 시간
+                DetailMetaRow(dateText = dateText, readTimeText = readTimeText)
+
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                    thickness = 0.5.dp
+                )
+                Spacer(Modifier.height(24.dp))
+
+                // 2-4) 본문 블록
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(text = "✨", fontSize = 14.sp)
-                            Text(
-                                text = "AI 마음 멘토의 공감 리포트",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = emotionColor
-                            )
-                        }
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Text(
-                            text = diary.aiAnalysis,
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                    finalBlocks.forEach { block ->
+                        BlockRenderer(
+                            block = block,
+                            textColor = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
-            } else if (diary.contentType.supportsAiAnalysis) {
-                Spacer(modifier = Modifier.height(28.dp))
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f)
-                    ),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "이 일기는 아직 AI 마음 분석 리포트가 생성되지 않았습니다.",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(20.dp)
-                    )
-                }
-            }
 
-            Spacer(modifier = Modifier.height(40.dp))
+                Spacer(Modifier.height(56.dp))
+            }
         }
     }
 }
 
+/* ------------------------- 내부 컴포저블 ------------------------- */
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DetailTopBar(
+    typeLabel: String,
+    typeColor: Color,
+    scrollProgress: Float,
+    onBack: () -> Unit,
+    onDelete: () -> Unit
+) {
+    // 스크롤 시 자연스러운 elevation 증가 (0dp → 4dp)
+    val elevation = if (scrollProgress > 0.02f) 4.dp else 0.dp
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = elevation,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            // 2dp 스크롤 진행 바
+            if (scrollProgress > 0f) {
+                LinearProgressIndicator(
+                    progress = { scrollProgress.coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = typeColor,
+                    trackColor = Color.Transparent,
+                    strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt
+                )
+            }
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "${typeLabel} 상세",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "뒤로가기"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            imageVector = Icons.Filled.DeleteOutline,
+                            contentDescription = "삭제",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailHeroImage(file: File) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .height(240.dp)
+            .shadow(
+                elevation = 6.dp,
+                shape = RoundedCornerShape(20.dp),
+                clip = false
+            )
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        AsyncImage(
+            model = file,
+            contentDescription = "일기 커버 이미지",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+        // 하단 깊이감을 위한 그라데이션 오버레이
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.25f)
+                        )
+                    )
+                )
+        )
+    }
+}
+
+@Composable
+private fun DetailChipsRow(
+    typeIcon: ImageVector,
+    typeLabel: String,
+    typeColor: Color,
+    emotionText: String,
+    emotionColor: Color
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MetaChip(icon = typeIcon, label = typeLabel, color = typeColor)
+        MetaChip(emoji = emotionText, color = emotionColor)
+    }
+}
+
+@Composable
+private fun MetaChip(
+    color: Color,
+    label: String? = null,
+    icon: ImageVector? = null,
+    emoji: String? = null
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = color.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.28f))
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+            }
+            if (emoji != null) {
+                Text(text = emoji, fontSize = 13.sp)
+            }
+            if (label != null) {
+                Spacer(Modifier.width(2.dp))
+                Text(
+                    text = label,
+                    color = color,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailMetaRow(
+    dateText: String,
+    readTimeText: String
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        MetaInlineIconText(
+            icon = Icons.Filled.DateRange,
+            text = dateText
+        )
+        MetaInlineIconText(
+            icon = Icons.Filled.AccessTime,
+            text = readTimeText
+        )
+    }
+}
+
+@Composable
+private fun MetaInlineIconText(
+    icon: ImageVector,
+    text: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+        )
+    }
+}
+
+@Composable
+private fun DeleteConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.DeleteOutline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = {
+            Text(
+                text = "일기를 삭제할까요?",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                text = "삭제된 일기는 휴지통으로 이동되지 않고 즉시 사라져요. 되돌릴 수 없어요.",
+                fontSize = 13.sp,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("삭제", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
+    )
+}

@@ -56,6 +56,23 @@ sealed interface DiaryIntent {
     /** 카메라 촬영이 완료된 임시 파일을 내부 저장소로 가져와 ImageBlock 으로 추가합니다. */
     data class CameraImageCaptured(val tempFilePath: String) : DiaryIntent
 
+    // ===== 표 =====
+    /** 표의 (row, col) 셀 텍스트를 갱신합니다. */
+    data class UpdateTableCell(
+        val blockId: String,
+        val row: Int,
+        val col: Int,
+        val text: String
+    ) : DiaryIntent
+    /** 표에 빈 행을 마지막에 추가합니다. */
+    data class AddTableRow(val blockId: String) : DiaryIntent
+    /** 표에서 [rowIndex] 행을 제거합니다 (헤더 포함). */
+    data class RemoveTableRow(val blockId: String, val rowIndex: Int) : DiaryIntent
+    /** 표에 빈 열을 마지막에 추가합니다. */
+    data class AddTableColumn(val blockId: String) : DiaryIntent
+    /** 표에서 [colIndex] 열을 제거합니다. */
+    data class RemoveTableColumn(val blockId: String, val colIndex: Int) : DiaryIntent
+
     // ===== 플래너 및 목표 기록 =====
     /** 선택한 캘린더 날짜를 변경합니다. */
     data class SelectDate(val dateString: String) : DiaryIntent

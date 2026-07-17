@@ -98,9 +98,10 @@ app/src/main/java/com/grepiu/aidiary/
 | `ImageBlock` | `relativePath`, `caption` | `filesDir/diary_images/<uuid>.jpg` 상대 경로 |
 | `DividerBlock` | - | 가로 구분선 |
 | `TagAiBlock` | `emotion` | 저장 시 AI 가 자동 생성한 'TAG AI' 블록. `emotion` 은 [기쁨, 슬픔, 분노, 불안, 평온] 5 종 중 하나. 위로/조언 본문은 생성하지 않으며 편집 불가(삭제만 가능). `extractPlainText` 에서는 제외되어 재분석 입력 피드백 루프를 방지 |
+| `TableBlock` | `rows`, `cols`, `cells` | 표 블록. `cells` 는 `rows × cols` 2D 문자열 리스트, 첫 행이 헤더. 기본 2×2 빈 셀로 시작, `DiaryViewModel` 의 `AddTableRow/Column`, `RemoveTableRow/Column` 으로 동적 크기 조정(최대 30×10). 셀 텍스트는 `extractPlainText` 에서 ` \| ` 로 결합되어 AI 분석 입력에 포함 |
 
 - 모든 블록은 `id` 를 가져 `UpdateBlockText` / `RemoveBlock` 등 키 기반 업데이트에 사용됩니다.
-- AI 분석용 평문 추출: `List<ContentBlock>.extractPlainText()` (Heading/Text/Quote 의 `text` 만 결합. `TagAiBlock` 은 AI 생성 결과이므로 제외).
+- AI 분석용 평문 추출: `List<ContentBlock>.extractPlainText()` (Heading/Text/Quote 의 `text` 와 `TableBlock.cells` 를 ` \| ` 로 결합. `TagAiBlock` 은 AI 생성 결과이므로 제외).
 
 ## 4.1 인라인 텍스트 서식 (`TextFormatting`)
 

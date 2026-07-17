@@ -15,17 +15,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.HorizontalRule
@@ -50,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +91,11 @@ fun BlockEditor(
     aiAssistEnabled: Boolean = true,
     onProofread: () -> Unit = {},
     onDecorate: () -> Unit = {},
+    onTableCellChange: (Int, Int, String) -> Unit = { _, _, _ -> },
+    onTableAddRow: () -> Unit = {},
+    onTableRemoveRow: (Int) -> Unit = {},
+    onTableAddColumn: () -> Unit = {},
+    onTableRemoveColumn: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val (typeLabel, typeIcon, accent) = blockTypeMeta(block)
@@ -241,6 +251,16 @@ fun BlockEditor(
             is ContentBlock.TagAiBlock -> {
                 TagAiBlockEditor(block = block, onRemove = onRemove)
             }
+            is ContentBlock.TableBlock -> {
+                TableBlockEditor(
+                    block = block,
+                    onCellChange = onTableCellChange,
+                    onAddRow = onTableAddRow,
+                    onRemoveRow = onTableRemoveRow,
+                    onAddColumn = onTableAddColumn,
+                    onRemoveColumn = onTableRemoveColumn
+                )
+            }
         }
     }
 }
@@ -308,6 +328,235 @@ private fun tagEmotionUi(label: String): Pair<String, Color> = when (label.trim(
     "분노" -> "😡 분노" to Color(0xFFC62828)
     else -> "평온" to Color(0xFF2E7D32)
 }
+
+/* ========================== 표 블록 ========================== */
+
+/**
+ * 표 블록 에디터.
+ *
+ * - 셀은 [BasicTextField] 로 직접 인라인 편집
+ * - 상단 툴바: 행/열 추가/삭제 (마지막 1행·1열은 삭제 불가)
+ * - 첫 행은 헤더로 시각 구분 (굵게 + 옅은 배경)
+ */
+@Composable
+private fun TableBlockEditor(
+    block: ContentBlock.TableBlock,
+    onCellChange: (Int, Int, String) -> Unit,
+    onAddRow: () -> Unit,
+    onRemoveRow: (Int) -> Unit,
+    onAddColumn: () -> Unit,
+    onRemoveColumn: (Int) -> Unit
+) {
+    val cellBorder = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val headerBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+    val primaryBorder = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(0.5.dp, cellBorder, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
+    ) {
+        // 툴바: 행/열 추가·삭제
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            TableToolButton(
+                icon = Icons.Default.Add,
+                label = "행",
+                onClick = onAddRow
+            )
+            TableToolButton(
+                icon = Icons.Default.Remove,
+                label = "행",
+                onClick = { onRemoveRow(block.rows - 1) },
+                enabled = block.rows > 1
+            )
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .size(1.dp, 16.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+            )
+            TableToolButton(
+                icon = Icons.Default.Add,
+                label = "열",
+                onClick = onAddColumn
+            )
+            TableToolButton(
+                icon = Icons.Default.Remove,
+                label = "열",
+                onClick = { onRemoveColumn(block.cols - 1) },
+                enabled = block.cols > 1
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "${block.rows} × ${block.cols}",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 6.dp)
+            )
+        }
+
+        // 헤더 (첫 행)
+        TableRowEditor(
+            row = block.cells.firstOrNull().orEmpty(),
+            rowIndex = 0,
+            isHeader = true,
+            border = cellBorder,
+            headerBg = headerBg,
+            onCellChange = onCellChange
+        )
+
+        // 본문 행
+        block.cells.drop(1).forEachIndexed { idx, row ->
+            TableRowEditor(
+                row = row,
+                rowIndex = idx + 1,
+                isHeader = false,
+                border = cellBorder,
+                headerBg = headerBg,
+                onCellChange = onCellChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun TableRowEditor(
+    row: List<String>,
+    rowIndex: Int,
+    isHeader: Boolean,
+    border: Color,
+    headerBg: Color,
+    onCellChange: (Int, Int, String) -> Unit
+) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        row.forEachIndexed { colIdx, cellText ->
+            val cellModifier = Modifier
+                .weight(1f)
+                .background(if (isHeader) headerBg else Color.Transparent)
+                .border(width = 0.5.dp, color = border)
+            TableCellEditor(
+                modifier = cellModifier,
+                value = cellText,
+                isHeader = isHeader,
+                onChange = { onCellChange(rowIndex, colIdx, it) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun TableCellEditor(
+    modifier: Modifier,
+    value: String,
+    isHeader: Boolean,
+    onChange: (String) -> Unit
+) {
+    // IME 조합(한글 등) 보호: 외부 value 와 로컬 tfv 가 항상 일치하지 않을 수 있으므로
+    // tfv 자체는 컴포저블 수명 동안 유지하고, 외부 동기화는 LaunchedEffect 에서
+    // 조합 중이 아닐 때만 덮어씁니다. (RichTextEditorBody 와 동일 패턴)
+    var tfv by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = value,
+                selection = TextRange(value.length)
+            )
+        )
+    }
+    var lastAppliedExternalText by remember { mutableStateOf(value) }
+
+    LaunchedEffect(value) {
+        if (value != lastAppliedExternalText && tfv.composition == null) {
+            if (tfv.text != value) {
+                tfv = TextFieldValue(
+                    text = value,
+                    selection = TextRange(value.length)
+                )
+            }
+            lastAppliedExternalText = value
+        } else if (value != lastAppliedExternalText && tfv.composition != null) {
+            // 조합 중이라면 다음 프레임에 재시도하도록 플래그만 갱신
+            lastAppliedExternalText = value
+        }
+    }
+
+    BasicTextField(
+        value = tfv,
+        onValueChange = { newTfv ->
+            val oldText = tfv.text
+            tfv = newTfv
+            if (newTfv.text != oldText) {
+                onChange(newTfv.text)
+            }
+            // 사용자가 직접 입력한 경우 외부 동기화 플래그를 현재 텍스트로 맞춤
+            lastAppliedExternalText = newTfv.text
+        },
+        textStyle = androidx.compose.ui.text.TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface
+        ),
+        singleLine = false,
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+        modifier = modifier
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        decorationBox = { inner ->
+            Box {
+                if (tfv.text.isEmpty()) {
+                    Text(
+                        text = if (isHeader) "열 이름" else "내용 입력",
+                        fontSize = 12.sp,
+                        fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                    )
+                }
+                inner()
+            }
+        }
+    )
+}
+
+@Composable
+private fun TableToolButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    val tint = if (enabled) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(14.dp)
+        )
+        Spacer(Modifier.width(2.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tint
+        )
+    }
+}
+
 
 /**
  * RichTextField + RichTextToolbar 를 묶어 텍스트+서식 편집을 처리하는 컴포저블.
@@ -469,13 +718,6 @@ fun AddBlockBar(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "블록 추가",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-        )
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
@@ -488,6 +730,11 @@ fun AddBlockBar(
             )
             AddChip(icon = Icons.AutoMirrored.Filled.Notes, label = "본문", onClick = { onAdd(ContentBlock.TextBlock(text = "")) })
             AddChip(icon = Icons.Default.FormatQuote, label = "인용", onClick = { onAdd(ContentBlock.QuoteBlock(text = "")) })
+            AddChip(
+                icon = Icons.Default.GridOn,
+                label = "표",
+                onClick = { onAdd(ContentBlock.TableBlock(rows = 2, cols = 2, cells = listOf(listOf("", ""), listOf("", "")))) }
+            )
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(
@@ -558,6 +805,7 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
     is ContentBlock.ImageBlock -> Triple("이미지", Icons.Default.Image, Color(0xFF2E7D32))
     is ContentBlock.DividerBlock -> Triple("구분선", Icons.Default.HorizontalRule, MaterialTheme.colorScheme.outline)
     is ContentBlock.TagAiBlock -> Triple("AI 태그", Icons.Default.AutoAwesome, Color(0xFF7B1FA2))
+    is ContentBlock.TableBlock -> Triple("표", Icons.Filled.GridOn, Color(0xFF455A64))
 }
 
 /**
