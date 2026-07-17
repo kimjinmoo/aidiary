@@ -361,7 +361,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.AddPlannerTask -> {
                 _state.update { current ->
-                    val updatedTasks = current.plannerTasks + PlannerTask(text = intent.text, dateString = intent.dateString)
+                    val updatedTasks = current.plannerTasks + PlannerTask(
+                        text = intent.text,
+                        dateString = intent.dateString,
+                        startTime = intent.startTime,
+                        endTime = intent.endTime,
+                        location = intent.location
+                    )
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }

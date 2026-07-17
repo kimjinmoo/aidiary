@@ -88,7 +88,13 @@ sealed interface DiaryIntent {
     /** 특정 목표를 삭제합니다. */
     data class DeleteGoal(val id: String) : DiaryIntent
     /** 특정 날짜에 새로운 할 일을 추가합니다. */
-    data class AddPlannerTask(val text: String, val dateString: String) : DiaryIntent
+    data class AddPlannerTask(
+        val text: String,
+        val dateString: String,
+        val startTime: String? = null,
+        val endTime: String? = null,
+        val location: String? = null
+    ) : DiaryIntent
     /** 할 일의 완료 여부를 토글합니다. */
     data class TogglePlannerTask(val id: String) : DiaryIntent
     /** 특정 할 일을 삭제합니다. */

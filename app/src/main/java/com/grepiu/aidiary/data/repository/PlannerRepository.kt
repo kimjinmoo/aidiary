@@ -21,6 +21,9 @@ data class PlannerTask(
     val text: String,
     val isCompleted: Boolean = false,
     val dateString: String, // 포맷: YYYY-MM-DD
+    val startTime: String? = null,
+    val endTime: String? = null,
+    val location: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -105,6 +108,9 @@ class PlannerRepository(private val context: Context) {
                     text = obj.getString("text"),
                     isCompleted = obj.getBoolean("isCompleted"),
                     dateString = obj.getString("dateString"),
+                    startTime = if (obj.isNull("startTime")) null else obj.opt("startTime") as? String,
+                    endTime = if (obj.isNull("endTime")) null else obj.opt("endTime") as? String,
+                    location = if (obj.isNull("location")) null else obj.opt("location") as? String,
                     timestamp = obj.optLong("timestamp", System.currentTimeMillis())
                 )
             }
@@ -125,6 +131,9 @@ class PlannerRepository(private val context: Context) {
                     put("text", task.text)
                     put("isCompleted", task.isCompleted)
                     put("dateString", task.dateString)
+                    put("startTime", task.startTime ?: JSONObject.NULL)
+                    put("endTime", task.endTime ?: JSONObject.NULL)
+                    put("location", task.location ?: JSONObject.NULL)
                     put("timestamp", task.timestamp)
                 }
                 arr.put(obj)

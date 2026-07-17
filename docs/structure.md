@@ -58,7 +58,7 @@ app/src/main/java/com/grepiu/aidiary/
     │   └── RichTextToolbar.kt       # B/I/U/S 토글 + 색상 팔레트 + 크기 셀렉터
     ├── screens/
     │   ├── DiarySplashScreen.kt     # [NEW] 애니메이션 스플래시 화면
-    │   ├── DiaryListScreen.kt       # 목록 + 감정 통계 + 썸네일 + 다운로드 카드
+    │   ├── DiaryListScreen.kt       # 목록 + 썸네일 + 다운로드 카드 (UI/UX 전면 개편, 감정 통계 제거, 책갈피 필터 추가)
     │   ├── DiaryWriteScreen.kt      # 상단 제목 입력(draftTitle) + 글 타입 + 제목 스타일 + 블록 기반 작성/녹음/AI 분석 트리거
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트 (블록 렌더러 사용)
     └── theme/                       # Material3 Color/Type/Theme (Pretendard 폰트 패밀리)
@@ -173,7 +173,7 @@ UI 규약:
 | `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM | `sherpa-onnx-zipformer-korean-2024-06-24` 고정 |
 | `ModelDownloaderV2` | HuggingFace 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 콜백 |
 | `DiaryState` | 모든 UI 상태의 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실, 플래너/목표 및 AI 챗봇 대화 기록 동시 관리 |
-| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 | 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |
+| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 (PlannerTask에 시작/종료 시간, 장소 필드 제공) | 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |
 
 ## 6. 의존성/플러그인 위치
 
