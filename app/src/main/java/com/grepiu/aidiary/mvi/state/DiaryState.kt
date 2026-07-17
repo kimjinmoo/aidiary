@@ -3,6 +3,7 @@ package com.grepiu.aidiary.mvi.state
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
+import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
@@ -32,7 +33,9 @@ data class DiaryState(
     val activeTab: String = "DIARY",                         // 현재 활성화된 탭 (DIARY, PLANNER, GOALS)
 
     // 작성/수정 중인 임시 일기 상태
-    val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문 (HeadingBlock 첫 항목이 세션 제목)
+    val draftTitle: String = "",                            // 상단 입력란의 글 제목 (키보드/AI 모두 이 필드로 갱신)
+    val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문 (HeadingBlock 은 본문 내 '섹션 제목' 용도)
+    val draftTitleStyle: TitleStyle = TitleStyle.Default,   // 제목 스타일 (색상/크기)
     val draftEmotion: String = "Neutral",
     val draftContentType: ContentType = ContentType.DIARY,
 
@@ -48,9 +51,8 @@ data class DiaryState(
     val isDeviceUnsupported: Boolean = false,                // 디바이스 온디바이스 AI 구동 지원 불가 여부
     val deviceUnsupportedReason: String? = null,             // 지원 불가 사유 텍스트
 
-    // AI 일기 분석 진행 및 스트리밍 결과 상태
-    val aiAnalysisText: String? = null,                      // 실시간 스트리밍 분석 텍스트
-    val isGeneratingAnalysis: Boolean = false,               // AI 분석 추론 진행 여부
+    // 저장 시 AI TAG 자동 생성 진행 상태
+    val isGeneratingAnalysis: Boolean = false,               // 저장 흐름에서 AI 분석 + TAG AI 블록 생성이 진행 중인지 여부
 
     // 작성 보조 AI 액션 상태
     /** true: 제목 자동 생성 중 */
@@ -83,16 +85,16 @@ data class DiaryState(
         get() = draftBlocks.extractPlainText()
 
     /**
-     * 세션 제목으로 사용되는 첫 HeadingBlock 의 텍스트.
-     * 없으면 빈 문자열 (저장 차단 트리거에 사용).
+     * 세션 제목 = 상단 입력란의 [draftTitle]. 저장 차단 트리거에 사용.
+     * (예전에는 첫 HeadingBlock 의 텍스트였으나, 상단 별도 입력란으로 분리됨)
      */
     val sessionTitle: String
-        get() = (draftBlocks.firstOrNull { it is ContentBlock.HeadingBlock } as? ContentBlock.HeadingBlock)
-            ?.text
-            ?.trim()
-            .orEmpty()
+        get() = draftTitle.trim()
 
-    /** 첫 HeadingBlock 존재 여부 (AddBlockBar 의 제목 칩 활성/비활성 가드). */
+    /**
+     * 본문 블록 내에 '섹션 제목' 으로 쓰인 HeadingBlock 존재 여부.
+     * 메인 제목은 더 이상 HeadingBlock 이 아니므로, 이 플래그는 본문 섹션 제목을 위한 용도로만 사용.
+     */
     val hasHeadingBlock: Boolean
         get() = draftBlocks.any { it is ContentBlock.HeadingBlock }
 }

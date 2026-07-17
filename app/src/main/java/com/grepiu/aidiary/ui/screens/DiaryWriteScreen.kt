@@ -1,9 +1,9 @@
 package com.grepiu.aidiary.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,8 +30,6 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -49,15 +47,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.ContentType
+import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.AddBlockBar
 import com.grepiu.aidiary.ui.components.BlockEditor
@@ -73,6 +73,7 @@ import com.grepiu.aidiary.ui.components.BlockEditor
 fun DiaryWriteScreen(
     state: DiaryState,
     onContentTypeChange: (ContentType) -> Unit,
+    onUpdateTitleStyle: (TitleStyle) -> Unit,
     onAddBlock: (ContentBlock) -> Unit,
     onInsertBlock: (Int, ContentBlock) -> Unit,
     onUpdateBlockText: (String, String, com.grepiu.aidiary.data.model.TextFormatting) -> Unit,
@@ -81,12 +82,12 @@ fun DiaryWriteScreen(
     onMoveBlock: (String, Int) -> Unit,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
-    onAnalyzeDiary: () -> Unit,
     onSaveDiary: () -> Unit,
     onBack: () -> Unit,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
     onSuggestTitle: () -> Unit,
+    onUpdateTitle: (String) -> Unit,
     onClassifyType: () -> Unit,
     onProofreadBlock: (String) -> Unit,
     onDecorateBlock: (String) -> Unit,
@@ -150,8 +151,16 @@ fun DiaryWriteScreen(
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // (제목은 블록 에디터의 첫 HeadingBlock 으로 통합 — 상단 별도 입력란 제거)
-
+            // 1. 상단 제목 입력란 (키보드 입력 기본, 우측 AI 버튼으로 보조)
+            TitleInputField(
+                title = state.draftTitle,
+                titleStyle = state.draftTitleStyle,
+                isModelReady = state.isModelReady,
+                isSuggesting = state.isSuggestingTitle,
+                hasBody = state.draftPlainText.isNotBlank(),
+                onValueChange = onUpdateTitle,
+                onSuggestClick = onSuggestTitle
+            )
 
             // 1.5 콘텐츠 타입 선택 + AI 자동 분류 버튼
             ContentTypeSelector(
@@ -160,6 +169,13 @@ fun DiaryWriteScreen(
                 isClassifying = state.isClassifyingType,
                 onClassifyClick = onClassifyType
             )
+
+            if (state.draftTitle.isNotBlank()) {
+                TitleStylePicker(
+                    currentStyle = state.draftTitleStyle,
+                    onStyleChange = onUpdateTitleStyle
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -172,27 +188,11 @@ fun DiaryWriteScreen(
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "본문은 블록 단위로 구성돼요. 첫 블록은 '제목' (한 글에 1개) 으로 시작해서 글의 성격을 정해주세요.",
+                            text = "제목은 상단 입력란에, 본문은 아래 블록으로 자유롭게 작성해 보세요. '섹션 제목' 블록을 추가해 본문 안에서 소제목으로 활용할 수도 있어요.",
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            AiAssistIconButton(
-                                label = "AI 제목",
-                                loading = state.isSuggestingTitle,
-                                enabled = state.isModelReady && !state.isSuggestingTitle,
-                                onClick = onSuggestTitle
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "본문 없이도 AI 가 추천 제목을 만들어 첫 블록으로 추가해요.",
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 }
             } else {
@@ -254,33 +254,48 @@ fun DiaryWriteScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 3. AI 분석 영역 (일기 타입일 때만 노출)
-            if (state.draftContentType.supportsAiAnalysis) {
-                AIAnalysisSection(
-                    state = state,
-                    onAnalyzeDiary = onAnalyzeDiary
-                )
-            } else {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = when (state.draftContentType) {
-                            ContentType.POST -> "💡 새 글은 AI 마음 분석 없이 자유롭게 기록해요."
-                            ContentType.NOTE -> "💡 메모는 간단히 남기는 글입니다."
-                            else -> ""
-                        },
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                }
-            }
+            // 3. 저장 안내 + AI 자동 TAG 안내 (일기 타입일 때만 AI TAG 자동 추가 안내)
+            SaveHintSection(
+                isModelReady = state.isModelReady,
+                supportsAiAnalysis = state.draftContentType.supportsAiAnalysis,
+                isSavingWithAi = state.isGeneratingAnalysis
+            )
 
             Spacer(modifier = Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun SaveHintSection(
+    isModelReady: Boolean,
+    supportsAiAnalysis: Boolean,
+    isSavingWithAi: Boolean
+) {
+    val (icon, message) = when {
+        isSavingWithAi -> "✨" to "AI 가 감정을 분석하고 있어요. 잠시만 기다려 주세요…"
+        supportsAiAnalysis && isModelReady -> "✨" to "저장하면 AI 가 기쁨/슬픔/평온/불안/분노 중 하나로 감정을 태그해 'TAG AI' 블록을 추가해요. (AI 모델 준비 완료)"
+        supportsAiAnalysis && !isModelReady -> "💡" to "목록 화면에서 온디바이스 AI 모델을 다운로드하면, 저장 시 AI 가 감정을 자동으로 태그해 줘요."
+        else -> "💡" to "저장하면 일기가 목록에 기록돼요."
+    }
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Text(text = icon, fontSize = 16.sp)
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = message,
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -380,120 +395,6 @@ private fun VoiceRecordingRow(
                 Text(
                     text = "음성 인식 모델 다운로드 중...",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AIAnalysisSection(
-    state: DiaryState,
-    onAnalyzeDiary: () -> Unit
-) {
-    if (state.isModelReady) {
-        Button(
-            onClick = onAnalyzeDiary,
-            enabled = state.draftPlainText.isNotBlank() && !state.isGeneratingAnalysis,
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.secondary,
-                contentColor = MaterialTheme.colorScheme.onSecondary
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp)
-        ) {
-            if (state.isGeneratingAnalysis) {
-                CircularProgressIndicator(
-                    color = MaterialTheme.colorScheme.onSecondary,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .padding(2.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text("AI가 내면의 감정을 읽는 중...", fontWeight = FontWeight.Bold)
-            } else {
-                Text("✨ 온디바이스 AI 마음 일기 분석받기", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            }
-        }
-
-        AnimatedVisibility(visible = state.aiAnalysisText != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
-                            )
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    )
-                    .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.4f)
-                            )
-                        )
-                    )
-                    .padding(18.dp)
-            ) {
-                Column {
-                    Text(
-                        text = "💌 AI 일기 코칭 리포트",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    Text(
-                        text = state.aiAnalysisText ?: "",
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    if (state.isGeneratingAnalysis) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "AI 분석이 작성되고 있어요...",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "💡 온디바이스 AI 마음 분석 일기 안내",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "목록 화면 상단에서 온디바이스 AI 모델을 다운로드하시면, 작성하신 일기를 분석해 감정을 분류하고 다정하게 공감해주는 AI 마음 코칭 기능을 무료로 사용하실 수 있습니다.",
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -692,5 +593,211 @@ fun AiAssistTextButton(
             fontWeight = FontWeight.SemiBold,
             color = contentColor
         )
+    }
+}
+
+/**
+ * 상단 제목 입력란. 키보드 입력이 기본이고, 우측 트레일링 아이콘의 AI 버튼으로
+ * 본문 기반 제목을 추천받을 수 있습니다.
+ */
+@Composable
+private fun TitleInputField(
+    title: String,
+    titleStyle: TitleStyle,
+    isModelReady: Boolean,
+    isSuggesting: Boolean,
+    hasBody: Boolean,
+    onValueChange: (String) -> Unit,
+    onSuggestClick: () -> Unit
+) {
+    val titleColor = titleStyle.color?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() }
+        ?: MaterialTheme.colorScheme.onSurface
+    val titleSize = (titleStyle.sizeSp ?: 22).coerceIn(14, 32)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "제목",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        OutlinedTextField(
+            value = title,
+            onValueChange = onValueChange,
+            placeholder = {
+                Text(
+                    text = "글의 제목을 입력하세요",
+                    fontSize = titleSize.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+            },
+            textStyle = TextStyle(
+                fontSize = titleSize.sp,
+                fontWeight = FontWeight.ExtraBold,
+                lineHeight = (titleSize + 6).sp,
+                color = titleColor
+            ),
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+            ),
+            trailingIcon = {
+                TitleAiButton(
+                    isModelReady = isModelReady,
+                    isSuggesting = isSuggesting,
+                    hasBody = hasBody,
+                    onClick = onSuggestClick
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/**
+ * 제목 입력란 우측에 붙는 AI 추천 버튼.
+ * - 모델 준비 + 본문 존재 + 진행중이 아닐 때만 활성
+ * - 비활성 시에도 안내용으로 보이도록 흐릿하게 표시
+ */
+@Composable
+private fun TitleAiButton(
+    isModelReady: Boolean,
+    isSuggesting: Boolean,
+    hasBody: Boolean,
+    onClick: () -> Unit
+) {
+    val active = isModelReady && hasBody && !isSuggesting
+    val tint = when {
+        isSuggesting -> MaterialTheme.colorScheme.primary
+        active -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    }
+    val description = when {
+        isSuggesting -> "AI 제목 생성 중"
+        !isModelReady -> "AI 모델 미준비"
+        !hasBody -> "본문을 먼저 작성해주세요"
+        else -> "AI 제목 추천"
+    }
+    IconButton(onClick = onClick, enabled = active) {
+        if (isSuggesting) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(18.dp),
+                color = tint
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = description,
+                tint = tint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TitleStylePicker(
+    currentStyle: TitleStyle,
+    onStyleChange: (TitleStyle) -> Unit
+) {
+    val colorOptions = listOf(
+        null to Color.Unspecified,
+        "#D32F2F" to Color(0xFFD32F2F),
+        "#E65100" to Color(0xFFE65100),
+        "#388E3C" to Color(0xFF388E3C),
+        "#1976D2" to Color(0xFF1976D2),
+        "#7B1FA2" to Color(0xFF7B1FA2),
+        "#00838F" to Color(0xFF00838F),
+        "#C2185B" to Color(0xFFC2185B)
+    )
+
+    val sizeOptions = listOf(
+        null to "M",
+        18 to "S",
+        22 to "M",
+        26 to "L",
+        30 to "XL"
+    ).distinctBy { it.second }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+        Text(
+            text = "제목 스타일",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            colorOptions.forEach { (hex, color) ->
+                val isSelected = currentStyle.color == hex
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (hex != null) color else Color.Transparent
+                        )
+                        .border(
+                            width = if (isSelected) 2.dp else 1.dp,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary
+                                    else if (hex == null) MaterialTheme.colorScheme.outlineVariant
+                                    else color.copy(alpha = 0.4f),
+                            shape = CircleShape
+                        )
+                        .clickable { onStyleChange(currentStyle.copy(color = hex)) }
+                ) {
+                    if (hex == null) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                                .align(Alignment.Center)
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            sizeOptions.forEach { (sizeSp, label) ->
+                val isSelected = currentStyle.sizeSp == sizeSp
+                val displaySz = (sizeSp ?: 22).coerceIn(11, 30)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    border = BorderStroke(
+                        width = if (isSelected) 1.5.dp else 1.dp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier
+                        .width(44.dp)
+                        .clickable { onStyleChange(currentStyle.copy(sizeSp = sizeSp)) }
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = displaySz.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                    )
+                }
+            }
+        }
     }
 }

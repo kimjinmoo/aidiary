@@ -15,6 +15,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
+import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryRepository
 import com.grepiu.aidiary.data.repository.ImageStorageManager
@@ -124,12 +125,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     currentState.copy(
                         phase = intent.phase,
                         selectedDiary = intent.selectedDiary,
-                        // 화면 전환 시 기존 AI 피드백 텍스트 리셋
-                        aiAnalysisText = if (intent.phase == DiaryPhase.WRITE) null else currentState.aiAnalysisText,
                         // 새 일기 작성 화면 진입 시 draft 값 초기화
+                        draftTitle = if (intent.phase == DiaryPhase.WRITE) "" else currentState.draftTitle,
                         draftBlocks = if (intent.phase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
+                        draftTitleStyle = if (intent.phase == DiaryPhase.WRITE) TitleStyle.Default else currentState.draftTitleStyle,
                         draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
-                        draftContentType = if (intent.phase == DiaryPhase.WRITE) com.grepiu.aidiary.data.model.ContentType.DIARY else currentState.draftContentType
+                        draftContentType = if (intent.phase == DiaryPhase.WRITE) com.grepiu.aidiary.data.model.ContentType.DIARY else currentState.draftContentType,
+                        isGeneratingAnalysis = if (intent.phase == DiaryPhase.WRITE) false else currentState.isGeneratingAnalysis
                     )
                 }
             }
@@ -148,11 +150,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(diaries = updated, phase = DiaryPhase.LIST, selectedDiary = null) }
                 sendEffect(DiaryEffect.ShowToast("일기가 삭제되었습니다."))
             }
-            is DiaryIntent.AnalyzeDiary -> {
-                runOnDeviceAIAnalysis()
-            }
             is DiaryIntent.UpdateDraftType -> {
                 _state.update { it.copy(draftContentType = intent.contentType) }
+            }
+            is DiaryIntent.UpdateDraftTitleStyle -> {
+                _state.update { it.copy(draftTitleStyle = intent.style) }
+            }
+            is DiaryIntent.UpdateDraftTitle -> {
+                _state.update { it.copy(draftTitle = intent.text) }
             }
 
             // ===== 작성 보조 AI 액션 =====
@@ -536,28 +541,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             llmEngine = withContext(Dispatchers.IO) {
                 DiaryLLMEngine.create(getApplication(), modelPath)
             }.apply {
-                onTokenReceived = { token, done ->
-                    _state.update { currentState ->
-                        if (currentState.phase != DiaryPhase.WRITE) return@update currentState
-                        val rawText = if (currentState.aiAnalysisText.isNullOrEmpty()) {
-                            token
-                        } else {
-                            currentState.aiAnalysisText + token
-                        }
-                        // 이스케이프 문자 치환
-                        val updatedText = rawText
-                            .replace("\\n", "\n")
-                            .replace("\\t", " ")
-
-                        if (done) {
-                            sendEffect(DiaryEffect.AnalysisComplete(updatedText))
-                        }
-                        currentState.copy(
-                            aiAnalysisText = updatedText,
-                            isGeneratingAnalysis = !done
-                        )
-                    }
-                }
+                // 저장 시 자동 호출되는 analyzeAndTag 는 내부에서 토큰을 흘려보내지만,
+                // 별도 UI 스트리밍은 하지 않고 최종 결과만 사용합니다.
+                onTokenReceived = null
             }
             _state.update { it.copy(isModelReady = true, isModelInitializing = false) }
             Log.d("DiaryViewModel", "LLM initialized successfully from source: $source")
@@ -565,40 +551,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             downloader.deleteModelFile() // 손상 파일 삭제 유도
             _state.update { it.copy(isModelInitializing = false, isModelReady = false, showDownloadNotice = true) }
             sendEffect(DiaryEffect.ShowToast("AI 초기화 실패. 모델을 다시 다운로드합니다: ${e.message}"))
-        }
-    }
-
-    /**
-     * 일기 작성란의 텍스트를 바탕으로 온디바이스 AI 감정 분석 및 위로 답변을 스트리밍 요청합니다.
-     */
-    private fun runOnDeviceAIAnalysis() {
-        val currentState = _state.value
-        val plain = currentState.draftPlainText
-        if (plain.isBlank()) {
-            sendEffect(DiaryEffect.ShowToast("일기 내용을 작성해주세요."))
-            return
-        }
-        val engine = llmEngine
-        if (engine == null || !currentState.isModelReady) {
-            sendEffect(DiaryEffect.ShowToast("AI 모델이 아직 준비되지 않았습니다."))
-            return
-        }
-
-        analysisJob?.cancel()
-        _state.update { it.copy(isGeneratingAnalysis = true, aiAnalysisText = "") }
-
-        analysisJob = viewModelScope.launch {
-            try {
-                val dateStr = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN).format(Date())
-                engine.generateAnalysis(
-                    title = currentState.sessionTitle,
-                    content = plain,
-                    dateString = dateStr
-                )
-            } catch (e: Exception) {
-                _state.update { it.copy(isGeneratingAnalysis = false) }
-                sendEffect(DiaryEffect.ShowToast("AI 분석 오류: ${e.message}"))
-            }
         }
     }
 
@@ -629,7 +581,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 val engine = llmEngine ?: return@launch
                 val title = engine.suggestTitle(plain)
                 if (title.isNotBlank()) {
-                    applyTitleToFirstHeading(title)
+                    applyDraftTitle(title)
                     sendEffect(DiaryEffect.ShowToast("AI 추천 제목을 적용했어요."))
                 } else {
                     sendEffect(DiaryEffect.ShowToast("제목을 만들지 못했어요. 다시 시도해 주세요."))
@@ -643,21 +595,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * AI 추천 제목을 첫 HeadingBlock 에 적용합니다. 없으면 새로 만듭니다.
-     * (단일 HeadingBlock 정책 - 두 번째 생성은 차단)
+     * AI 추천 제목을 상단 입력란 (draftTitle) 에 적용합니다.
      */
-    private fun applyTitleToFirstHeading(title: String) {
-        _state.update { current ->
-            val blocks = current.draftBlocks.toMutableList()
-            val firstHeadingIdx = blocks.indexOfFirst { it is ContentBlock.HeadingBlock }
-            if (firstHeadingIdx >= 0) {
-                val existing = blocks[firstHeadingIdx] as ContentBlock.HeadingBlock
-                blocks[firstHeadingIdx] = existing.copy(text = title)
-            } else {
-                blocks.add(0, ContentBlock.HeadingBlock(text = title))
-            }
-            current.copy(draftBlocks = blocks)
-        }
+    private fun applyDraftTitle(title: String) {
+        _state.update { current -> current.copy(draftTitle = title) }
     }
 
     private fun classifyDraftContentType() {
@@ -1156,34 +1097,94 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     /**
-     * 작성 완료한 일기 및 AI 분석 결과를 영구 보관합니다.
+     * 작성 완료한 일기를 영구 보관합니다.
+     *
+     * 흐름:
+     * 1. 본문/제목/저장중복 검사
+     * 2. 모델 준비 시 AI 감정 분류 → TAG AI 블록 (emotion 만)
+     *    - 실패/미준비 시 TAG 블록 없이 저장
+     * 3. 영구 저장 + LIST 화면으로 전환
      */
     private fun saveDiaryDraft() {
         val currentState = _state.value
+        if (_state.value.isGeneratingAnalysis) return
+
         val plain = currentState.draftPlainText
         if (plain.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("일기 본문을 작성해주세요."))
             return
         }
-
-        // 세션 제목(첫 HeadingBlock) 비어있으면 자동 입력 유도
         if (currentState.sessionTitle.isBlank()) {
-            sendEffect(DiaryEffect.ShowToast("제목 블록을 추가하고 입력하거나 'AI 제목' 버튼으로 자동 생성해주세요."))
+            sendEffect(DiaryEffect.ShowToast("상단 제목 입력란에 제목을 입력하거나 AI 제목 버튼을 눌러 주세요."))
             return
         }
 
-        val finalEmotion = if (!currentState.aiAnalysisText.isNullOrBlank()) {
-            parseEmotionFromAnalysis(currentState.aiAnalysisText)
-        } else {
-            currentState.draftEmotion
+        val engine = llmEngine
+        if (engine == null || !currentState.isModelReady) {
+            // 모델이 없으면 감정 태그 없이 저장
+            persistDiary(
+                currentState = currentState,
+                plain = plain,
+                finalEmotion = currentState.draftEmotion,
+                tagAiBlock = null
+            )
+            return
         }
 
+        // 동시 저장/감정 분석 방지
+        analysisJob?.cancel()
+        _state.update { it.copy(isGeneratingAnalysis = true) }
+        analysisJob = viewModelScope.launch {
+            try {
+                val dateStr = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN).format(Date())
+                val result = engine.detectEmotion(
+                    title = currentState.sessionTitle,
+                    content = plain,
+                    dateString = dateStr
+                )
+                val emotionCode = mapEmotionLabelToCode(result.emotion)
+                val tagAiBlock = ContentBlock.TagAiBlock(emotion = result.emotion)
+                persistDiary(
+                    currentState = currentState,
+                    plain = plain,
+                    finalEmotion = emotionCode,
+                    tagAiBlock = tagAiBlock
+                )
+            } catch (e: Exception) {
+                Log.e("DiaryViewModel", "AI 감정 분류 실패, TAG 블록 없이 저장합니다", e)
+                sendEffect(DiaryEffect.ShowToast("AI 감정 분류에 실패해 TAG 블록 없이 저장했어요."))
+                _state.update { it.copy(isGeneratingAnalysis = false) }
+                persistDiary(
+                    currentState = currentState,
+                    plain = plain,
+                    finalEmotion = currentState.draftEmotion,
+                    tagAiBlock = null
+                )
+            }
+        }
+    }
+
+    /**
+     * 실제 영구 저장 + 상태 리셋. TAG AI 블록이 있으면 본문 끝에 append 합니다.
+     */
+    private fun persistDiary(
+        currentState: DiaryState,
+        plain: String,
+        finalEmotion: String,
+        tagAiBlock: ContentBlock.TagAiBlock?
+    ) {
+        val finalBlocks = if (tagAiBlock != null) {
+            currentState.draftBlocks + tagAiBlock
+        } else {
+            currentState.draftBlocks
+        }
         val newEntry = DiaryEntry(
             title = currentState.sessionTitle,
-            blocks = currentState.draftBlocks,
+            titleStyle = currentState.draftTitleStyle,
+            blocks = finalBlocks,
             content = plain,
             emotion = finalEmotion,
-            aiAnalysis = currentState.aiAnalysisText,
+            aiAnalysis = null,
             contentType = currentState.draftContentType
         )
 
@@ -1192,30 +1193,28 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 diaries = updated,
                 phase = DiaryPhase.LIST,
+                draftTitle = "",
                 draftBlocks = emptyList(),
+                draftTitleStyle = TitleStyle.Default,
                 draftEmotion = "Neutral",
                 draftContentType = com.grepiu.aidiary.data.model.ContentType.DIARY,
-                aiAnalysisText = null
+                isGeneratingAnalysis = false
             )
         }
-        sendEffect(DiaryEffect.ShowToast("${currentState.draftContentType.label}이(가) 성공적으로 저장되었습니다!"))
+        sendEffect(DiaryEffect.ShowToast("${currentState.draftContentType.label}이(가) 저장되었어요."))
     }
 
     /**
-     * AI 분석 문장 내 감정 키워드를 통해 감정 태그(Joy, Sadness, Anger, Anxiety, Calm, Neutral)를 판별해내는 함수입니다.
+     * AI 가 반환한 한국어 감정 라벨을 DiaryEntry.emotion 코드로 매핑합니다.
+     * (5 종 감정만 반환되므로 간단한 매핑)
      */
-    private fun parseEmotionFromAnalysis(analysisText: String): String {
-        // "오늘의 감정 분석:" 파트의 문구를 주요 추출 타겟으로 삼음
-        val targetText = analysisText.lines().firstOrNull { it.contains("오늘의 감정 분석") } ?: analysisText
-        
-        return when {
-            targetText.contains("기쁨") || targetText.contains("행복") || targetText.contains("즐거") || targetText.contains("신나") || targetText.contains("뿌듯") -> "Joy"
-            targetText.contains("슬픔") || targetText.contains("우울") || targetText.contains("눈물") || targetText.contains("외롭") || targetText.contains("서글") || targetText.contains("상처") -> "Sadness"
-            targetText.contains("분노") || targetText.contains("화가") || targetText.contains("짜증") || targetText.contains("스트레스") || targetText.contains("답답") -> "Anger"
-            targetText.contains("불안") || targetText.contains("걱정") || targetText.contains("근심") || targetText.contains("초조") || targetText.contains("두려") || targetText.contains("긴장") -> "Anxiety"
-            targetText.contains("평온") || targetText.contains("안정") || targetText.contains("편안") || targetText.contains("고요") || targetText.contains("여유") -> "Calm"
-            else -> "Neutral"
-        }
+    private fun mapEmotionLabelToCode(label: String): String = when (label.trim()) {
+        "기쁨" -> "Joy"
+        "슬픔" -> "Sadness"
+        "분노" -> "Anger"
+        "불안" -> "Anxiety"
+        "평온" -> "Calm"
+        else -> "Neutral"
     }
 
     override fun onCleared() {

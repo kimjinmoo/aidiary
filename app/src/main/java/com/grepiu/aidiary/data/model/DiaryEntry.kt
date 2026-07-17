@@ -12,6 +12,7 @@ data class DiaryEntry(
     val id: String = UUID.randomUUID().toString(),
     val timestamp: Long = System.currentTimeMillis(),
     val title: String,
+    val titleStyle: TitleStyle = TitleStyle.Default,
     val blocks: List<ContentBlock> = emptyList(),
     /**
      * AI 분석·목록 미리보기 호환을 위한 평문 캐시. 일반적으로 [blocks] 와 동기화되지만,

@@ -1473,10 +1473,11 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                     lineHeight = 18.sp
                 )
 
-                if (diary.aiAnalysis != null || attachmentCount > 0) {
+                val hasAiFeedback = diary.aiAnalysis != null || diary.blocks.any { it is ContentBlock.TagAiBlock }
+                if (hasAiFeedback || attachmentCount > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (diary.aiAnalysis != null) {
+                        if (hasAiFeedback) {
                             Text(
                                 text = "✨ AI 피드백",
                                 fontSize = 11.sp,
@@ -1485,7 +1486,7 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                             )
                         }
                         if (attachmentCount > 0) {
-                            if (diary.aiAnalysis != null) {
+                            if (hasAiFeedback) {
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
                             Text(

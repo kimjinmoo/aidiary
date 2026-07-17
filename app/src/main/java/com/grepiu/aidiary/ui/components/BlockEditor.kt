@@ -89,6 +89,7 @@ fun BlockEditor(
     modifier: Modifier = Modifier
 ) {
     val (typeLabel, typeIcon, accent) = blockTypeMeta(block)
+    val isTagAi = block is ContentBlock.TagAiBlock
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -101,82 +102,84 @@ fun BlockEditor(
             )
             .padding(12.dp)
     ) {
-        // 블록 헤더: 타입 라벨 + 이동/삭제 메뉴
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
+        // 블록 헤더: 타입 라벨 + 이동/삭제 메뉴 (TAG AI 는 자체 헤더 사용)
+        if (!isTagAi) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = typeIcon,
-                    contentDescription = typeLabel,
-                    tint = accent,
-                    modifier = Modifier.size(16.dp)
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = typeIcon,
+                        contentDescription = typeLabel,
+                        tint = accent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = typeLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accent
                 )
+                Spacer(modifier = Modifier.weight(1f))
+                if (block is ContentBlock.TextBlock ||
+                    block is ContentBlock.HeadingBlock ||
+                    block is ContentBlock.QuoteBlock
+                ) {
+                    BlockAiMenu(
+                        enabled = aiAssistEnabled,
+                        isProofreading = isProofreading,
+                        isDecorating = isDecorating,
+                        hasText = (block as? ContentBlock.TextBlock)?.text?.isNotBlank() == true ||
+                            (block as? ContentBlock.HeadingBlock)?.text?.isNotBlank() == true ||
+                            (block as? ContentBlock.QuoteBlock)?.text?.isNotBlank() == true,
+                        onProofread = onProofread,
+                        onDecorate = onDecorate
+                    )
+                }
+                IconButton(
+                    onClick = onMoveUp,
+                    enabled = index > 0,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowUpward,
+                        contentDescription = "위로",
+                        tint = if (index > 0) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onMoveDown,
+                    enabled = index < totalCount - 1,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDownward,
+                        contentDescription = "아래로",
+                        tint = if (index < totalCount - 1) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "블록 삭제",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = typeLabel,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = accent
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            if (block is ContentBlock.TextBlock ||
-                block is ContentBlock.HeadingBlock ||
-                block is ContentBlock.QuoteBlock
-            ) {
-                BlockAiMenu(
-                    enabled = aiAssistEnabled,
-                    isProofreading = isProofreading,
-                    isDecorating = isDecorating,
-                    hasText = (block as? ContentBlock.TextBlock)?.text?.isNotBlank() == true ||
-                        (block as? ContentBlock.HeadingBlock)?.text?.isNotBlank() == true ||
-                        (block as? ContentBlock.QuoteBlock)?.text?.isNotBlank() == true,
-                    onProofread = onProofread,
-                    onDecorate = onDecorate
-                )
-            }
-            IconButton(
-                onClick = onMoveUp,
-                enabled = index > 0,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowUpward,
-                    contentDescription = "위로",
-                    tint = if (index > 0) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(
-                onClick = onMoveDown,
-                enabled = index < totalCount - 1,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ArrowDownward,
-                    contentDescription = "아래로",
-                    tint = if (index < totalCount - 1) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "블록 삭제",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
-        Spacer(modifier = Modifier.height(8.dp))
 
         // 블록 본문 (타입별 입력 UI)
         when (block) {
@@ -235,8 +238,75 @@ fun BlockEditor(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
                 )
             }
+            is ContentBlock.TagAiBlock -> {
+                TagAiBlockEditor(block = block, onRemove = onRemove)
+            }
         }
     }
+}
+
+/**
+ * TAG AI 블록 에디터. AI 가 자동 생성한 감정 태그 1줄만 보여주며,
+ * 우측 삭제 버튼으로만 제거 가능합니다. 본문 편집 불가.
+ */
+@Composable
+private fun TagAiBlockEditor(
+    block: ContentBlock.TagAiBlock,
+    onRemove: () -> Unit
+) {
+    val (emotionLabel, emotionColor) = tagEmotionUi(block.emotion)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "TAG AI",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = emotionLabel,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = emotionColor,
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(emotionColor.copy(alpha = 0.12f))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = "AI 자동 생성 · 편집 불가",
+            fontSize = 10.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "TAG AI 블록 삭제",
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+private fun tagEmotionUi(label: String): Pair<String, Color> = when (label.trim()) {
+    "기쁨" -> "😊 기쁨" to Color(0xFFD4AF37)
+    "평온" -> "🌿 평온" to Color(0xFF2E7D32)
+    "슬픔" -> "😢 슬픔" to Color(0xFF1565C0)
+    "불안" -> "😰 불안" to Color(0xFF7B1FA2)
+    "분노" -> "😡 분노" to Color(0xFFC62828)
+    else -> "평온" to Color(0xFF2E7D32)
 }
 
 /**
@@ -412,7 +482,7 @@ fun AddBlockBar(
         ) {
             AddChip(
                 icon = Icons.Default.Title,
-                label = if (hasHeading) "제목(추가됨)" else "제목",
+                label = if (hasHeading) "섹션 제목(추가됨)" else "섹션 제목",
                 onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) },
                 enabled = !hasHeading
             )
@@ -487,6 +557,7 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
     is ContentBlock.QuoteBlock -> Triple("인용", Icons.Default.FormatQuote, Color(0xFF6A1B9A))
     is ContentBlock.ImageBlock -> Triple("이미지", Icons.Default.Image, Color(0xFF2E7D32))
     is ContentBlock.DividerBlock -> Triple("구분선", Icons.Default.HorizontalRule, MaterialTheme.colorScheme.outline)
+    is ContentBlock.TagAiBlock -> Triple("AI 태그", Icons.Default.AutoAwesome, Color(0xFF7B1FA2))
 }
 
 /**

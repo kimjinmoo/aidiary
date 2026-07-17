@@ -126,9 +126,6 @@ class MainActivity : ComponentActivity() {
                             is DiaryEffect.ShowToast -> {
                                 Toast.makeText(context, effect.message, Toast.LENGTH_SHORT).show()
                             }
-                            is DiaryEffect.AnalysisComplete -> {
-                                Toast.makeText(context, "AI 일기 분석이 완료되었습니다.", Toast.LENGTH_SHORT).show()
-                            }
                             is DiaryEffect.TranscriptionResult -> {
                                 Toast.makeText(context, "음성 변환 완료!", Toast.LENGTH_SHORT).show()
                             }
@@ -302,6 +299,9 @@ fun DiaryAppNavigationRouter(
                 onContentTypeChange = { contentType ->
                     viewModel.processIntent(DiaryIntent.UpdateDraftType(contentType))
                 },
+                onUpdateTitleStyle = { style ->
+                    viewModel.processIntent(DiaryIntent.UpdateDraftTitleStyle(style))
+                },
                 onAddBlock = { block ->
                     viewModel.processIntent(DiaryIntent.AddBlock(block))
                 },
@@ -322,9 +322,6 @@ fun DiaryAppNavigationRouter(
                 },
                 onPickGallery = onPickGallery,
                 onTakePhoto = onTakePhoto,
-                onAnalyzeDiary = {
-                    viewModel.processIntent(DiaryIntent.AnalyzeDiary)
-                },
                 onSaveDiary = {
                     viewModel.processIntent(DiaryIntent.SaveDiary)
                 },
@@ -339,6 +336,9 @@ fun DiaryAppNavigationRouter(
                 },
                 onSuggestTitle = {
                     viewModel.processIntent(DiaryIntent.SuggestTitle)
+                },
+                onUpdateTitle = { text ->
+                    viewModel.processIntent(DiaryIntent.UpdateDraftTitle(text))
                 },
                 onClassifyType = {
                     viewModel.processIntent(DiaryIntent.ClassifyContentType)

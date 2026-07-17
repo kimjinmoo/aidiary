@@ -4,6 +4,7 @@ import android.net.Uri
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
+import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.mvi.state.DiaryPhase
 
 /**
@@ -20,9 +21,12 @@ sealed interface DiaryIntent {
     ) : DiaryIntent
     data object SaveDiary : DiaryIntent
     data class DeleteDiary(val id: String) : DiaryIntent
-    data object AnalyzeDiary : DiaryIntent
     /** 작성 중인 글의 콘텐츠 타입(일기/포스트/메모)을 변경합니다. */
     data class UpdateDraftType(val contentType: ContentType) : DiaryIntent
+    /** 작성 중인 글 제목의 스타일(색상/크기)을 변경합니다. */
+    data class UpdateDraftTitleStyle(val style: TitleStyle) : DiaryIntent
+    /** 상단 제목 입력란의 텍스트를 갱신합니다. */
+    data class UpdateDraftTitle(val text: String) : DiaryIntent
     data class ShowDownloadNotice(val show: Boolean) : DiaryIntent
     data class ShowWifiWarning(val show: Boolean) : DiaryIntent
     data object StartRecording : DiaryIntent

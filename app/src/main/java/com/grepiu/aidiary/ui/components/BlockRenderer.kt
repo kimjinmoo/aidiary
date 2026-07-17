@@ -1,17 +1,22 @@
 package com.grepiu.aidiary.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -153,7 +158,70 @@ fun BlockRenderer(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
             )
         }
+        is ContentBlock.TagAiBlock -> {
+            TagAiBlockView(
+                block = block,
+                modifier = modifier
+            )
+        }
     }
+}
+
+/**
+ * TAG AI 블록 렌더링. 'TAG AI' 배지 + 감정 핀 한 줄로 간결하게 보여줍니다.
+ */
+@Composable
+private fun TagAiBlockView(
+    block: ContentBlock.TagAiBlock,
+    modifier: Modifier = Modifier
+) {
+    val (emotionLabel, emotionColor) = emotionUi(block.emotion)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+        ) {
+            Text(
+                text = "TAG AI",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+        Spacer(Modifier.size(6.dp))
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = emotionColor.copy(alpha = 0.15f),
+            border = BorderStroke(0.5.dp, emotionColor.copy(alpha = 0.4f))
+        ) {
+            Text(
+                text = emotionLabel,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = emotionColor,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+    }
+}
+
+/**
+ * 감정 라벨을 한글 표시용 문자열과 테마 색상으로 매핑합니다.
+ */
+private fun emotionUi(label: String): Pair<String, Color> = when (label.trim()) {
+    "기쁨" -> "😊 기쁨" to Color(0xFFD4AF37)
+    "평온" -> "🌿 평온" to Color(0xFF2E7D32)
+    "슬픔" -> "😢 슬픔" to Color(0xFF1565C0)
+    "불안" -> "😰 불안" to Color(0xFF7B1FA2)
+    "분노" -> "😡 분노" to Color(0xFFC62828)
+    else -> "평온" to Color(0xFF2E7D32)
 }
 
 /**

@@ -4,6 +4,7 @@ import android.content.Context
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
+import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.model.toJson
 import kotlinx.coroutines.Dispatchers
@@ -132,6 +133,11 @@ class DiaryRepository(
             val id = obj.getString("id")
             val timestamp = obj.getLong("timestamp")
             val title = obj.getString("title")
+            val titleStyle = if (obj.has("titleStyle") && !obj.isNull("titleStyle")) {
+                TitleStyle.fromJson(obj.optJSONObject("titleStyle"))
+            } else {
+                TitleStyle.Default
+            }
             val emotion = obj.optString("emotion", "Neutral")
             val aiAnalysis = if (obj.isNull("aiAnalysis")) null else obj.getString("aiAnalysis")
             val legacyContent = obj.optString("content", "")
@@ -154,6 +160,7 @@ class DiaryRepository(
                 id = id,
                 timestamp = timestamp,
                 title = title,
+                titleStyle = titleStyle,
                 blocks = blocks,
                 content = legacyContent,
                 emotion = emotion,
@@ -173,6 +180,7 @@ class DiaryRepository(
                     put("id", entry.id)
                     put("timestamp", entry.timestamp)
                     put("title", entry.title)
+                    put("titleStyle", entry.titleStyle.toJson())
                     put("content", entry.blocks.extractPlainText())
                     put("emotion", entry.emotion)
                     put("aiAnalysis", entry.aiAnalysis ?: JSONObject.NULL)

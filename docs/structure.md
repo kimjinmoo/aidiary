@@ -59,7 +59,7 @@ app/src/main/java/com/grepiu/aidiary/
     ├── screens/
     │   ├── DiarySplashScreen.kt     # [NEW] 애니메이션 스플래시 화면
     │   ├── DiaryListScreen.kt       # 목록 + 감정 통계 + 썸네일 + 다운로드 카드
-    │   ├── DiaryWriteScreen.kt      # 블록 기반 작성/녹음/AI 분석 트리거
+    │   ├── DiaryWriteScreen.kt      # 상단 제목 입력(draftTitle) + 글 타입 + 제목 스타일 + 블록 기반 작성/녹음/AI 분석 트리거
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트 (블록 렌더러 사용)
     └── theme/                       # Material3 Color/Type/Theme (Pretendard 폰트 패밀리)
 ```
@@ -83,7 +83,7 @@ app/src/main/java/com/grepiu/aidiary/
 ```
 
 - **단방향**: UI는 오직 `state` 만 읽고, `Intent` 만 보냅니다.
-- **단일 상태**: 화면 단계(phase), draftBlocks, 모델 준비, 녹음, AI 분석, 이미지 임포트 진행률까지 모두 `DiaryState` 안에 모입니다.
+- **단일 상태**: 화면 단계(phase), draftTitle(상단 제목), draftBlocks, 모델 준비, 녹음, AI 분석, 이미지 임포트 진행률까지 모두 `DiaryState` 안에 모입니다.
 - **부수 효과 분리**: 토스트/권한 다이얼로그/카메라 촬영 URI 등은 `Effect` 채널로 흘려보내 UI 라이프사이클과 분리합니다.
 
 ## 4. 콘텐츠 블록 모델
@@ -92,14 +92,15 @@ app/src/main/java/com/grepiu/aidiary/
 
 | 블록 | 필드 | 용도 |
 |---|---|---|
-| `HeadingBlock` | `text`, `formatting` | 섹션 제목 (큰 굵은 텍스트) |
+| `HeadingBlock` | `text`, `formatting` | 본문 내 '섹션 제목' (큰 굵은 텍스트). 메인 제목은 상단 `draftTitle` 입력란으로 분리됨 |
 | `TextBlock` | `text`, `formatting` | 본문 문단 (음성 전사 결과 누적) |
 | `QuoteBlock` | `text`, `formatting` | 강조 인용 (이탤릭 + 좌측 컬러 바) |
 | `ImageBlock` | `relativePath`, `caption` | `filesDir/diary_images/<uuid>.jpg` 상대 경로 |
 | `DividerBlock` | - | 가로 구분선 |
+| `TagAiBlock` | `emotion` | 저장 시 AI 가 자동 생성한 'TAG AI' 블록. `emotion` 은 [기쁨, 슬픔, 분노, 불안, 평온] 5 종 중 하나. 위로/조언 본문은 생성하지 않으며 편집 불가(삭제만 가능). `extractPlainText` 에서는 제외되어 재분석 입력 피드백 루프를 방지 |
 
 - 모든 블록은 `id` 를 가져 `UpdateBlockText` / `RemoveBlock` 등 키 기반 업데이트에 사용됩니다.
-- AI 분석용 평문 추출: `List<ContentBlock>.extractPlainText()` (Heading/Text/Quote 의 `text` 만 결합).
+- AI 분석용 평문 추출: `List<ContentBlock>.extractPlainText()` (Heading/Text/Quote 의 `text` 만 결합. `TagAiBlock` 은 AI 생성 결과이므로 제외).
 
 ## 4.1 인라인 텍스트 서식 (`TextFormatting`)
 
@@ -145,10 +146,15 @@ app/src/main/java/com/grepiu/aidiary/
 | 글 타입 자동 분류 | 타입 셀렉터 위 `AI 자동 분류` 텍스트 버튼 | `classifyContentType(content)` | `state.draftContentType` |
 | 본문 다듬기 (오탈자/띄어쓰기) | 블록 헤더의 `✦` 메뉴 → `AI 다듬기` | `proofreadText(text)` | 해당 블록의 `text` (formatting 유지) |
 | 본문 강조 추천 (굵게/색) | 블록 헤더의 `✦` 메뉴 → `AI 강조` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프) |
+| 마음 분석 + 감정 자동 태그 (TAG AI) | **저장 시 자동 실행** (수동 버튼 없음) | `detectEmotion(title, content, date)` → `DiaryLLMEngine.EmotionResult(raw, emotion)` | 본문 끝에 `ContentBlock.TagAiBlock(emotion)` 자동 추가 + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문 생성은 제거되어 단순 1-토큰 분류만 수행 (저장 지연 최소화) |
 
 상태/Intent:
-- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` (각 진행 표시)
-- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)`
+- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` / `isGeneratingAnalysis` (저장 시 AI TAG 생성 진행 표시)
+- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)` / `UpdateDraftTitle(text)` / `SaveDiary`
+- 수동 `AnalyzeDiary` 인텐트/버튼 제거됨 — 마음 분석은 `SaveDiary` 흐름에 흡수되어 자동 실행
+- **상단 제목 입력란**: 키보드 입력이 기본. `state.draftTitle` 에 직접 바인딩되며 AI 추천(`SuggestTitle`) 도 같은 필드를 갱신
+- 제목 스타일 피커(`draftTitleStyle`): `state.draftTitle.isNotBlank()` 일 때만 노출 (예전 `hasHeadingBlock` 가드 대체)
+- **저장 시 자동 흐름**: `SaveDiary` → 본문 비면 토스트 / 제목 비면 토스트 / 모델 준비 시 `detectEmotion` 호출 → 5 종 감정 라벨(기쁨/슬픔/분노/불안/평온) 중 하나를 `ContentBlock.TagAiBlock(emotion)` 으로 본문 끝에 append + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문은 생성하지 않으므로 분석 본문 필드(`aiAnalysis`) 는 null. 모델 미준비/실패 시 TAG 블록/감정 갱신 없이 저장만 진행.
 
 UI 규약:
 - 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
