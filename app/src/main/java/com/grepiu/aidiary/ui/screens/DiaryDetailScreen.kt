@@ -7,7 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -47,7 +47,7 @@ fun DiaryDetailScreen(
                 title = { Text(text = "일기 상세", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "뒤로가기")
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
                     }
                 },
                 actions = {
@@ -115,12 +115,10 @@ fun DiaryDetailScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 3. 일기 본문
-            Text(
-                text = diary.content,
-                fontSize = 15.sp,
-                lineHeight = 24.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            // 3. 일기 본문 (블록 렌더러)
+            com.grepiu.aidiary.ui.components.BlockList(
+                blocks = diary.blocks,
+                textColor = MaterialTheme.colorScheme.onSurface
             )
 
             Spacer(modifier = Modifier.height(28.dp))

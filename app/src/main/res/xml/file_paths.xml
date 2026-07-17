@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 카메라 촬영 임시 출력 -->
+    <cache-path name="cache" path="." />
+    <!-- 일기 첨부 이미지 (외부에서 직접 열 일은 없지만 일관성 위해 명시) -->
+    <files-path name="files" path="." />
+</paths>

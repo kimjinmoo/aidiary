@@ -76,6 +76,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
 
+    // Coil (이미지 로딩)
+    implementation(libs.coil.compose)
+
     // Sherpa-Onnx (온디바이스 음성인식) - libs/jniLibs/에 .so 파일 복사 필요
     implementation("org.apache.commons:commons-compress:1.27.1")
 

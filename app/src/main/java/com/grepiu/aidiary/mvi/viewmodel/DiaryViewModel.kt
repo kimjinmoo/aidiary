@@ -6,13 +6,18 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.net.Uri
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
+import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryRepository
+import com.grepiu.aidiary.data.repository.ImageStorageManager
 import com.grepiu.aidiary.data.slm.DeviceCapabilityChecker
 import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
@@ -47,6 +52,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val downloader = ModelDownloaderV2(application)
     private val repository = DiaryRepository(application)
+    private val imageStore = ImageStorageManager(application)
     private var llmEngine: DiaryLLMEngine? = null
     private var sherpaEngine: SherpaEngine? = null
 
@@ -101,7 +107,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         aiAnalysisText = if (intent.phase == DiaryPhase.WRITE) null else currentState.aiAnalysisText,
                         // 새 일기 작성 화면 진입 시 draft 값 초기화
                         draftTitle = if (intent.phase == DiaryPhase.WRITE) "" else currentState.draftTitle,
-                        draftContent = if (intent.phase == DiaryPhase.WRITE) "" else currentState.draftContent,
+                        draftBlocks = if (intent.phase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
                         draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion
                     )
                 }
@@ -110,7 +116,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { currentState ->
                     currentState.copy(
                         draftTitle = intent.title ?: currentState.draftTitle,
-                        draftContent = intent.content ?: currentState.draftContent,
                         draftEmotion = intent.emotion ?: currentState.draftEmotion
                     )
                 }
@@ -138,6 +143,74 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             is DiaryIntent.StopRecording -> {
                 stopRecording()
             }
+
+            // ===== 블록 기반 콘텐츠 =====
+            is DiaryIntent.AddBlock -> {
+                _state.update { it.copy(draftBlocks = it.draftBlocks + intent.block) }
+            }
+            is DiaryIntent.InsertBlock -> {
+                _state.update { current ->
+                    val idx = intent.index.coerceIn(0, current.draftBlocks.size)
+                    val newList = current.draftBlocks.toMutableList()
+                    newList.add(idx, intent.block)
+                    current.copy(draftBlocks = newList)
+                }
+            }
+            is DiaryIntent.UpdateBlockText -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block.id != intent.blockId) return@map block
+                            when (block) {
+                                is ContentBlock.HeadingBlock -> block.copy(text = intent.text, formatting = intent.formatting)
+                                is ContentBlock.TextBlock -> block.copy(text = intent.text, formatting = intent.formatting)
+                                is ContentBlock.QuoteBlock -> block.copy(text = intent.text, formatting = intent.formatting)
+                                else -> block
+                            }
+                        }
+                    )
+                }
+            }
+            is DiaryIntent.UpdateBlockCaption -> {
+                _state.update { current ->
+                    current.copy(
+                        draftBlocks = current.draftBlocks.map { block ->
+                            if (block is ContentBlock.ImageBlock && block.id == intent.blockId) {
+                                block.copy(caption = intent.caption)
+                            } else block
+                        }
+                    )
+                }
+            }
+            is DiaryIntent.RemoveBlock -> {
+                val removed = _state.value.draftBlocks.firstOrNull { it.id == intent.blockId }
+                if (removed is ContentBlock.ImageBlock) {
+                    imageStore.delete(removed.relativePath)
+                }
+                _state.update { current ->
+                    current.copy(draftBlocks = current.draftBlocks.filter { it.id != intent.blockId })
+                }
+            }
+            is DiaryIntent.MoveBlock -> {
+                _state.update { current ->
+                    val list = current.draftBlocks.toMutableList()
+                    val idx = list.indexOfFirst { it.id == intent.blockId }
+                    if (idx < 0) return@update current
+                    val newIdx = (idx + intent.direction).coerceIn(0, list.size - 1)
+                    if (newIdx == idx) return@update current
+                    val item = list.removeAt(idx)
+                    list.add(newIdx, item)
+                    current.copy(draftBlocks = list)
+                }
+            }
+
+            // ===== 이미지 픽업/촬영 =====
+            is DiaryIntent.ImagePicked -> {
+                importPickedImage(intent.uri)
+            }
+            is DiaryIntent.CameraImageCaptured -> {
+                importCapturedImage(intent.tempFilePath)
+            }
         }
     }
 
@@ -145,6 +218,77 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _effect.send(effect)
         }
+    }
+
+    /**
+     * 외부에서 픽업된 이미지 URI 를 내부 저장소로 복사하고 ImageBlock 으로 추가합니다.
+     */
+    private fun importPickedImage(uri: Uri) {
+        if (_state.value.isImportingImage) return
+        _state.update { it.copy(isImportingImage = true) }
+        viewModelScope.launch {
+            imageStore.importFromUri(uri)
+                .onSuccess { relPath ->
+                    val block = ContentBlock.ImageBlock(relativePath = relPath)
+                    _state.update {
+                        it.copy(
+                            draftBlocks = it.draftBlocks + block,
+                            isImportingImage = false
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isImportingImage = false) }
+                    sendEffect(DiaryEffect.ShowToast("이미지를 가져오지 못했어요: ${e.message}"))
+                }
+        }
+    }
+
+    /**
+     * 카메라 촬영으로 생성된 임시 파일을 내부 저장소로 가져와 ImageBlock 으로 추가합니다.
+     */
+    private fun importCapturedImage(tempFilePath: String) {
+        val temp = File(tempFilePath)
+        if (!temp.exists() || temp.length() == 0L) {
+            sendEffect(DiaryEffect.ShowToast("촬영된 이미지를 찾을 수 없어요."))
+            return
+        }
+        if (_state.value.isImportingImage) return
+        _state.update { it.copy(isImportingImage = true) }
+        viewModelScope.launch {
+            imageStore.importFromFile(temp)
+                .onSuccess { relPath ->
+                    val block = ContentBlock.ImageBlock(relativePath = relPath)
+                    _state.update {
+                        it.copy(
+                            draftBlocks = it.draftBlocks + block,
+                            isImportingImage = false
+                        )
+                    }
+                    temp.delete()
+                }
+                .onFailure { e ->
+                    _state.update { it.copy(isImportingImage = false) }
+                    sendEffect(DiaryEffect.ShowToast("카메라 이미지를 저장하지 못했어요: ${e.message}"))
+                }
+        }
+    }
+
+    /**
+     * 카메라 촬영용 임시 URI 를 생성하고 UI 측에 촬영 런처를 띄우도록 알립니다.
+     * [com.grepiu.aidiary.mvi.effect.DiaryEffect.LaunchCamera] 로 uri 를 전달합니다.
+     */
+    fun requestCameraCapture() {
+        if (ContextCompat.checkSelfPermission(getApplication(), Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED) {
+            sendEffect(DiaryEffect.RequestCameraPermission)
+            return
+        }
+        val tempFile = File(getApplication<Application>().cacheDir, "capture_${System.currentTimeMillis()}.jpg")
+        if (!tempFile.exists()) tempFile.createNewFile()
+        val authority = "${getApplication<Application>().packageName}.fileprovider"
+        val uri = FileProvider.getUriForFile(getApplication(), authority, tempFile)
+        sendEffect(DiaryEffect.LaunchCamera(uri))
     }
 
     /**
@@ -325,7 +469,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun runOnDeviceAIAnalysis() {
         val currentState = _state.value
-        if (currentState.draftContent.isBlank()) {
+        val plain = currentState.draftPlainText
+        if (plain.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("일기 내용을 작성해주세요."))
             return
         }
@@ -343,7 +488,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 val dateStr = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN).format(Date())
                 engine.generateAnalysis(
                     title = currentState.draftTitle,
-                    content = currentState.draftContent,
+                    content = plain,
                     dateString = dateStr
                 )
             } catch (e: Exception) {
@@ -491,8 +636,19 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val text = engine.transcribe(wavFile.absolutePath)
                 withContext(Dispatchers.Main) {
-                    val cur = _state.value.draftContent
-                    _state.update { it.copy(draftContent = if (cur.isBlank()) text else "$cur\n$text", isTranscribing = false) }
+                    _state.update { current ->
+                        val blocks = current.draftBlocks.toMutableList()
+                        val lastIdx = blocks.indexOfLast { it is ContentBlock.TextBlock }
+                        if (lastIdx >= 0) {
+                            val last = blocks[lastIdx] as ContentBlock.TextBlock
+                            blocks[lastIdx] = last.copy(
+                                text = if (last.text.isBlank()) text else "${last.text}\n$text"
+                            )
+                        } else {
+                            blocks.add(ContentBlock.TextBlock(text = text))
+                        }
+                        current.copy(draftBlocks = blocks, isTranscribing = false)
+                    }
                     sendEffect(DiaryEffect.TranscriptionResult(text))
                 }
             } catch (e: Exception) {
@@ -506,12 +662,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      */
     private fun saveDiaryDraft() {
         val currentState = _state.value
-        if (currentState.draftContent.isBlank()) {
+        val plain = currentState.draftPlainText
+        if (plain.isBlank()) {
             sendEffect(DiaryEffect.ShowToast("일기 본문을 작성해주세요."))
             return
         }
 
-        // AI 피드백 텍스트 분석하여 감정 태그 자동 매핑
         val finalEmotion = if (!currentState.aiAnalysisText.isNullOrBlank()) {
             parseEmotionFromAnalysis(currentState.aiAnalysisText)
         } else {
@@ -520,7 +676,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         val newEntry = DiaryEntry(
             title = currentState.draftTitle.ifBlank { "오늘의 기록" },
-            content = currentState.draftContent,
+            blocks = currentState.draftBlocks,
+            content = plain,
             emotion = finalEmotion,
             aiAnalysis = currentState.aiAnalysisText
         )
@@ -531,7 +688,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 diaries = updated,
                 phase = DiaryPhase.LIST,
                 draftTitle = "",
-                draftContent = "",
+                draftBlocks = emptyList(),
                 draftEmotion = "Neutral",
                 aiAnalysisText = null
             )

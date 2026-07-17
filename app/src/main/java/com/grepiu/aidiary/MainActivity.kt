@@ -45,6 +45,7 @@ import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.compose.subspace.layout.resizable
 import androidx.xr.compose.subspace.layout.width
+import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
@@ -83,6 +84,40 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 카메라 권한 요청 런처
+                val cameraPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { granted ->
+                    if (granted) {
+                        viewModel.requestCameraCapture()
+                    } else {
+                        Toast.makeText(context, "카메라 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                // 갤러리 픽업 런처 (PhotoPicker)
+                val pickImageLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.PickVisualMedia()
+                ) { uri ->
+                    if (uri != null) {
+                        viewModel.processIntent(DiaryIntent.ImagePicked(uri))
+                    }
+                }
+
+                // 카메라 촬영 런처
+                val pendingCameraUri = androidx.compose.runtime.remember {
+                    androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
+                }
+                val takePictureLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.TakePicture()
+                ) { success ->
+                    val uri = pendingCameraUri.value
+                    pendingCameraUri.value = null
+                    if (success && uri != null) {
+                        viewModel.processIntent(DiaryIntent.CameraImageCaptured(uri.toString().removePrefix("file://")))
+                    }
+                }
+
                 // 일회성 부수 효과(Toast 등) 구독 및 실행
                 LaunchedEffect(Unit) {
                     viewModel.effect.collect { effect ->
@@ -99,6 +134,13 @@ class MainActivity : ComponentActivity() {
                             is DiaryEffect.RequestAudioPermission -> {
                                 audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
+                            is DiaryEffect.RequestCameraPermission -> {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                            is DiaryEffect.LaunchCamera -> {
+                                pendingCameraUri.value = effect.targetUri
+                                takePictureLauncher.launch(effect.targetUri)
+                            }
                         }
                     }
                 }
@@ -109,6 +151,16 @@ class MainActivity : ComponentActivity() {
                         MySpatialContent(
                             state = state,
                             viewModel = viewModel,
+                            onPickGallery = {
+                                pickImageLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                            onTakePhoto = {
+                                viewModel.requestCameraCapture()
+                            },
                             onRequestHomeSpaceMode = spatialConfiguration::requestHomeSpaceMode
                         )
                     }
@@ -116,6 +168,16 @@ class MainActivity : ComponentActivity() {
                     My2DContent(
                         state = state,
                         viewModel = viewModel,
+                        onPickGallery = {
+                            pickImageLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        onTakePhoto = {
+                            viewModel.requestCameraCapture()
+                        },
                         onRequestFullSpaceMode = spatialConfiguration::requestFullSpaceMode
                     )
                 }
@@ -129,6 +191,8 @@ class MainActivity : ComponentActivity() {
 fun MySpatialContent(
     state: DiaryState,
     viewModel: DiaryViewModel,
+    onPickGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
     onRequestHomeSpaceMode: () -> Unit
 ) {
     SpatialPanel(SubspaceModifier.width(1080.dp).height(720.dp).resizable().movable()) {
@@ -136,6 +200,8 @@ fun MySpatialContent(
             DiaryAppNavigationRouter(
                 state = state,
                 viewModel = viewModel,
+                onPickGallery = onPickGallery,
+                onTakePhoto = onTakePhoto,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -158,6 +224,8 @@ fun MySpatialContent(
 fun My2DContent(
     state: DiaryState,
     viewModel: DiaryViewModel,
+    onPickGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
     onRequestFullSpaceMode: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -165,6 +233,8 @@ fun My2DContent(
             DiaryAppNavigationRouter(
                 state = state,
                 viewModel = viewModel,
+                onPickGallery = onPickGallery,
+                onTakePhoto = onTakePhoto,
                 modifier = Modifier.fillMaxSize()
             )
             // XR 기기 세션이 활성화된 상태에서만 공간화 모드 전환 버튼 노출
@@ -187,6 +257,8 @@ fun My2DContent(
 fun DiaryAppNavigationRouter(
     state: DiaryState,
     viewModel: DiaryViewModel,
+    onPickGallery: () -> Unit,
+    onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     when (state.phase) {
@@ -220,9 +292,26 @@ fun DiaryAppNavigationRouter(
                 onTitleChange = { title ->
                     viewModel.processIntent(DiaryIntent.UpdateDraft(title = title))
                 },
-                onContentChange = { content ->
-                    viewModel.processIntent(DiaryIntent.UpdateDraft(content = content))
+                onAddBlock = { block ->
+                    viewModel.processIntent(DiaryIntent.AddBlock(block))
                 },
+                onInsertBlock = { index, block ->
+                    viewModel.processIntent(DiaryIntent.InsertBlock(index, block))
+                },
+                onUpdateBlockText = { blockId, text, formatting ->
+                    viewModel.processIntent(DiaryIntent.UpdateBlockText(blockId, text, formatting))
+                },
+                onUpdateBlockCaption = { blockId, caption ->
+                    viewModel.processIntent(DiaryIntent.UpdateBlockCaption(blockId, caption))
+                },
+                onRemoveBlock = { blockId ->
+                    viewModel.processIntent(DiaryIntent.RemoveBlock(blockId))
+                },
+                onMoveBlock = { blockId, dir ->
+                    viewModel.processIntent(DiaryIntent.MoveBlock(blockId, dir))
+                },
+                onPickGallery = onPickGallery,
+                onTakePhoto = onTakePhoto,
                 onAnalyzeDiary = {
                     viewModel.processIntent(DiaryIntent.AnalyzeDiary)
                 },
@@ -285,6 +374,8 @@ fun My2dContentPreview() {
         My2DContent(
             state = DiaryState(),
             viewModel = viewModel(),
+            onPickGallery = {},
+            onTakePhoto = {},
             onRequestFullSpaceMode = {}
         )
     }

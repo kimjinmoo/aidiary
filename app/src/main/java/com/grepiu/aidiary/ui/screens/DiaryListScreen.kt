@@ -11,19 +11,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.mvi.state.DiaryPhase
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.DownloadStatusCard
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -232,7 +238,22 @@ fun RowScope.MoodStatBar(label: String, count: Int, total: Int, color: Color) {
 @Composable
 fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
     val dateText = SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(Date(diary.timestamp))
-    
+    val context = LocalContext.current
+    val firstImageBlock = remember(diary.id) {
+        diary.blocks.firstOrNull { it is ContentBlock.ImageBlock } as? ContentBlock.ImageBlock
+    }
+    val thumbnailFile: File? = remember(firstImageBlock?.relativePath) {
+        val rel = firstImageBlock?.relativePath
+        if (rel.isNullOrBlank()) null
+        else File(context.filesDir, rel).takeIf { it.exists() }
+    }
+    val previewText = remember(diary.id) {
+        diary.contentText.replace("\n", " ").trim()
+    }
+    val attachmentCount = remember(diary.id) {
+        diary.blocks.count { it is ContentBlock.ImageBlock }
+    }
+
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
@@ -244,7 +265,7 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
             .clickable(onClick = onClick)
     ) {
         Row(
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
             modifier = Modifier.padding(16.dp)
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -259,7 +280,7 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    
+
                     val (emotionText, emotionColor) = getEmotionUI(diary.emotion)
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -275,9 +296,9 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                         )
                     }
                 }
-                
+
                 Spacer(modifier = Modifier.height(6.dp))
-                
+
                 Text(
                     text = diary.title,
                     fontSize = 16.sp,
@@ -286,31 +307,55 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                
+
                 Spacer(modifier = Modifier.height(4.dp))
-                
+
                 Text(
-                    text = diary.content,
+                    text = previewText,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     lineHeight = 18.sp
                 )
-                
-                if (diary.aiAnalysis != null) {
+
+                if (diary.aiAnalysis != null || attachmentCount > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "✨ AI 일기 피드백 완료",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.secondary
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (diary.aiAnalysis != null) {
+                            Text(
+                                text = "✨ AI 피드백",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                        }
+                        if (attachmentCount > 0) {
+                            if (diary.aiAnalysis != null) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = "🖼️ 사진 ${attachmentCount}장",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
+            }
+
+            if (thumbnailFile != null) {
+                Spacer(modifier = Modifier.width(12.dp))
+                AsyncImage(
+                    model = thumbnailFile,
+                    contentDescription = "일기 썸네일",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
             }
         }
     }
