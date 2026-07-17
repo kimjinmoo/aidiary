@@ -2,6 +2,7 @@ package com.grepiu.aidiary.data.repository
 
 import android.content.Context
 import com.grepiu.aidiary.data.model.ContentBlock
+import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.model.toJson
@@ -134,6 +135,10 @@ class DiaryRepository(
             val emotion = obj.optString("emotion", "Neutral")
             val aiAnalysis = if (obj.isNull("aiAnalysis")) null else obj.getString("aiAnalysis")
             val legacyContent = obj.optString("content", "")
+            // contentType 은 구버전 데이터에 없을 수 있으므로 안전하게 폴백
+            val contentType = ContentType.fromStorageKey(
+                if (obj.has("contentType") && !obj.isNull("contentType")) obj.getString("contentType") else null
+            )
 
             val blocks: List<ContentBlock> = if (obj.has("blocks")) {
                 val blocksArr = obj.getJSONArray("blocks")
@@ -152,7 +157,8 @@ class DiaryRepository(
                 blocks = blocks,
                 content = legacyContent,
                 emotion = emotion,
-                aiAnalysis = aiAnalysis
+                aiAnalysis = aiAnalysis,
+                contentType = contentType
             )
         } catch (e: Exception) {
             null
@@ -170,6 +176,7 @@ class DiaryRepository(
                     put("content", entry.blocks.extractPlainText())
                     put("emotion", entry.emotion)
                     put("aiAnalysis", entry.aiAnalysis ?: JSONObject.NULL)
+                    put("contentType", entry.contentType.storageKey)
 
                     val blocksArr = JSONArray()
                     entry.blocks.forEach { blocksArr.put(it.toJson()) }

@@ -13,14 +13,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TaskAlt
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.grepiu.aidiary.data.model.ContentBlock
+import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
@@ -159,6 +163,7 @@ fun DiaryListScreen(
         Column(
             modifier = Modifier
                 .padding(innerPadding)
+                .imePadding()
                 .fillMaxSize()
         ) {
             // A. 상단 주간 캘린더 스트립
@@ -1339,12 +1344,39 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = dateText,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = typeColor.copy(alpha = 0.15f),
+                            modifier = Modifier.padding(end = 6.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = typeIcon,
+                                    contentDescription = null,
+                                    tint = typeColor,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = typeLabel,
+                                    color = typeColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        Text(
+                            text = dateText,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
 
                     val (emotionText, emotionColor) = getEmotionUI(diary.emotion)
                     Surface(
@@ -1437,5 +1469,16 @@ fun getEmotionUI(emotion: String): Pair<String, Color> {
         "Anxiety" -> Pair("😰 불안", Color(0xFF7B1FA2))
         "Anger" -> Pair("😡 분노", Color(0xFFC62828))
         else -> Pair("⚪ 보통", Color(0xFF555555))
+    }
+}
+
+/**
+ * 콘텐츠 타입별 아이콘/라벨/색상 (목록·상세 공통).
+ */
+fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Color> {
+    return when (type) {
+        ContentType.DIARY -> Triple(Icons.AutoMirrored.Filled.MenuBook, "일기", Color(0xFF1565C0))
+        ContentType.POST -> Triple(Icons.Default.EditNote, "새 글", Color(0xFF6A1B9A))
+        ContentType.NOTE -> Triple(Icons.Default.NoteAlt, "메모", Color(0xFF2E7D32))
     }
 }

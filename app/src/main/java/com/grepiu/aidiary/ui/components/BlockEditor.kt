@@ -17,13 +17,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Title
-import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -213,6 +214,10 @@ fun BlockEditor(
 
 /**
  * RichTextField + RichTextToolbar 를 묶어 텍스트+서식 편집을 처리하는 컴포저블.
+ *
+ * 외부(예: 음성 전사)에서 [initialText] 가 바뀌었을 때만 로컬 [tfv] 상태를
+ * 동기화합니다. 사용자가 한글 IME 로 입력 중인 경우(조합 중)에는 동기화를
+ * 건너뛰어 조합 중인 문자가 사라지지 않도록 보호합니다.
  */
 @Composable
 private fun RichTextEditorBody(
@@ -226,17 +231,33 @@ private fun RichTextEditorBody(
     singleLine: Boolean = false
 ) {
     val baseColor = MaterialTheme.colorScheme.onSurface
-    var tfv by remember(initialText) {
+    // tfv 는 컴포저블 수명 동안 유지 (initialText 가 바뀌어도 재생성하지 않음).
+    // 외부 동기화는 아래 LaunchedEffect 에서 처리.
+    var tfv by remember {
         mutableStateOf(TextFieldValue(text = initialText, selection = TextRange(initialText.length)))
     }
     var formatting by remember(initialFormatting) {
         mutableStateOf(initialFormatting)
     }
+    // 마지막으로 외부값을 적용한 시점의 initialText. 이 값과 다른 경우에만 동기화.
+    var lastAppliedExternalText by remember { mutableStateOf(initialText) }
 
-    // 외부에서 텍스트/서식이 변경되면(예: 음성 전사 결과) 동기화
-    if (tfv.text != initialText && initialText.length >= tfv.text.length) {
-        // 단순히 동기화 (음성 전사 등)
-        tfv = TextFieldValue(text = initialText, selection = TextRange(initialText.length))
+    // 외부 텍스트가 변경되었을 때만 동기화 (사용자 타이핑으로 인한 내부 루프 방지).
+    // 한글 IME 조합 중(tfv.composition != null)이라면 강제로 덮어쓰지 않음.
+    LaunchedEffect(initialText) {
+        if (initialText != lastAppliedExternalText && tfv.composition == null) {
+            // 단순 동기화: 로컬 상태가 외부와 다르고, 조합 중이 아닐 때만 덮어쓰기
+            if (tfv.text != initialText) {
+                tfv = TextFieldValue(
+                    text = initialText,
+                    selection = TextRange(initialText.length)
+                )
+            }
+            lastAppliedExternalText = initialText
+        } else if (initialText != lastAppliedExternalText && tfv.composition != null) {
+            // 조합 중이라면 다음 프레임에 재시도하도록 플래그만 갱신
+            lastAppliedExternalText = initialText
+        }
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -247,6 +268,8 @@ private fun RichTextEditorBody(
                 tfv = newTfv
                 formatting = formatting.shift(oldText, newTfv.text)
                 onUpdate(newTfv.text, formatting)
+                // 사용자가 직접 입력한 경우, 외부 동기화 플래그를 현재 텍스트로 맞춤
+                lastAppliedExternalText = newTfv.text
             },
             formatting = formatting,
             textStyle = baseTextStyle.copy(color = baseColor),
@@ -360,7 +383,7 @@ fun AddBlockBar(
             modifier = Modifier.fillMaxWidth()
         ) {
             AddChip(icon = Icons.Default.Title, label = "제목", onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) })
-            AddChip(icon = Icons.Default.Notes, label = "본문", onClick = { onAdd(ContentBlock.TextBlock(text = "")) })
+            AddChip(icon = Icons.AutoMirrored.Filled.Notes, label = "본문", onClick = { onAdd(ContentBlock.TextBlock(text = "")) })
             AddChip(icon = Icons.Default.FormatQuote, label = "인용", onClick = { onAdd(ContentBlock.QuoteBlock(text = "")) })
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -427,7 +450,7 @@ private fun AddChip(
 @Composable
 private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Color> = when (block) {
     is ContentBlock.HeadingBlock -> Triple("섹션 제목", Icons.Default.Title, Color(0xFF1565C0))
-    is ContentBlock.TextBlock -> Triple("본문", Icons.Default.Notes, MaterialTheme.colorScheme.primary)
+    is ContentBlock.TextBlock -> Triple("본문", Icons.AutoMirrored.Filled.Notes, MaterialTheme.colorScheme.primary)
     is ContentBlock.QuoteBlock -> Triple("인용", Icons.Default.FormatQuote, Color(0xFF6A1B9A))
     is ContentBlock.ImageBlock -> Triple("이미지", Icons.Default.Image, Color(0xFF2E7D32))
     is ContentBlock.DividerBlock -> Triple("구분선", Icons.Default.HorizontalRule, MaterialTheme.colorScheme.outline)

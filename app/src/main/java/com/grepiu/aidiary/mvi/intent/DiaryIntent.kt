@@ -2,6 +2,7 @@ package com.grepiu.aidiary.mvi.intent
 
 import android.net.Uri
 import com.grepiu.aidiary.data.model.ContentBlock
+import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.mvi.state.DiaryPhase
 
@@ -21,6 +22,8 @@ sealed interface DiaryIntent {
     data object SaveDiary : DiaryIntent
     data class DeleteDiary(val id: String) : DiaryIntent
     data object AnalyzeDiary : DiaryIntent
+    /** 작성 중인 글의 콘텐츠 타입(일기/포스트/메모)을 변경합니다. */
+    data class UpdateDraftType(val contentType: ContentType) : DiaryIntent
     data class ShowDownloadNotice(val show: Boolean) : DiaryIntent
     data class ShowWifiWarning(val show: Boolean) : DiaryIntent
     data object StartRecording : DiaryIntent

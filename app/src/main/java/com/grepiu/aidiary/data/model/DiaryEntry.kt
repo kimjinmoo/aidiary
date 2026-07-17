@@ -19,7 +19,8 @@ data class DiaryEntry(
      */
     val content: String = "",
     val emotion: String = "Neutral", // 기쁨(Joy), 슬픔(Sadness), 분노(Anger), 불안(Anxiety), 평온(Calm), 보통(Neutral)
-    val aiAnalysis: String? = null
+    val aiAnalysis: String? = null,
+    val contentType: ContentType = ContentType.DIARY
 ) {
     /**
      * AI 분석/목록 미리보기용 평문. [content] 가 비어 있고 [blocks] 만 있을 경우를 위해 폴백 제공.

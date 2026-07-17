@@ -3,6 +3,7 @@ package com.grepiu.aidiary.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,9 +23,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,7 +54,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.grepiu.aidiary.data.model.ContentBlock
+import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.AddBlockBar
 import com.grepiu.aidiary.ui.components.BlockEditor
@@ -65,6 +72,7 @@ import com.grepiu.aidiary.ui.components.BlockEditor
 fun DiaryWriteScreen(
     state: DiaryState,
     onTitleChange: (String) -> Unit,
+    onContentTypeChange: (ContentType) -> Unit,
     onAddBlock: (ContentBlock) -> Unit,
     onInsertBlock: (Int, ContentBlock) -> Unit,
     onUpdateBlockText: (String, String, com.grepiu.aidiary.data.model.TextFormatting) -> Unit,
@@ -96,7 +104,19 @@ fun DiaryWriteScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "일기 작성", fontWeight = FontWeight.Bold) },
+                title = {
+                    val (icon, label) = contentTypeMeta(state.draftContentType)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "${label} 작성", fontWeight = FontWeight.Bold)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
@@ -120,6 +140,7 @@ fun DiaryWriteScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
@@ -138,6 +159,14 @@ fun DiaryWriteScreen(
                     unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
                 ),
                 modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 1.5 콘텐츠 타입 선택
+            ContentTypeSelector(
+                selected = state.draftContentType,
+                onSelect = onContentTypeChange
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -210,11 +239,31 @@ fun DiaryWriteScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 3. AI 분석 영역
-            AIAnalysisSection(
-                state = state,
-                onAnalyzeDiary = onAnalyzeDiary
-            )
+            // 3. AI 분석 영역 (일기 타입일 때만 노출)
+            if (state.draftContentType.supportsAiAnalysis) {
+                AIAnalysisSection(
+                    state = state,
+                    onAnalyzeDiary = onAnalyzeDiary
+                )
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = when (state.draftContentType) {
+                            ContentType.POST -> "💡 새 글은 AI 마음 분석 없이 자유롭게 기록해요."
+                            ContentType.NOTE -> "💡 메모는 간단히 남기는 글입니다."
+                            else -> ""
+                        },
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(40.dp))
         }
@@ -435,4 +484,86 @@ private fun AIAnalysisSection(
             }
         }
     }
+}
+
+/**
+ * 콘텐츠 타입 선택 가로 칩바.
+ */
+@Composable
+private fun ContentTypeSelector(
+    selected: ContentType,
+    onSelect: (ContentType) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "글 타입",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            ContentType.values().forEach { type ->
+                val (icon, label) = contentTypeMeta(type)
+                ContentTypeChip(
+                    icon = icon,
+                    label = label,
+                    selected = type == selected,
+                    onClick = { onSelect(type) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ContentTypeChip(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val containerColor = if (selected) accent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    val borderColor = if (selected) accent else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val contentColor = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(containerColor)
+            .border(if (selected) 1.5.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = contentColor
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+            color = contentColor
+        )
+    }
+}
+
+/**
+ * 콘텐츠 타입별 아이콘/라벨 매핑.
+ */
+private fun contentTypeMeta(type: ContentType): Pair<ImageVector, String> = when (type) {
+    ContentType.DIARY -> Icons.AutoMirrored.Filled.MenuBook to ContentType.DIARY.label
+    ContentType.POST -> Icons.Default.EditNote to ContentType.POST.label
+    ContentType.NOTE -> Icons.Default.NoteAlt to ContentType.NOTE.label
 }

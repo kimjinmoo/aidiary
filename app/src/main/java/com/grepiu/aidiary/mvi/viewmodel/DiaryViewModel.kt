@@ -127,7 +127,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         // 새 일기 작성 화면 진입 시 draft 값 초기화
                         draftTitle = if (intent.phase == DiaryPhase.WRITE) "" else currentState.draftTitle,
                         draftBlocks = if (intent.phase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
-                        draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion
+                        draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
+                        draftContentType = if (intent.phase == DiaryPhase.WRITE) com.grepiu.aidiary.data.model.ContentType.DIARY else currentState.draftContentType
                     )
                 }
             }
@@ -149,6 +150,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.AnalyzeDiary -> {
                 runOnDeviceAIAnalysis()
+            }
+            is DiaryIntent.UpdateDraftType -> {
+                _state.update { it.copy(draftContentType = intent.contentType) }
             }
             is DiaryIntent.ShowDownloadNotice -> {
                 _state.update { it.copy(showDownloadNotice = intent.show) }
@@ -621,6 +625,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }.take(3)
 
         // 매칭 결과가 전혀 없는 경우 최근 3개 데이터를 폴백 컨텍스트로 지정
+        // 오늘 및 선택한 날짜의 할 일 정보 별도 기입 준비
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayTasks = currentState.plannerTasks.filter { it.dateString == todayStr }
+        val selectedDateStr = currentState.selectedDateString
+        val selectedDateTasks = currentState.plannerTasks.filter { it.dateString == selectedDateStr }
+
+        // 매칭 결과가 전혀 없는 경우 최근 3개 데이터를 폴백 컨텍스트로 지정
         val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) {
             currentState.diaries.take(3)
         } else matchedDiaries
@@ -635,30 +646,55 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         // 3. 온디바이스 전용 프롬프트 조합 (RAG 정보 주입)
         val systemPrompt = "당신은 사용자의 일기 내용과 일정을 기억하는 다이어리 인공지능 비서예요. " +
-                "제공되는 [컨텍스트 기록] 정보에 기반하여 사용자의 질문에만 솔직하게 답해 주세요. " +
-                "컨텍스트에 정보가 없고 대답할 수 없는 질문인 경우, 소설을 쓰지 말고 '다이어리 기록 내에서 관련 정보를 찾을 수 없어요'라고 대답하세요. " +
-                "반드시 100% 한국어로만 답변하고, '~해요'체로 상냥하고 조리 있게 대답하세요."
+                "제공되는 [컨텍스트 기록] 정보에 기반하여 사용자의 질문에만 정직하게 대답해야 해요. " +
+                "**필독 규칙**: 절대로 사용자의 일정이나 일기를 상상해서 지어내어 거짓으로 답변하지 마세요. " +
+                "오늘의 할 일 목록에 해당하는 일정이 없다면, 가상 일정을 만들지 말고 '오늘 계획된 일정이 등록되어 있지 않아요'라고 솔직하게 대답하세요. " +
+                "반드시 100% 한국어로만 답변하고, '~해요'체로 상냥하고 간결하게 대답하세요."
 
         val userPrompt = buildString {
             append("[컨텍스트 기록]\n")
-            if (finalDiaries.isEmpty() && finalTasks.isEmpty() && finalGoals.isEmpty()) {
-                append("- 관련 다이어리 및 플래너 기록이 없습니다.\n")
+            append("- 기준 날짜 (오늘): $todayStr\n")
+            append("- 선택된 캘린더 날짜: $selectedDateStr\n\n")
+
+            append("■ 오늘($todayStr)의 실제 계획된 할 일 목록:\n")
+            if (todayTasks.isEmpty()) {
+                append("  - (오늘 계획된 할 일이 등록되어 있지 않습니다)\n\n")
             } else {
+                todayTasks.forEach { task ->
+                    append("  - 할 일: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
+                }
+                append("\n")
+            }
+
+            if (selectedDateStr != todayStr) {
+                append("■ 선택한 날짜($selectedDateStr)의 실제 계획된 할 일 목록:\n")
+                if (selectedDateTasks.isEmpty()) {
+                    append("  - (이날 계획된 할 일이 등록되어 있지 않습니다)\n\n")
+                } else {
+                    selectedDateTasks.forEach { task ->
+                        append("  - 할 일: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
+                    }
+                    append("\n")
+                }
+            }
+
+            if (finalDiaries.isNotEmpty() || finalTasks.isNotEmpty() || finalGoals.isNotEmpty()) {
+                append("■ 연관 검색 기록:\n")
                 if (finalDiaries.isNotEmpty()) {
-                    append("■ 일기 기록:\n")
+                    append("[일기 내용]\n")
                     finalDiaries.forEach { diary ->
                         val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
-                        append("  - 날짜: $dateStr, 제목: ${diary.title}, 내용: ${diary.contentText}, 감정: ${diary.emotion}\n")
+                        append("  - 날짜: $dateStr, 제목: ${diary.title}, 본문: ${diary.contentText}, 감정: ${diary.emotion}\n")
                     }
                 }
                 if (finalTasks.isNotEmpty()) {
-                    append("■ 플래너 할 일:\n")
+                    append("[기타 할 일]\n")
                     finalTasks.forEach { task ->
                         append("  - 계획날짜: ${task.dateString}, 내용: ${task.text}, 상태: ${if (task.isCompleted) "완료" else "미완료"}\n")
                     }
                 }
                 if (finalGoals.isNotEmpty()) {
-                    append("■ 장기 목표:\n")
+                    append("[나의 장기 목표]\n")
                     finalGoals.forEach { goal ->
                         append("  - 목표: ${goal.text}, 상태: ${if (goal.isCompleted) "완료" else "미완료"}\n")
                     }
@@ -895,7 +931,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             blocks = currentState.draftBlocks,
             content = plain,
             emotion = finalEmotion,
-            aiAnalysis = currentState.aiAnalysisText
+            aiAnalysis = currentState.aiAnalysisText,
+            contentType = currentState.draftContentType
         )
 
         val updated = repository.addEntry(newEntry)
@@ -906,10 +943,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 draftTitle = "",
                 draftBlocks = emptyList(),
                 draftEmotion = "Neutral",
+                draftContentType = com.grepiu.aidiary.data.model.ContentType.DIARY,
                 aiAnalysisText = null
             )
         }
-        sendEffect(DiaryEffect.ShowToast("일기가 성공적으로 저장되었습니다!"))
+        sendEffect(DiaryEffect.ShowToast("${currentState.draftContentType.label}이(가) 성공적으로 저장되었습니다!"))
     }
 
     /**

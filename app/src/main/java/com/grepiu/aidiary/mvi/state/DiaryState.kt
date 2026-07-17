@@ -1,6 +1,7 @@
 package com.grepiu.aidiary.mvi.state
 
 import com.grepiu.aidiary.data.model.ContentBlock
+import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.Goal
@@ -34,6 +35,7 @@ data class DiaryState(
     val draftTitle: String = "",
     val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문
     val draftEmotion: String = "Neutral",
+    val draftContentType: ContentType = ContentType.DIARY,
 
     // 온디바이스 AI 모델 및 다운로드 관련 상태
     val isModelReady: Boolean = false,                       // 모델 사용 가능 여부

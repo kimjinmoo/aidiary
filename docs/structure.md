@@ -8,13 +8,14 @@
 - **언어/플랫폼**: Kotlin + Jetpack Compose, Android XR(API 34+) 타깃
 - **아키텍처**: MVI 단방향 흐름 (`State` → `Composable` → `Intent` → `ViewModel` → `State`)
 - **콘텐츠 모델**: 블록 기반(`ContentBlock` 시즈 클래스) - 텍스트/제목/인용/이미지/구분선
+- **콘텐츠 타입**: `ContentType` (DIARY / POST / NOTE) - 일기/새 글/메모 3종, 작성 시 선택. AI 분석은 DIARY 에서만 노출
 - **인라인 텍스트 서식**: `TextFormatting` 으로 bold/italic/underline/strikethrough/color/size 6종 지원 (입력 중 인라인 프리뷰)
 - **기본 폰트**: Pretendard (Regular/Medium/SemiBold/Bold 4개 weight, OTF, `res/font/`)
 - **온디바이스 AI**:
   - 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM)
   - 음성 인식: Sherpa-Onnx (오프라인, 한국어 Zipformer)
 - **데이터 저장**: 앱 내부 저장소
-  - `filesDir/diary_history.json` (일기 메타)
+  - `filesDir/diary_history.json` (일기 메타, `contentType` 필드 포함. 구버전 데이터는 DIARY 로 폴백)
   - `filesDir/diary_images/<uuid>.jpg` (첨부 이미지 원본)
   - `cacheDir/` (녹음/카메라 임시 파일)
 
@@ -26,8 +27,9 @@ app/src/main/java/com/grepiu/aidiary/
 │
 ├── data/
 │   ├── model/
-│   │   ├── DiaryEntry.kt            # 일기 엔트리 (id, title, blocks, content 평문, emotion, aiAnalysis)
+│   │   ├── DiaryEntry.kt            # 일기 엔트리 (id, title, blocks, content 평문, emotion, aiAnalysis, contentType)
 │   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider) + JSON 직렬화
+│   │   ├── ContentType.kt           # 콘텐츠 타입 enum (DIARY/POST/NOTE) + storageKey 기반 영속화
 │   │   └── TextFormatting.kt        # 인라인 서식 (bold/italic/underline/strikethrough/color/size) + AnnotatedString 변환
 │   ├── repository/
 │   │   ├── DiaryRepository.kt       # JSON 직렬화, 인메모리 캐시, 200개 상한, 일기 삭제 시 이미지 정리
@@ -190,7 +192,9 @@ app/src/main/java/com/grepiu/aidiary/
 - [ ] `DiaryIntent` 추가 시 → `processIntent` 의 `when` 분기 추가
 - [ ] 새 `ContentBlock` 타입 추가 시 → `ContentBlock.fromJson`, `toJson`, `BlockRenderer`, `BlockEditor`, `blockTypeMeta` 동시 갱신
 - [ ] `TextFormatting` 속성 추가 시 → `TextFormatting` 데이터 클래스, JSON 직렬화, `toAnnotatedString`, `RichTextToolbar`, `is*At` 헬퍼 동시 갱신
+- [ ] `ContentType` 값 추가 시 → `ContentType`, `getContentTypeUI`(ListScreen), `contentTypeMeta`(WriteScreen), `DiaryRepository` 영속화 동시 갱신
 - [ ] 모델 포맷(JSON) 변경 시 → `DiaryRepository.parseEntry/persist` 양쪽 동시 수정 + 하위 호환
 - [ ] 권한 추가 시 → `AndroidManifest.xml` + `MainActivity` 의 런처 + `DiaryEffect.RequestXxx`
 - [ ] JNI/native 추가 시 → `app/libs/jniLibs/` 에 ABI별 .so 배치 확인
+- [ ] 한글 IME 조합(ㅇ→아→안→안녕) 입력 보존이 필요하면 `RichTextEditorBody` 의 외부 텍스트 동기화 로직을 수정할 때 `tfv.composition` 을 검사할 것
 - [ ] 본 문서도 함께 갱신

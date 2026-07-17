@@ -43,8 +43,20 @@ fun DiaryDetailScreen(
 
     Scaffold(
         topBar = {
+            val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
             TopAppBar(
-                title = { Text(text = "일기 상세", fontWeight = FontWeight.Bold) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = typeIcon,
+                            contentDescription = null,
+                            tint = typeColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = "${typeLabel} 상세", fontWeight = FontWeight.Bold)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로가기")
@@ -68,6 +80,7 @@ fun DiaryDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(scrollState)
         ) {
@@ -111,6 +124,35 @@ fun DiaryDetailScreen(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 2.5 콘텐츠 타입 뱃지
+            val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = typeColor.copy(alpha = 0.12f),
+                modifier = Modifier.padding(vertical = 2.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = typeIcon,
+                        contentDescription = null,
+                        tint = typeColor,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = typeLabel,
+                        color = typeColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(16.dp))
@@ -123,8 +165,8 @@ fun DiaryDetailScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
-            // 4. AI 피드백 구역
-            if (diary.aiAnalysis != null) {
+            // 4. AI 피드백 구역 (일기 타입이면서 분석이 있을 때만)
+            if (diary.contentType.supportsAiAnalysis && diary.aiAnalysis != null) {
                 val (_, emotionColor) = getEmotionUI(diary.emotion)
                 
                 Card(
@@ -162,7 +204,7 @@ fun DiaryDetailScreen(
                         )
                     }
                 }
-            } else {
+            } else if (diary.contentType.supportsAiAnalysis) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),

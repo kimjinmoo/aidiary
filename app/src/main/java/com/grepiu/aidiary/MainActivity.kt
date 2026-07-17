@@ -302,6 +302,9 @@ fun DiaryAppNavigationRouter(
                 onTitleChange = { title ->
                     viewModel.processIntent(DiaryIntent.UpdateDraft(title = title))
                 },
+                onContentTypeChange = { contentType ->
+                    viewModel.processIntent(DiaryIntent.UpdateDraftType(contentType))
+                },
                 onAddBlock = { block ->
                     viewModel.processIntent(DiaryIntent.AddBlock(block))
                 },
