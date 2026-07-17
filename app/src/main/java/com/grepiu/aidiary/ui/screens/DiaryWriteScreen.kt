@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -45,6 +46,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -64,6 +66,7 @@ import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
+import com.grepiu.aidiary.mvi.state.PendingContentTypeChange
 import com.grepiu.aidiary.ui.components.AddBlockBar
 import com.grepiu.aidiary.ui.components.BlockEditor
 
@@ -247,6 +250,16 @@ fun DiaryWriteScreen(
             )
 
             Spacer(Modifier.height(48.dp))
+        }
+
+        // 8) 저장 시 AI 가 추천한 글 타입이 현재 선택과 다를 때 표시되는 3버튼 다이얼로그
+        state.pendingContentTypeChange?.let { pending ->
+            ContentTypeChangeDialog(
+                pending = pending,
+                onConfirm = { onIntent(DiaryIntent.ConfirmContentTypeChange(pending.suggestedType)) },
+                onKeep = { onIntent(DiaryIntent.KeepCurrentContentTypeAndSave) },
+                onCancel = { onIntent(DiaryIntent.CancelContentTypeChange) }
+            )
         }
     }
 }
@@ -1089,4 +1102,67 @@ fun AiAssistIconButton(
             maxLines = 1
         )
     }
+}
+
+/**
+ * 저장 직전 AI 가 본문을 분석해 추천한 글 타입이 사용자가 선택한 타입과 다를 때 표시되는 3버튼 다이얼로그.
+ * - "변경하고 저장" : [DiaryIntent.ConfirmContentTypeChange] → 추천 타입으로 저장 진행
+ * - "원래 타입 저장" : [DiaryIntent.KeepCurrentContentTypeAndSave] → 현재 선택 유지하고 저장
+ * - "취소" : [DiaryIntent.CancelContentTypeChange] → 저장 자체를 취소
+ */
+@Composable
+private fun ContentTypeChangeDialog(
+    pending: PendingContentTypeChange,
+    onConfirm: () -> Unit,
+    onKeep: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onCancel,
+        shape = RoundedCornerShape(20.dp),
+        icon = {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = "글 타입이 다른 것 같아요",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        },
+        text = {
+            val currentLabel = pending.currentType.label
+            val suggestedLabel = pending.suggestedType.label
+            Text(
+                text = "AI 가 본문을 분석한 결과 \"$suggestedLabel\" 으로 보여요.\n" +
+                        "현재 선택한 타입은 \"$currentLabel\" 입니다.\n\n" +
+                        "어떤 타입으로 저장할까요?",
+                fontSize = 13.sp,
+                lineHeight = 20.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    text = "\"${pending.suggestedType.label}\" 으로 변경",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                TextButton(onClick = onKeep) {
+                    Text("\"${pending.currentType.label}\" 유지")
+                }
+                TextButton(onClick = onCancel) {
+                    Text("취소")
+                }
+            }
+        }
+    )
 }

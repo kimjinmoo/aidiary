@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.NoteAlt
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -326,7 +327,8 @@ fun DiaryListScreen(
                             onStartDownload = onStartDownload,
                             onCancelDownload = onCancelDownload,
                             onDismissNotice = onDismissNotice,
-                            onDismissWifiWarning = onDismissWifiWarning
+                            onDismissWifiWarning = onDismissWifiWarning,
+                            onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("DIARY")) }
                         )
                     }
                     "PLANNER" -> {
@@ -358,7 +360,8 @@ fun DiaryListScreen(
                             onDeleteTaskSeries = { task ->
                                 task.seriesId?.let { sid -> onIntent(DiaryIntent.DeletePlannerTaskSeries(sid)) }
                             },
-                            onSuggestTask = { intent -> onIntent(intent) }
+                            onSuggestTask = { intent -> onIntent(intent) },
+                            onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("PLANNER")) }
                         )
                     }
                     "GOALS" -> {
@@ -375,7 +378,8 @@ fun DiaryListScreen(
                                 }
                             },
                             onToggleGoal = { onIntent(DiaryIntent.ToggleGoal(it)) },
-                            onDeleteGoal = { onIntent(DiaryIntent.DeleteGoal(it)) }
+                            onDeleteGoal = { onIntent(DiaryIntent.DeleteGoal(it)) },
+                            onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("GOALS")) }
                         )
                     }
                     "CHAT" -> {
@@ -698,7 +702,8 @@ fun DiaryTabContent(
     onStartDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
-    onDismissWifiWarning: () -> Unit
+    onDismissWifiWarning: () -> Unit,
+    onRequestBriefing: () -> Unit
 ) {
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
     val parsedDateText = remember(state.selectedDateString) {
@@ -729,6 +734,17 @@ fun DiaryTabContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier.fillMaxSize()
     ) {
+        // AI 브리핑 카드 (탭 상단, 사용자가 명시적으로 요청)
+        item {
+            AiBriefingCard(
+                title = "기록 AI 브리핑",
+                briefing = state.diaryBriefing,
+                isLoading = state.isBriefingDiary,
+                isModelReady = state.isModelReady,
+                onRequest = onRequestBriefing
+            )
+        }
+
         // AI 모델 다운로드 카드
         if (!state.isModelReady) {
             item {
@@ -942,7 +958,8 @@ fun PlannerTabContent(
     onToggleTask: (String) -> Unit,
     onDeleteTask: (PlannerTask) -> Unit,
     onDeleteTaskSeries: (PlannerTask) -> Unit,
-    onSuggestTask: (DiaryIntent.SuggestPlannerTask) -> Unit
+    onSuggestTask: (DiaryIntent.SuggestPlannerTask) -> Unit,
+    onRequestBriefing: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -1055,6 +1072,17 @@ fun PlannerTabContent(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize()
     ) {
+        // 0. AI 브리핑 카드 (탭 상단)
+        item {
+            AiBriefingCard(
+                title = "플래너 AI 브리핑",
+                briefing = state.plannerBriefing,
+                isLoading = state.isBriefingPlanner,
+                isModelReady = state.isModelReady,
+                onRequest = onRequestBriefing
+            )
+        }
+
         // 1. 입력 폼 아이템
         item {
             Card(
@@ -1721,6 +1749,126 @@ private fun AiSuggestPlannerTaskButton(
 }
 
 /**
+ * 기록/플래너/목표 탭 공용 AI 브리핑 카드.
+ * - briefing == null && isLoading == false  : 빈 상태 + "브리핑 받기" 버튼
+ * - isLoading == true                       : 로딩 인디케이터 + "생성 중" 텍스트
+ * - briefing != null && isLoading == false  : 브리핑 본문 + "다시 요청" 버튼
+ *
+ * 모델 미준비 시 카드 전체를 dimmed 처리하고 버튼 비활성화.
+ */
+@Composable
+fun AiBriefingCard(
+    title: String = "AI 브리핑",
+    briefing: String?,
+    isLoading: Boolean,
+    isModelReady: Boolean,
+    onRequest: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = if (isModelReady) 0.18f else 0.08f)
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = if (isModelReady) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isModelReady) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+
+                // 다시 요청 / 요청 버튼
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = isModelReady && !isLoading, onClick = onRequest),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = if (briefing == null) "브리핑 요청" else "브리핑 다시 요청",
+                            tint = if (isModelReady) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            when {
+                !isModelReady -> {
+                    Text(
+                        text = "AI 모델이 준비되면 브리핑을 받을 수 있어요.",
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+                isLoading && briefing == null -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "AI 가 데이터를 분석해 브리핑을 만들고 있어요…",
+                            fontSize = 12.5.sp,
+                            lineHeight = 18.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                briefing.isNullOrBlank() -> {
+                    Text(
+                        text = "우측 상단 새로고침 아이콘을 눌러 브리핑을 받아보세요.",
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                else -> {
+                    Text(
+                        text = briefing,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * 5. [목표 기록] 탭 본문 영역
  */
 @Composable
@@ -1730,7 +1878,8 @@ fun GoalsTabContent(
     onTextChange: (String) -> Unit,
     onAddGoal: (String, String) -> Unit,
     onToggleGoal: (String) -> Unit,
-    onDeleteGoal: (String) -> Unit
+    onDeleteGoal: (String) -> Unit,
+    onRequestBriefing: () -> Unit
 ) {
     val totalGoals = state.goals.size
     val completedGoals = state.goals.count { it.isCompleted }
@@ -1771,6 +1920,17 @@ fun GoalsTabContent(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // AI 브리핑 카드 (탭 상단, 사용자가 명시적으로 요청)
+        item {
+            AiBriefingCard(
+                title = "목표 AI 브리핑",
+                briefing = state.goalsBriefing,
+                isLoading = state.isBriefingGoals,
+                isModelReady = state.isModelReady,
+                onRequest = onRequestBriefing
+            )
+        }
+
         // A. 목표 진행률 대시보드 (원형 게이지 및 동적 응원 메시지 도입)
         item {
             Card(

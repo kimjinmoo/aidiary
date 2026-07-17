@@ -33,6 +33,7 @@ import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.mvi.state.ChatMessage
+import com.grepiu.aidiary.mvi.state.PendingContentTypeChange
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -149,6 +150,40 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 val updated = repository.deleteEntry(intent.id)
                 _state.update { it.copy(diaries = updated, phase = DiaryPhase.LIST, selectedDiary = null) }
                 sendEffect(DiaryEffect.ShowToast("일기가 삭제되었습니다."))
+            }
+            is DiaryIntent.ConfirmContentTypeChange -> {
+                val pending = _state.value.pendingContentTypeChange ?: return
+                _state.update {
+                    it.copy(
+                        draftContentType = intent.newType,
+                        pendingContentTypeChange = null,
+                        isClassifyingTypeOnSave = false
+                    )
+                }
+                sendEffect(DiaryEffect.ShowToast("글 타입을 '${pending.suggestedType.label}'(으)로 변경해 저장할게요."))
+                proceedWithEmotionAndSave()
+            }
+            is DiaryIntent.KeepCurrentContentTypeAndSave -> {
+                val pending = _state.value.pendingContentTypeChange ?: return
+                _state.update {
+                    it.copy(
+                        pendingContentTypeChange = null,
+                        isClassifyingTypeOnSave = false
+                    )
+                }
+                sendEffect(DiaryEffect.ShowToast("현재 타입 '${pending.currentType.label}'(으)로 저장할게요."))
+                proceedWithEmotionAndSave()
+            }
+            is DiaryIntent.CancelContentTypeChange -> {
+                _state.update {
+                    it.copy(
+                        pendingContentTypeChange = null,
+                        isClassifyingTypeOnSave = false,
+                        isGeneratingAnalysis = false
+                    )
+                }
+                analysisJob?.cancel()
+                sendEffect(DiaryEffect.ShowToast("저장을 취소했어요."))
             }
             is DiaryIntent.UpdateDraftType -> {
                 _state.update { it.copy(draftContentType = intent.contentType) }
@@ -462,6 +497,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.ClearSuggestedPlannerTask -> {
                 _state.update { it.copy(suggestedPlannerTaskText = null) }
+            }
+            is DiaryIntent.RequestBriefing -> {
+                requestBriefing(intent.tab)
             }
 
             // ===== 온디바이스 AI 챗봇 =====
@@ -926,6 +964,199 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         6 -> "토"
         7 -> "일"
         else -> "?"
+    }
+
+    /**
+     * 탭별 AI 브리핑을 생성/재생성합니다.
+     * 동일 탭에서 이미 진행 중이면 무시, 다른 탭은 병행 가능.
+     */
+    private fun requestBriefing(tab: String) {
+        val state = _state.value
+        if (!requireReadyModel()) return
+
+        val alreadyRunning = when (tab) {
+            "DIARY" -> state.isBriefingDiary
+            "PLANNER" -> state.isBriefingPlanner
+            "GOALS" -> state.isBriefingGoals
+            else -> {
+                sendEffect(DiaryEffect.ShowToast("지원하지 않는 브리핑 탭입니다."))
+                return
+            }
+        }
+        if (alreadyRunning) return
+
+        val context = buildBriefingContext(tab, state)
+        if (context.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("브리핑을 위한 데이터가 부족해요."))
+            return
+        }
+
+        _state.update {
+            when (tab) {
+                "DIARY" -> it.copy(isBriefingDiary = true)
+                "PLANNER" -> it.copy(isBriefingPlanner = true)
+                "GOALS" -> it.copy(isBriefingGoals = true)
+                else -> it
+            }
+        }
+
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val text = engine.generateBriefing(tab, context)
+                _state.update { current ->
+                    when (tab) {
+                        "DIARY" -> current.copy(diaryBriefing = text, isBriefingDiary = false)
+                        "PLANNER" -> current.copy(plannerBriefing = text, isBriefingPlanner = false)
+                        "GOALS" -> current.copy(goalsBriefing = text, isBriefingGoals = false)
+                        else -> current
+                    }
+                }
+                if (text.isBlank()) {
+                    sendEffect(DiaryEffect.ShowToast("브리핑을 만들지 못했어요. 다시 시도해 주세요."))
+                }
+            } catch (e: Exception) {
+                _state.update { current ->
+                    when (tab) {
+                        "DIARY" -> current.copy(isBriefingDiary = false)
+                        "PLANNER" -> current.copy(isBriefingPlanner = false)
+                        "GOALS" -> current.copy(isBriefingGoals = false)
+                        else -> current
+                    }
+                }
+                sendEffect(DiaryEffect.ShowToast("AI 브리핑 오류: ${e.message}"))
+            }
+        }
+    }
+
+    /**
+     * 탭별 브리핑 LLM 컨텍스트 문자열을 만듭니다.
+     */
+    private fun buildBriefingContext(tab: String, state: DiaryState): String = when (tab) {
+        "DIARY" -> buildDiaryBriefingContext(state)
+        "PLANNER" -> buildPlannerBriefingContext(state)
+        "GOALS" -> buildGoalsBriefingContext(state)
+        else -> ""
+    }
+
+    private fun buildDiaryBriefingContext(state: DiaryState): String {
+        if (state.diaries.isEmpty()) return ""
+        val recent = state.diaries.take(7)
+        val dayOfWeek = try {
+            val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREAN)
+                .parse(state.selectedDateString)
+            if (date != null) {
+                java.text.SimpleDateFormat("M월 d일 (E)", java.util.Locale.KOREAN).format(date)
+            } else state.selectedDateString
+        } catch (e: Exception) {
+            state.selectedDateString
+        }
+        val entries = recent.joinToString("\n\n") { e ->
+            val plain = e.contentText.take(180)
+            val emotion = if (e.emotion.isNullOrBlank() || e.emotion == "Neutral") "" else " [감정: ${e.emotion}]"
+            "- ${e.title}$emotion: $plain"
+        }
+        val typeStats = state.diaries.groupingBy { it.contentType.storageKey }
+            .eachCount()
+            .entries.joinToString(", ") { "${it.key} ${it.value}건" }
+        val emotionStats = state.diaries.filter { it.emotion.isNotBlank() && it.emotion != "Neutral" }
+            .groupingBy { it.emotion }
+            .eachCount()
+            .entries.joinToString(", ") { "${it.key} ${it.value}건" }
+        return buildString {
+            append("선택된 날짜: $dayOfWeek\n")
+            append("총 일기 수: ${state.diaries.size}건\n")
+            if (typeStats.isNotBlank()) append("콘텐츠 타입 통계: $typeStats\n")
+            if (emotionStats.isNotBlank()) append("감정 통계: $emotionStats\n")
+            append("\n[최근 ${recent.size}건]\n$entries")
+        }
+    }
+
+    private fun buildPlannerBriefingContext(state: DiaryState): String {
+        val dayOfWeek = try {
+            val date = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.KOREAN)
+                .parse(state.selectedDateString)
+            if (date != null) {
+                java.text.SimpleDateFormat("M월 d일 (E)", java.util.Locale.KOREAN).format(date)
+            } else state.selectedDateString
+        } catch (e: Exception) {
+            state.selectedDateString
+        }
+        val todayTasks = state.plannerTasks.filter { it.dateString == state.selectedDateString }
+        val seriesIds = state.plannerTasks.mapNotNull { it.seriesId }.toSet()
+        val recurringDates = state.plannerTasks
+            .filter { it.seriesId != null }
+            .groupBy { it.seriesId }
+            .map { (sid, list) -> Triple(sid, list.size, list.first().text) }
+
+        val todayText = todayTasks.joinToString("\n") { t ->
+            val timePart = buildString {
+                if (!t.startTime.isNullOrBlank()) append(" ${t.startTime}")
+                if (!t.endTime.isNullOrBlank()) append("~${t.endTime}")
+            }
+            val locPart = if (!t.location.isNullOrBlank()) " (장소: ${t.location})" else ""
+            val done = if (t.isCompleted) " ✓완료" else ""
+            "- ${t.text}$timePart$locPart$done"
+        }
+
+        val recurringText = recurringDates.take(5).joinToString("\n") { (_, count, text) ->
+            "- $text (반복 시리즈, $count 일자)"
+        }
+
+        val upcomingDates = state.plannerTasks
+            .map { it.dateString }
+            .distinct()
+            .sorted()
+            .filter { it >= state.selectedDateString }
+            .take(5)
+            .joinToString(", ")
+
+        return buildString {
+            append("오늘 날짜: $dayOfWeek\n")
+            append("전체 할 일 수: ${state.plannerTasks.size}건 (고유 시리즈 ${seriesIds.size}개)\n")
+            if (upcomingDates.isNotBlank()) append("예정된 날짜(다음 5개): $upcomingDates\n")
+            if (todayText.isNotBlank()) {
+                append("\n[오늘의 계획 ${todayTasks.size}건]\n$todayText")
+            } else {
+                append("\n[오늘의 계획] 등록된 계획 없음\n")
+            }
+            if (recurringText.isNotBlank()) {
+                append("\n\n[반복 시리즈 ${recurringDates.size}개]\n$recurringText")
+            }
+        }
+    }
+
+    private fun buildGoalsBriefingContext(state: DiaryState): String {
+        if (state.goals.isEmpty()) return ""
+        val total = state.goals.size
+        val completed = state.goals.count { it.isCompleted }
+        val active = state.goals.filter { !it.isCompleted }
+        val recentlyCompleted = state.goals.filter { it.isCompleted }
+            .sortedByDescending { it.completedDateString ?: "" }
+            .take(3)
+
+        val activeText = active.take(5).joinToString("\n") { g ->
+            "- [${g.category}] ${g.text}"
+        }
+        val recentDoneText = recentlyCompleted.joinToString("\n") { g ->
+            "- [${g.category}] ${g.text} (달성: ${g.completedDateString ?: "?"})"
+        }
+
+        val todayPlans = state.plannerTasks.filter { it.dateString == state.selectedDateString }
+        val planText = todayPlans.joinToString("\n") { "- ${it.text}" }
+
+        return buildString {
+            append("전체 목표: ${total}건 (달성 $completed, 진행중 ${active.size})\n")
+            if (activeText.isNotBlank()) {
+                append("\n[진행중 목표 ${active.size}건 중 상위 5]\n$activeText")
+            }
+            if (recentDoneText.isNotBlank()) {
+                append("\n\n[최근 달성 ${recentlyCompleted.size}건]\n$recentDoneText")
+            }
+            if (planText.isNotBlank()) {
+                append("\n\n[오늘의 플래너 ${todayPlans.size}건]\n$planText")
+            }
+        }
     }
 
     private fun classifyDraftContentType() {
@@ -1445,12 +1676,22 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      * 흐름:
      * 1. 본문/제목/저장중복 검사
      * 2. 모델 준비 시 AI 감정 분류 → TAG AI 블록 (emotion 만)
-     *    - 실패/미준비 시 TAG 블록 없이 저장
-     * 3. 영구 저장 + LIST 화면으로 전환
+     *  3. 영구 저장 + LIST 화면으로 전환
+     *
+     * 저장 시점의 AI 글 타입 재확인 흐름:
+     *  - 본문/제목 검증
+     *  - 모델 미준비 시 즉시 저장
+     *  - 모델 준비 시 AI 분류 호출 → 추천 타입이 현재 선택과 다르면
+     *    [DiaryState.pendingContentTypeChange] 세팅 + 3버튼 다이얼로그 표시
+     *  - 동일하면 바로 감정 분석 + 저장 (이전 [proceedWithEmotionAndSave])
+     *  - 사용자가 "변경/유지/취소" 응답 시 각각 [DiaryIntent.ConfirmContentTypeChange]
+     *    / [DiaryIntent.KeepCurrentContentTypeAndSave] / [DiaryIntent.CancelContentTypeChange]
      */
     private fun saveDiaryDraft() {
         val currentState = _state.value
-        if (_state.value.isGeneratingAnalysis) return
+        if (currentState.isGeneratingAnalysis) return
+        if (currentState.isClassifyingTypeOnSave) return
+        if (currentState.pendingContentTypeChange != null) return
 
         val plain = currentState.draftPlainText
         if (plain.isBlank()) {
@@ -1464,7 +1705,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         val engine = llmEngine
         if (engine == null || !currentState.isModelReady) {
-            // 모델이 없으면 감정 태그 없이 저장
+            // 모델이 없으면 즉시 저장 (감정 태그, 타입 검증 없이)
             persistDiary(
                 currentState = currentState,
                 plain = plain,
@@ -1474,10 +1715,53 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 동시 저장/감정 분석 방지
+        // 1단계: AI 글 타입 재분류
         analysisJob?.cancel()
-        _state.update { it.copy(isGeneratingAnalysis = true) }
+        _state.update { it.copy(isClassifyingTypeOnSave = true) }
         analysisJob = viewModelScope.launch {
+            try {
+                val key = engine.classifyContentType(plain)
+                val suggestedType = com.grepiu.aidiary.data.model.ContentType.fromStorageKey(key)
+                val currentType = _state.value.draftContentType
+                if (suggestedType == currentType) {
+                    // 추천 타입이 현재 선택과 동일 → 감정 분석 + 저장으로 진행
+                    _state.update { it.copy(isClassifyingTypeOnSave = false) }
+                    proceedWithEmotionAndSave()
+                } else {
+                    // 추천 타입이 다름 → 사용자 응답 대기
+                    _state.update {
+                        it.copy(
+                            isClassifyingTypeOnSave = false,
+                            pendingContentTypeChange = PendingContentTypeChange(
+                                currentType = currentType,
+                                suggestedType = suggestedType
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("DiaryViewModel", "저장 시 AI 타입 분류 실패, 현재 타입으로 저장합니다", e)
+                sendEffect(DiaryEffect.ShowToast("AI 타입 분류에 실패해 현재 선택으로 저장할게요."))
+                _state.update { it.copy(isClassifyingTypeOnSave = false) }
+                proceedWithEmotionAndSave()
+            }
+        }
+    }
+
+    /**
+     * 타입 분기(현재 저장 다이얼로그 응답 포함) 이후 감정 분석 → 영구 저장을 이어서 수행.
+     * [proceedWithEmotionAndSave] 는 항상 최신 [_state.value] 를 읽어
+     * [DiaryIntent.ConfirmContentTypeChange] 로 변경된 타입이 반영되도록 한다.
+     */
+    private fun proceedWithEmotionAndSave() {
+        val currentState = _state.value
+        if (currentState.isGeneratingAnalysis) return
+        val engine = llmEngine ?: return
+        val plain = currentState.draftPlainText
+        if (plain.isBlank()) return
+
+        _state.update { it.copy(isGeneratingAnalysis = true) }
+        viewModelScope.launch {
             try {
                 val dateStr = SimpleDateFormat("yyyy년 MM월 dd일", Locale.KOREAN).format(Date())
                 val result = engine.detectEmotion(

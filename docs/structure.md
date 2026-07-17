@@ -150,14 +150,15 @@ app/src/main/java/com/grepiu/aidiary/
 | 본문 강조 추천 (굵게/색) | 블록 헤더의 `✦` 메뉴 → `AI 강조` | `decorateText(text)` → `DecorateResultParser.parse()` → `DecorateResult.toTextFormatting()` | 해당 블록의 `formatting` (start/end 텍스트 길이 내로 클램프) |
 | 마음 분석 + 감정 자동 태그 (TAG AI) | **저장 시 자동 실행** (수동 버튼 없음) | `detectEmotion(title, content, date)` → `DiaryLLMEngine.EmotionResult(raw, emotion)` | 본문 끝에 `ContentBlock.TagAiBlock(emotion)` 자동 추가 + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문 생성은 제거되어 단순 1-토큰 분류만 수행 (저장 지연 최소화) |
 | 플래너 할 일명 AI 자동 추천 | 플래너 탭 입력란 옆 `AI 자동 플래너명` 아이콘 버튼 (AutoAwesome) | `suggestPlannerTaskName(context)` | `state.suggestedPlannerTaskText` 에 1회성 저장 → UI `LaunchedEffect` 가 입력란에 반영 후 `ClearSuggestedPlannerTask` 인텐트로 비움 |
+| 탭별 AI 브리핑 (기록/플래너/목표) | 각 탭 LazyColumn 상단 `AiBriefingCard` 의 새로고침 아이콘 (Refresh) | `generateBriefing(tabKey, context)` — tabKey 별 분기 시스템 프롬프트 | `state.{diary,planner,goals}Briefing` (영속) + `isBriefing{Diary,Planner,Goals}` (로딩). 다시 요청 가능, 모델 미준비 시 dimmed |
 
 상태/Intent:
-- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` / `isSuggestingPlannerTask` / `isGeneratingAnalysis` (저장 시 AI TAG 생성 진행 표시) / `suggestedPlannerTaskText` (1회성 추천 결과)
-- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)` / `SuggestPlannerTask` / `ClearSuggestedPlannerTask` / `UpdateDraftTitle(text)` / `SaveDiary`
+- `DiaryState.isSuggestingTitle` / `isClassifyingType` / `isProofreadingBlockId` / `isDecoratingBlockId` / `isSuggestingPlannerTask` / `isGeneratingAnalysis` (저장 시 AI TAG 생성 진행 표시) / `isClassifyingTypeOnSave` (저장 시 타입 재확인 중) / `pendingContentTypeChange` (타입 변경 제안 다이얼로그 1회성 상태) / `suggestedPlannerTaskText` (1회성 추천 결과) / `diaryBriefing` / `plannerBriefing` / `goalsBriefing` (탭별 AI 브리핑 결과) / `isBriefingDiary` / `isBriefingPlanner` / `isBriefingGoals` (브리핑 로딩)
+- `DiaryIntent.SuggestTitle` / `ClassifyContentType` / `ProofreadBlock(id)` / `DecorateBlock(id)` / `SuggestPlannerTask` / `ClearSuggestedPlannerTask` / `RequestBriefing(tab)` / `ConfirmContentTypeChange(newType)` / `KeepCurrentContentTypeAndSave` / `CancelContentTypeChange` / `UpdateDraftTitle(text)` / `SaveDiary`
 - 수동 `AnalyzeDiary` 인텐트/버튼 제거됨 — 마음 분석은 `SaveDiary` 흐름에 흡수되어 자동 실행
 - **상단 제목 입력란**: 키보드 입력이 기본. `state.draftTitle` 에 직접 바인딩되며 AI 추천(`SuggestTitle`) 도 같은 필드를 갱신
 - 제목 스타일 피커(`draftTitleStyle`): `state.draftTitle.isNotBlank()` 일 때만 노출 (예전 `hasHeadingBlock` 가드 대체)
-- **저장 시 자동 흐름**: `SaveDiary` → 본문 비면 토스트 / 제목 비면 토스트 / 모델 준비 시 `detectEmotion` 호출 → 5 종 감정 라벨(기쁨/슬픔/분노/불안/평온) 중 하나를 `ContentBlock.TagAiBlock(emotion)` 으로 본문 끝에 append + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문은 생성하지 않으므로 분석 본문 필드(`aiAnalysis`) 는 null. 모델 미준비/실패 시 TAG 블록/감정 갱신 없이 저장만 진행.
+- **저장 시 자동 흐름**: `SaveDiary` → 본문 비면 토스트 / 제목 비면 토스트 / 모델 미준비 시 즉시 저장 / 모델 준비 시 1) `classifyContentType` 으로 글 타입 재확인 → 추천 타입이 현재 선택과 다르면 `pendingContentTypeChange` 세팅 + `ContentTypeChangeDialog` (3버튼: `"변경하고 저장" / "원래 타입 저장" / "취소"`) 노출, 같으면 2) `detectEmotion` 호출 → 5 종 감정 라벨(기쁨/슬픔/분노/불안/평온) 중 하나를 `ContentBlock.TagAiBlock(emotion)` 으로 본문 끝에 append + `DiaryEntry.emotion` 코드 매핑. 위로/조언 본문은 생성하지 않으므로 분석 본문 필드(`aiAnalysis`) 는 null. 타입 분류/감정 분류 실패 시 안전 폴백 (현재 타입 유지 / TAG 블록 없이 저장).
 
 UI 규약:
 - 블록 헤더의 `✦` 메뉴는 텍스트가 있는 Heading/Text/Quote 블록에서만 노출
@@ -165,6 +166,7 @@ UI 규약:
 - 모델 응답이 잘못된 JSON/빈 문자열인 경우 안전 폴백 (원본 유지 + 토스트 안내)
 - **AI 플래너 추천 컨텍스트**: `buildPlannerTaskContext` 가 우선순위대로 4개 섹션을 조합해 LLM 프롬프트로 전달 — (1순위) `DiaryIntent.SuggestPlannerTask` 의 입력 필드 (날짜, 시작/종료 시간, 장소, 반복 요일·종료일), (2순위) 같은 날 이미 등록된 계획(시간·장소 포함), (3순위) 미완료 장기 목표(최대 5건), (4순위) 최근 일기 평문(최대 3건, 각 120자). 1순위가 비어 있어도 (날짜는 항상 포함) 동작. 결과는 한국어 1줄, 따옴표·접두사·이모지·번호·마침표 없이 30자 내로 잘라낸다.
 - **키보드 가림 방지 (탭 입력)**: `DiaryListScreen` 의 모든 탭(PLANNER/GOALS 등) 입력 폼은 단일 `LazyColumn` (또는 `verticalScroll`) 안에 들어가야 `BringIntoViewRequester` 로 포커스 시 자동 스크롤된다. PLANNER 는 첫 아이템이 입력 카드라 자연 동작. GOALS 는 대시보드/입력/목록을 모두 단일 LazyColumn 으로 통합 + 입력 카드에 `bringIntoViewRequester` 부착 + `onFocusChanged` 에서 `bringIntoView()` 호출.
+- **탭별 AI 브리핑 컨텍스트**: `buildBriefingContext(tab, state)` 가 tabKey 별로 분기 — "DIARY": 최근 7건 일기 + 콘텐츠 타입/감정 통계 + 선택 날짜 / "PLANNER": 오늘 계획 + 반복 시리즈 + 예정된 날짜(다음 5개) / "GOALS": 전체 진행률 + 활성 목표 + 최근 달성 + 오늘 플래너. 결과는 한국어 1단락(2~4줄), 마크다운/이모지/번호 없이 600자 내로 잘라낸다. `AiBriefingCard` 의 새로고침 아이콘으로 다시 요청 가능.
 
 ## 5. 핵심 컴포넌트 책임
 

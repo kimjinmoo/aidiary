@@ -363,6 +363,44 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     }
 
     /**
+     * 각 탭(기록/플래너/목표) 의 AI 브리핑을 1문단 한국어로 생성합니다.
+     * 시스템 프롬프트가 tabKey 별로 분기되어 각 탭에 맞는 분석/제안/격려를 만듭니다.
+     *
+     * @param tabKey "DIARY" | "PLANNER" | "GOALS"
+     * @param context 미리 빌드된 탭별 데이터 컨텍스트
+     */
+    suspend fun generateBriefing(
+        tabKey: String,
+        context: String
+    ): String = withContext(Dispatchers.Default) {
+        if (context.isBlank()) return@withContext ""
+        val (systemPrompt, maxTokens) = when (tabKey) {
+            "DIARY" -> "당신은 한국어 일기 코치 AI입니다. " +
+                    "사용자의 최근 일기 데이터를 분석해 (1) 최근 감정/분위기 트렌드, " +
+                    "(2) 자주 등장하는 주제·관심사, (3) 사용자에게 도움이 될 한 가지 제안이나 격려를 " +
+                    "한국어 2~4줄의 한 단락으로 자연스럽게 요약하세요. " +
+                    "마크다운·이모지·번호·접두사 없이 자연스러운 한국어 문장만 출력하세요." to 256
+            "PLANNER" -> "당신은 한국어 플래너 코치 AI입니다. " +
+                    "사용자의 오늘/이번 주 계획을 분석해 (1) 오늘 등록된 계획과 반복 계획 개요, " +
+                    "(2) 시간대별 분포나 밀도, (3) 사용자에게 도움이 될 한 가지 실행 제안을 " +
+                    "한국어 2~4줄의 한 단락으로 자연스럽게 요약하세요. " +
+                    "마크다운·이모지·번호·접두사 없이 자연스러운 한국어 문장만 출력하세요." to 256
+            "GOALS" -> "당신은 한국어 목표 코치 AI입니다. " +
+                    "사용자의 장기 목표와 진행 상황을 분석해 (1) 전체 진행률과 활성 목표 요약, " +
+                    "(2) 최근 일기/플래너와의 정합성, (3) 사용자에게 도움이 될 한 가지 제안이나 격려를 " +
+                    "한국어 2~4줄의 한 단락으로 자연스럽게 요약하세요. " +
+                    "마크다운·이모지·번호·접두사 없이 자연스러운 한국어 문장만 출력하세요." to 256
+            else -> "당신은 한국어 코치 AI입니다. 주어진 데이터를 분석해 2~4줄로 요약하세요." to 256
+        }
+        val userPrompt = "$context\n\n위 데이터를 분석해 1개의 단락으로 한국어 브리핑을 작성해 주세요."
+
+        runSinglePrompt(systemPrompt, userPrompt, maxTokens = maxTokens, temperature = 0.5)
+            .trim()
+            .let { stripCodeFences(it) }
+            .let { if (it.length > 600) it.substring(0, 600) else it }
+    }
+
+    /**
      * 완료된 장기 목표를 축하하는 온디바이스 AI 멘토의 응원 한마디를 생성합니다.
      */
     suspend fun generateCongratulation(

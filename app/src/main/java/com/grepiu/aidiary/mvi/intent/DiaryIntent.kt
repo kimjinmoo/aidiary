@@ -21,6 +21,15 @@ sealed interface DiaryIntent {
     ) : DiaryIntent
     data object SaveDiary : DiaryIntent
     data class DeleteDiary(val id: String) : DiaryIntent
+    /**
+     * 저장 시 AI 가 추천한 글 타입(suggestedType) 으로 변경하고 저장을 이어서 진행합니다.
+     * [DiaryState.pendingContentTypeChange] 가 non-null 일 때만 사용.
+     */
+    data class ConfirmContentTypeChange(val newType: ContentType) : DiaryIntent
+    /** 현재 사용자가 선택한 글 타입을 그대로 유지하고 저장을 이어서 진행합니다. */
+    data object KeepCurrentContentTypeAndSave : DiaryIntent
+    /** AI 추천을 무시하고 저장 자체를 취소합니다 (다이얼로그만 닫음). */
+    data object CancelContentTypeChange : DiaryIntent
     /** 작성 중인 글의 콘텐츠 타입(일기/포스트/메모)을 변경합니다. */
     data class UpdateDraftType(val contentType: ContentType) : DiaryIntent
     /** 작성 중인 글 제목의 스타일(색상/크기)을 변경합니다. */
@@ -119,6 +128,11 @@ sealed interface DiaryIntent {
     ) : DiaryIntent
     /** AI 가 추천한 플래너 할 일을 입력란에 반영한 뒤, 상태의 1회성 추천 텍스트를 비웁니다. */
     data object ClearSuggestedPlannerTask : DiaryIntent
+    /**
+     * 선택된 탭의 AI 브리핑을 생성/재생성합니다.
+     * @param tab "DIARY" | "PLANNER" | "GOALS"
+     */
+    data class RequestBriefing(val tab: String) : DiaryIntent
 
     // ===== 온디바이스 AI 챗봇 =====
     /** 챗봇에게 메시지를 전송합니다. */

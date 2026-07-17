@@ -53,6 +53,10 @@ data class DiaryState(
 
     // 저장 시 AI TAG 자동 생성 진행 상태
     val isGeneratingAnalysis: Boolean = false,               // 저장 흐름에서 AI 분석 + TAG AI 블록 생성이 진행 중인지 여부
+    /** 저장 시 AI 글 타입 재확인 분류가 진행 중인지 여부 (사용자 응답 대기 전 1단계) */
+    val isClassifyingTypeOnSave: Boolean = false,
+    /** 저장 직전 AI 가 기존 선택과 다른 타입을 제안한 경우, 사용자 응답을 기다리는 1회성 상태. null 이면 다이얼로그 미표시 */
+    val pendingContentTypeChange: PendingContentTypeChange? = null,
 
     // 작성 보조 AI 액션 상태
     /** true: 제목 자동 생성 중 */
@@ -67,6 +71,20 @@ data class DiaryState(
     val isSuggestingPlannerTask: Boolean = false,
     /** AI 가 추천한 플래너 할 일명 (1회성, UI 에서 소비 후 클리어) */
     val suggestedPlannerTaskText: String? = null,
+
+    // 탭별 AI 브리핑 (기록/플래너/목표)
+    /** 기록 탭 AI 브리핑 결과 텍스트 */
+    val diaryBriefing: String? = null,
+    /** 플래너 탭 AI 브리핑 결과 텍스트 */
+    val plannerBriefing: String? = null,
+    /** 목표 탭 AI 브리핑 결과 텍스트 */
+    val goalsBriefing: String? = null,
+    /** true: 기록 탭 브리핑 생성 중 */
+    val isBriefingDiary: Boolean = false,
+    /** true: 플래너 탭 브리핑 생성 중 */
+    val isBriefingPlanner: Boolean = false,
+    /** true: 목표 탭 브리핑 생성 중 */
+    val isBriefingGoals: Boolean = false,
 
     // Sherpa 음성 녹음 및 변환 상태
     val isSherpaModelReady: Boolean = false,
@@ -110,4 +128,16 @@ data class ChatMessage(
     val sender: String, // "USER" 또는 "AI"
     val text: String,
     val timestamp: Long = System.currentTimeMillis()
+)
+
+/**
+ * 저장 시 AI 가 추천한 글 타입이 사용자 선택과 다를 때,
+ * 사용자의 응답을 받기 전까지 보관하는 1회성 데이터.
+ *
+ * @param currentType 사용자가 현재 선택해 둔 글 타입
+ * @param suggestedType AI 가 본문 분석으로 추천한 글 타입
+ */
+data class PendingContentTypeChange(
+    val currentType: ContentType,
+    val suggestedType: ContentType
 )
