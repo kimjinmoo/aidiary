@@ -48,6 +48,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
@@ -717,14 +719,28 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     val locationRequest = android.location.LocationRequest.Builder(0)
                         .setQuality(android.location.LocationRequest.QUALITY_HIGH_ACCURACY)
                         .build()
-                    val loc = suspendCoroutine<android.location.Location?> { cont ->
-                        locationManager.getCurrentLocation(
-                            android.location.LocationManager.GPS_PROVIDER,
-                            locationRequest,
-                            null,
-                            executor
-                        ) { resultLoc ->
-                            cont.resume(resultLoc)
+                    val loc = withTimeoutOrNull(4000) {
+                        suspendCancellableCoroutine<android.location.Location?> { cont ->
+                            val cancellationSignal = android.os.CancellationSignal()
+                            cont.invokeOnCancellation {
+                                cancellationSignal.cancel()
+                            }
+                            try {
+                                locationManager.getCurrentLocation(
+                                    android.location.LocationManager.GPS_PROVIDER,
+                                    locationRequest,
+                                    cancellationSignal,
+                                    executor
+                                ) { resultLoc ->
+                                    if (cont.isActive) {
+                                        cont.resume(resultLoc)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                if (cont.isActive) {
+                                    cont.resume(null)
+                                }
+                            }
                         }
                     }
                     if (loc != null) {
@@ -739,14 +755,28 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         val locationRequest = android.location.LocationRequest.Builder(0)
                             .setQuality(android.location.LocationRequest.QUALITY_HIGH_ACCURACY)
                             .build()
-                        val loc = suspendCoroutine<android.location.Location?> { cont ->
-                            locationManager.getCurrentLocation(
-                                android.location.LocationManager.NETWORK_PROVIDER,
-                                locationRequest,
-                                null,
-                                executor
-                            ) { resultLoc ->
-                                cont.resume(resultLoc)
+                        val loc = withTimeoutOrNull(3000) {
+                            suspendCancellableCoroutine<android.location.Location?> { cont ->
+                                val cancellationSignal = android.os.CancellationSignal()
+                                cont.invokeOnCancellation {
+                                    cancellationSignal.cancel()
+                                }
+                                try {
+                                    locationManager.getCurrentLocation(
+                                        android.location.LocationManager.NETWORK_PROVIDER,
+                                        locationRequest,
+                                        cancellationSignal,
+                                        executor
+                                    ) { resultLoc ->
+                                        if (cont.isActive) {
+                                            cont.resume(resultLoc)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    if (cont.isActive) {
+                                        cont.resume(null)
+                                    }
+                                }
                             }
                         }
                         if (loc != null) {
