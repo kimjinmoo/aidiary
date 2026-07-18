@@ -2589,11 +2589,18 @@ fun ChatTabContent(
         }
     }
 
+    // 채팅 목록 스크롤 시 키보드 자동 닫기 (포커스 해제)
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress && isInputFocused) {
+            focusManager.clearFocus()
+        }
+    }
+
     Column(modifier = Modifier
         .fillMaxSize()
         .imePadding()
     ) {
-        // 상단 타이틀 및 초기화 버튼
+        // 상단 타이틀 및 초기화/접기 버튼
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2607,16 +2614,36 @@ fun ChatTabContent(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            if (state.chatMessages.isNotEmpty()) {
-                Text(
-                    text = "대화 비우기",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier
-                        .clickable { onClearHistory() }
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // 입력 포커스 중일 때만 '접기' 버튼 노출
+                AnimatedVisibility(
+                    visible = isInputFocused,
+                    enter = fadeIn() + slideInHorizontally(initialOffsetX = { it }),
+                    exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it })
+                ) {
+                    IconButton(
+                        onClick = { focusManager.clearFocus() },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "키보드 닫기",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+                if (state.chatMessages.isNotEmpty()) {
+                    Text(
+                        text = "대화 비우기",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .clickable { onClearHistory() }
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
 
