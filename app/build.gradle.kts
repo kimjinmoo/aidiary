@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -78,6 +79,11 @@ dependencies {
 
     // Coil (이미지 로딩)
     implementation(libs.coil.compose)
+
+    // Room (메인 저장소) - 2만건 이상 확장성 대응
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     // Sherpa-Onnx (온디바이스 음성인식) - libs/jniLibs/에 .so 파일 복사 필요
     implementation("org.apache.commons:commons-compress:1.27.1")

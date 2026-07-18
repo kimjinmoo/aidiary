@@ -15,10 +15,16 @@
   - 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM)
   - 음성 인식: Sherpa-Onnx (오프라인, 한국어 Zipformer)
 - **2B 모델 상하 문맥 보강 (v2)**: 모든 보조 액션 프롬프트는 [LLMContextBuilder] 가 통일. proofread/decorate 는 인접 블록 컨텍스트, 챗봇은 멀티턴 Conversation 재사용 + 직전 N턴 raw + 그 이전 1줄 요약 슬라이딩 윈도우, 저장 시점 (글 타입+감정) 은 1회 통합 호출.
-- **데이터 저장**: 앱 내부 저장소
-  - `filesDir/diary_history.json` (일기 메타, `contentType` 필드 포함. 구버전 데이터는 DIARY 로 폴백)
+- **데이터 저장 (v3)**: Room DB (메인) + 파일 시스템
+  - `filesDir/diary.db` (Room DB: `diary`, `block`, `diary_fts` 가상테이블)
   - `filesDir/diary_images/<uuid>.jpg` (첨부 이미지 원본)
+  - `filesDir/backup/diary_history_imported_<ts>.json` (구버전 JSON import 후 백업)
   - `cacheDir/` (녹음/카메라 임시 파일)
+- **확장성 (v3.1)**: 200건 상한 제거, **무제한** 일기 저장. FTS5 인덱스 본문 6,000자. RAG ID 매핑 O(1). 2만건 이상에서도 1초 이내 응답 목표.
+- **메타만 Lazy 로딩 (v3.1)**: `DiaryState.diaries: List<DiaryMeta>` (id/timestamp/title/emotion/contentType/contentPreview ≈ 200B × 2만 = 4MB). 본문/블록/이미지는 상세 진입 시점에만 `LoadFullDiary(id)` 인텐트로 `DiaryRepository.loadFullDiary()` 호출해 1건만 풀 로드.
+- **페이지네이션 (v3.1)**: `state.diaryPageSize=50`. `LoadMoreDiaries` 인텐트로 50건씩 추가. LazyColumn 끝에 도달 시 자동 호출. 검색 모드에서는 페이지네이션 일시 중지.
+- **FTS5 폴백 강화 (v3.1)**: FTS5 모듈이 없거나 쿼리 실패 시 Room 일반 `diary` 테이블에 `LIKE '%token%'` 로 폴백. 3 토큰까지 OR 매칭. `DiaryDao.searchByLikeMulti(p1, p2, p3, limit)`.
+- **구버전 JSON 자동 import (v3)**: `DiaryRepository` 첫 init 시 `LegacyJsonImporter` 가 `diary_history.json` 존재 + Room DB 비어있으면 1,000건 단위 batch 로 import → `backup/` 으로 이동. 진행률은 `DiaryState.legacyImportProgress` 로 흘려보냄.
 
 ## 2. 디렉토리 트리
 
@@ -29,17 +35,25 @@ app/src/main/java/com/grepiu/aidiary/
 ├── data/
 │   ├── model/
 │   │   ├── DiaryEntry.kt            # 일기 엔트리 (id, title, blocks, content 평문, emotion, aiAnalysis, contentType)
-│   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider/Location) + JSON 직렬화
+│   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider/Location/TagAi/Table) + JSON 직렬화
 │   │   ├── ContentType.kt           # 콘텐츠 타입 enum (DIARY/POST/NOTE) + storageKey 기반 영속화
 │   │   └── TextFormatting.kt        # 인라인 서식 (bold/italic/underline/strikethrough/color/size) + AnnotatedString 변환
 │   ├── repository/
-│   │   ├── DiaryRepository.kt       # JSON 직렬화, 인메모리 캐시, 200개 상한, 일기 삭제 시 이미지 정리
+│   │   ├── DiaryRepository.kt       # [v3.1] Room 기반 (일기/블록/FTS5 CRUD), 메타 lazy + 풀 lazy, 페이지네이션
+│   │   ├── DiaryMeta.kt             # [NEW v3.1] 화면 표시용 경량 데이터 (id, timestamp, title, emotion, contentType, contentPreview)
+│   │   ├── DiaryDatabase.kt         # [NEW v3] Room Database 정의 (diary, block, FTS5 가상테이블)
+│   │   ├── DiaryDao.kt              # [NEW v3] Room DAO (메타/페이지네이션/Blocking/LIKE 폴백)
+│   │   ├── DiaryEntity.kt           # [NEW v3] Room @Entity (메타 + contentPreview)
+│   │   ├── BlockEntity.kt           # [NEW v3] Room @Entity (블록 1:N)
+│   │   ├── DiaryWithBlocks.kt       # [NEW v3] @Relation 매핑
+│   │   ├── DiarySearchDao.kt        # [NEW v3] FTS5 raw query DAO + MAX_CONTENT_CHARS=6000 + DiaryMetaRow
+│   │   ├── LegacyJsonImporter.kt    # [NEW v3] 구버전 diary_history.json → Room 1회 import (1,000건 batch)
 │   │   ├── ImageStorageManager.kt   # URI/파일 → filesDir/diary_images/ 복사, 블록 경로 resolve/delete
 │   │   └── PlannerRepository.kt     # 플래너 할 일(Tasks) 및 장기 목표(Goals)의 로컬 JSON 파일 영속화 관리
 │   └── slm/
 │       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
 │       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 래퍼 (스트리밍 토큰 콜백 + 보조 액션 단발성 프롬프트, 멀티턴 챗봇 Conversation 재사용, 작업별 Sampler 프리셋)
-│       ├── LLMContextBuilder.kt     # [NEW] 모든 보조 액션 프롬프트의 계층적 빌더 (도메인/세션/인접/현재입력/제약/예시), 인접 컨텍스트 추출, 슬라이딩 윈도우용 롤링 요약
+│       ├── LLMContextBuilder.kt     # 모든 보조 액션 프롬프트의 계층적 빌더 (도메인/세션/인접/현재입력/제약/예시), 인접 컨텍스트 추출, 슬라이딩 윈도우용 롤링 요약
 │       ├── DecorateResult.kt        # AI 꾸미기 추천 JSON 파서 + TextFormatting 변환 (5종 스타일)
 │       ├── ModelDownloaderV2.kt     # Gemma/Whisper 모델 다운로드·압축 해제·에셋 복사
 │       └── SherpaEngine.kt          # 오프라인 음성 인식 추론
@@ -47,9 +61,13 @@ app/src/main/java/com/grepiu/aidiary/
 ├── mvi/
 │   ├── state/
 │   │   └── DiaryState.kt            # 모든 UI 상태의 단일 진실 공급원 및 DiaryPhase 정의 (SPLASH / WELCOME / LIST / WRITE / DETAIL)
+│   │                                # v3.1 추가: searchQuery, isSearching, isImportingLegacy, legacyImportProgress,
+│   │                                #          diaryPageSize(50), diaryPageCount, diaryHasMore, isLoadingMoreDiaries, diaryTotalCount
 │   ├── intent/DiaryIntent.kt        # 사용자 의도 (UpdateBlockText 가 text+formatting 동시 갱신)
+│   │                                # v3.1 추가: SearchDiaries, ClearDiarySearch, LoadMoreDiaries, LoadFullDiary
 │   ├── effect/DiaryEffect.kt        # 1회성 부수 효과 (카메라 권한/촬영 요청)
 │   └── viewmodel/DiaryViewModel.kt  # 비즈니스 로직·엔진·이미지 import 라이프사이클
+│                                    # v3.1 추가: ensureLegacyImported, handleSearch, loadFirstDiaryPage, loadMoreDiaryPage, refreshCurrentMetaPage, Lazy loadFullDiary
 │
 └── ui/
     ├── components/
@@ -58,10 +76,10 @@ app/src/main/java/com/grepiu/aidiary/
     │   ├── BlockEditor.kt           # 작성 화면용 블록 입력/편집 + AddBlockBar
     │   ├── RichTextField.kt         # 인라인 서식 프리뷰가 있는 텍스트 에디터 (Text + BasicTextField 오버레이)
     │   ├── RichTextToolbar.kt       # B/I/U/S 토글 + 색상 팔레트 + 크기 셀렉터
-    │   └── ConfettiOverlay.kt       # [NEW] 목표 완료 시 화면 전체에 날리는 꽃가루 애니메이션 효과 레이어
+    │   └── ConfettiOverlay.kt       # 목표 완료 시 화면 전체에 날리는 꽃가루 애니메이션 효과 레이어
     ├── screens/
-    │   ├── DiarySplashScreen.kt     # [NEW] 애니메이션 스플래시 화면
-    │   ├── DiaryListScreen.kt       # 목록 + 썸네일 + 다운로드 카드 (UI/UX 전면 개편, 감정 통계 제거, 책갈피 필터 추가, Confetti 연동)
+    │   ├── DiarySplashScreen.kt     # 애니메이션 스플래시 화면
+    │   ├── DiaryListScreen.kt       # [v3.1] DiaryListItemCard 는 DiaryMeta 만 렌더 (썸네일/이미지 제외). 검색바 + LazyColumn 끝 페이지네이션.
     │   ├── DiaryWriteScreen.kt      # 상단 제목 입력(draftTitle) + 글 타입 + 제목 스타일 + 블록 기반 작성/녹음/AI 분석 트리거
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트 (블록 렌더러 사용)
     └── theme/                       # Material3 Color/Type/Theme (Pretendard 폰트 패밀리)
@@ -197,7 +215,11 @@ UI 규약:
 
 | 컴포넌트 | 책임 | 주의 |
 |---|---|---|
-| `DiaryRepository` | JSON 직렬화/역직렬화, 인메모리 캐시, 200개 상한 | `addEntry` 초과분/삭제 시 `ImageStorageManager.deleteForEntry` 호출 |
+| `DiaryRepository` (v3.1) | Room 기반 CRUD. **메타 lazy** (`observeMetas` Flow + `pagedMetas`), **풀 lazy** (`loadFullDiary(id)`), 페이지네이션. **무제한** | `addEntry`/`deleteEntry`/`updateAnalysis`/`loadFullDiary` 모두 suspend. `observeMetas()` 는 Flow. `searchDiaries` FTS5 실패 시 Room LIKE 폴백 |
+| `DiaryDatabase` (v3 NEW) | Room Database 정의. FTS5 가상테이블 자동 생성 | FTS5 미지원 기기는 검색만 LIKE 폴백 |
+| `DiaryDao` (v3 NEW) | 메타/페이지네이션 쿼리, Blocking 동기 API | runInTransaction 내부에서만 Blocking 메서드 사용 |
+| `DiarySearchDao` (v3 NEW) | FTS5 raw query (search) | 본문 인덱스 길이 `MAX_CONTENT_CHARS = 6000` |
+| `LegacyJsonImporter` (v3 NEW) | 구버전 `diary_history.json` → Room 1회 자동 import | 1,000건 단위 batch. JSON 은 `backup/` 으로 이동 |
 | `ImageStorageManager` | URI/파일 → `filesDir/diary_images/` 복사, 경로 resolve/delete | 항상 상대 경로(`diary_images/...`) 만 DB/JSON 에 저장 |
 | `DiaryViewModel` | 인텐트 라우팅, 모델/엔진 초기화, 이미지 IO 코루틴, 블록 라이프사이클 | `WakeLock`, `AudioRecord` 자원 해제 필수 |
 | `DiaryLLMEngine` | LiteRT-LM 세션, 토큰 단위 스트리밍 | `dispose()` 호출 전 메모리 누수 |
@@ -233,7 +255,8 @@ UI 규약:
 - **모델 파일**: `context.filesDir/models/`
 - **Sherpa 모델**: `context.filesDir/sherpa/`
 - **녹음 임시 파일**: `context.cacheDir/recording.pcm`, `recording.wav` (변환 후 삭제)
-- **다이어리 JSON**: `context.filesDir/diary_history.json`
+- **다이어리 Room DB (v3 메인)**: `context.filesDir/diary.db`
+- **다이어리 JSON (구버전, v3에서 1회만 import)**: `context.filesDir/diary_history.json` → `context.filesDir/backup/diary_history_imported_<ts>.json` (이동됨)
 - **다이어리 첨부 이미지**: `context.filesDir/diary_images/<uuid>.jpg`
 - **카메라 촬영 임시 파일**: `context.cacheDir/capture_<ts>.jpg` (FileProvider 로 노출)
 
@@ -250,10 +273,17 @@ UI 규약:
 
 - [ ] `DiaryState` 필드 추가 시 → `DiaryViewModel` 의 모든 `copy(...)` 갱신
 - [ ] `DiaryIntent` 추가 시 → `processIntent` 의 `when` 분기 추가
-- [ ] 새 `ContentBlock` 타입 추가 시 → `ContentBlock.fromJson`, `toJson`, `BlockRenderer`, `BlockEditor`, `blockTypeMeta` 동시 갱신
+- [ ] 새 `ContentBlock` 타입 추가 시 → `ContentBlock.fromJson`, `toJson`, `BlockRenderer`, `BlockEditor`, `blockTypeMeta`, **`BlockEntity.toContentBlock` / `DiaryEntry.toBlockEntities` (v3)** 동시 갱신
 - [ ] `TextFormatting` 속성 추가 시 → `TextFormatting` 데이터 클래스, JSON 직렬화, `toAnnotatedString`, `RichTextToolbar`, `is*At` 헬퍼 동시 갱신
 - [ ] `ContentType` 값 추가 시 → `ContentType`, `getContentTypeUI`(ListScreen), `contentTypeMeta`(WriteScreen), `DiaryRepository` 영속화 동시 갱신
-- [ ] 모델 포맷(JSON) 변경 시 → `DiaryRepository.parseEntry/persist` 양쪽 동시 수정 + 하위 호환
+- [ ] **Room Entity (v3) 필드 추가 시** → `DiaryEntity` 또는 `BlockEntity` 의 변환 헬퍼(`toDiaryEntity`, `toBlockEntities`, `toContentBlock`) 와 DAO 쿼리, `DiaryMeta` / `DiaryMetaRow`, `LegacyJsonImporter` 동시 갱신
+- [ ] **`DiaryMeta` 필드 추가 시 (v3.1)** → DAO `observeMetas`/`pagedMetas`/`metaRow`/`searchByLikeMulti` SELECT 컬럼 + `DiaryMetaRow` 매핑 동시 갱신
+- [ ] **메타 vs 풀 DiaryEntry 분기 (v3.1)** → UI 카드는 `DiaryMeta` 만 받음. 본문/이미지/서식 등 풀 데이터가 필요하면 `LoadFullDiary(id)` 인텐트 발행 후 `state.selectedDiary` 사용
+- [ ] **페이지네이션 진입점 (v3.1)** → LazyColumn 끝에 `onLoadMore: () -> Unit` 추가. 검색 모드일 땐 페이지네이션 자동 비활성화
+- [ ] **FTS5 폴백 (v3.1)** → `DiarySearchDao` 의 `searchByLikeMulti` 가 3 토큰까지 OR LIKE. FTS5 쿼리 실패는 `Log.w(TAG, ...)` 로 추적 가능
+- [ ] **Room 스키마 변경 시 (v3)** → `DiaryDatabase` 의 `version` 올리고 마이그레이션 추가. `fallbackToDestructiveMigration` 사용 금지 (데이터 손실)
+- [ ] **FTS5 인덱스 길이 변경 시 (v3)** → `DiarySearchDao.MAX_CONTENT_CHARS` 갱신
+- [ ] **구버전 JSON 포맷 호환 변경 시** → `LegacyJsonImporter.parseEntry` 갱신 + 하위 호환
 - [ ] 권한 추가 시 → `AndroidManifest.xml` + `MainActivity` 의 런처 + `DiaryEffect.RequestXxx`
 - [ ] JNI/native 추가 시 → `app/libs/jniLibs/` 에 ABI별 .so 배치 확인
 - [ ] 한글 IME 조합(ㅇ→아→안→안녕) 입력 보존이 필요하면 `RichTextEditorBody` 의 외부 텍스트 동기화 로직을 수정할 때 `tfv.composition` 을 검사할 것

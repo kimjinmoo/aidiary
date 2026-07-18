@@ -5,6 +5,7 @@ import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
+import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
 
@@ -24,8 +25,13 @@ enum class DiaryPhase {
  */
 data class DiaryState(
     val phase: DiaryPhase = DiaryPhase.SPLASH,               // 현재 화면 단계
-    val diaries: List<DiaryEntry> = emptyList(),             // 저장된 일기 목록
-    val selectedDiary: DiaryEntry? = null,                   // 상세 보기용 선택된 일기
+    /**
+     * 저장된 일기 메타 목록 (본문 제외). v3.1 부터 페이지 단위로 채워지며
+     * 본문이 필요해지면 [selectedDiary] 또는 [loadFullDiary] 인텐트로 별도 로드.
+     * 2만건 이상에서도 인메모리 ≈ 4~6MB.
+     */
+    val diaries: List<DiaryMeta> = emptyList(),
+    val selectedDiary: DiaryEntry? = null,                   // 상세 보기용 풀 DiaryEntry (lazy)
     
     // 플래너 및 목표 기록 관련 상태 추가
     val goals: List<Goal> = emptyList(),                     // 사용자 목표 목록
@@ -111,7 +117,31 @@ data class DiaryState(
 
     // 온디바이스 AI 챗봇 대화 데이터 추가
     val chatMessages: List<ChatMessage> = emptyList(),       // 챗봇 대화 기록
-    val isGeneratingChat: Boolean = false                    // 챗봇 대답 생성 진행 여부
+    val isGeneratingChat: Boolean = false,                   // 챗봇 대답 생성 진행 여부
+
+    // ===== 일기 검색 (FTS5) =====
+    /** 현재 활성 검색어. 비어 있으면 검색 모드 아님. */
+    val searchQuery: String = "",
+    /** 검색 결과 로딩 중. */
+    val isSearching: Boolean = false,
+
+    // ===== 구버전 JSON → Room 자동 import =====
+    /** 첫 실행 시 [diary_history.json] → Room 마이그레이션 진행 중 여부. */
+    val isImportingLegacy: Boolean = false,
+    /** import 진행률 0..1. Splash/첫 진입 화면에 progress bar 로 표시 가능. */
+    val legacyImportProgress: Float = 0f,
+
+    // ===== 페이지네이션 (v3.1) =====
+    /** 페이지 당 메타 로드 개수. */
+    val diaryPageSize: Int = 50,
+    /** 현재까지 로드된 페이지 수. 1부터 시작. */
+    val diaryPageCount: Int = 0,
+    /** 추가 페이지 존재 여부. */
+    val diaryHasMore: Boolean = true,
+    /** 다음 페이지 로딩 중. */
+    val isLoadingMoreDiaries: Boolean = false,
+    /** 전체 일기 개수 (메타 페이지네이션 판단용). */
+    val diaryTotalCount: Int = 0
 ) {
     /**
      * AI 분석에 넘길 평문. 블록에서 자동 추출.

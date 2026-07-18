@@ -21,8 +21,11 @@ import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryRepository
+import com.grepiu.aidiary.data.repository.DiaryDatabase
+import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.data.repository.DiarySearchHit
 import com.grepiu.aidiary.data.repository.ImageStorageManager
+import com.grepiu.aidiary.data.repository.LegacyJsonImporter
 import com.grepiu.aidiary.data.repository.PlannerRepository
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
@@ -103,20 +106,23 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     val effect = _effect.receiveAsFlow()
 
     init {
-        // 앱 구동 시 일기 데이터 불러오기 및 AI 모델 검사 실행
+        // 앱 구동 시 일기 메타 페이지 1 로드 (Flow 자동 갱신은 별도 collect)
         processIntent(DiaryIntent.LoadDiaries)
-        
+
         // 플래너 및 목표 데이터 불러오기
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val initialGoals = plannerRepository.loadGoals()
         val initialTasks = plannerRepository.loadTasks()
-        _state.update { 
+        _state.update {
             it.copy(
                 selectedDateString = todayStr,
                 goals = initialGoals,
                 plannerTasks = initialTasks
-            ) 
+            )
         }
+
+        // 구버전 JSON → Room 자동 import (1회). DB 비어 있고 파일이 있으면 실행.
+        ensureLegacyImported()
 
         viewModelScope.launch {
             ensureModelReady()
@@ -127,13 +133,66 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * 첫 실행 시 [diary_history.json] 이 존재하고 Room DB 가 비어 있으면
+     * [LegacyJsonImporter] 로 1회 import. 결과에 따라 토스트 안내.
+     */
+    private fun ensureLegacyImported() {
+        viewModelScope.launch {
+            _state.update { it.copy(isImportingLegacy = true, legacyImportProgress = 0f) }
+            val importer = LegacyJsonImporter(
+                getApplication(),
+                DiaryDatabase.get(getApplication())
+            )
+            val result: LegacyJsonImporter.ImportResult? = withContext(Dispatchers.IO) {
+                importer.importIfNeeded { imported, total ->
+                    val p = if (total > 0) imported.toFloat() / total else 0f
+                    _state.update { it.copy(legacyImportProgress = p) }
+                }
+            }
+            _state.update { it.copy(isImportingLegacy = false, legacyImportProgress = 0f) }
+            if (result != null && result.totalImported > 0) {
+                repository.invalidateCache()
+                // import 후 1페이지 다시 로드
+                loadFirstDiaryPage()
+                sendEffect(DiaryEffect.ShowToast("기존 일기 ${result.totalImported}건을 가져왔어요."))
+            }
+        }
+    }
+
+    /**
      * MVI 인텐트 처리
      */
     fun processIntent(intent: DiaryIntent) {
         when (intent) {
             is DiaryIntent.LoadDiaries -> {
-                val diaries = repository.getDiaries()
-                _state.update { it.copy(diaries = diaries) }
+                loadFirstDiaryPage()
+            }
+            is DiaryIntent.LoadMoreDiaries -> {
+                loadMoreDiaryPage()
+            }
+            is DiaryIntent.LoadFullDiary -> {
+                viewModelScope.launch {
+                    val full = repository.loadFullDiary(intent.id)
+                    if (full != null) {
+                        // 검색 모드였다면 검색 헤제 (상세화면은 일반 모드 진입이 자연스러움)
+                        _state.update {
+                            it.copy(
+                                selectedDiary = full,
+                                phase = DiaryPhase.DETAIL,
+                                searchQuery = "",
+                                isSearching = false
+                            )
+                        }
+                    } else {
+                        sendEffect(DiaryEffect.ShowToast("일기를 찾을 수 없어요."))
+                    }
+                }
+            }
+            is DiaryIntent.SearchDiaries -> {
+                handleSearch(intent.query)
+            }
+            is DiaryIntent.ClearDiarySearch -> {
+                loadFirstDiaryPage()
             }
             is DiaryIntent.StartDownload -> {
                 startModelDownload()
@@ -181,9 +240,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 saveDiaryDraft()
             }
             is DiaryIntent.DeleteDiary -> {
-                val updated = repository.deleteEntry(intent.id)
-                _state.update { it.copy(diaries = updated, phase = DiaryPhase.LIST, selectedDiary = null) }
-                sendEffect(DiaryEffect.ShowToast("일기가 삭제되었습니다."))
+                viewModelScope.launch {
+                    repository.deleteEntry(intent.id)
+                    // 삭제 후 메타 페이지 갱신 (선택 일기도 무효화)
+                    refreshCurrentMetaPage()
+                    _state.update { it.copy(phase = DiaryPhase.LIST, selectedDiary = null) }
+                    sendEffect(DiaryEffect.ShowToast("일기가 삭제되었습니다."))
+                }
             }
             is DiaryIntent.ConfirmContentTypeChange -> {
                 val pending = _state.value.pendingContentTypeChange ?: return
@@ -614,6 +677,76 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private fun sendEffect(effect: DiaryEffect) {
         viewModelScope.launch {
             _effect.send(effect)
+        }
+    }
+
+    /**
+     * 첫 페이지 메타 로드. v3.1 페이지네이션: DiaryMeta 만 50건씩.
+     * 검색 모드/ClearSearch 시 호출되며 검색 결과로 채운다.
+     */
+    private fun loadFirstDiaryPage() {
+        viewModelScope.launch {
+            val pageSize = _state.value.diaryPageSize
+            val total = withContext(Dispatchers.IO) { repository.daoCount() }
+            val page1 = withContext(Dispatchers.IO) { repository.pagedMetas(pageSize, 0) }
+            val hasMore = page1.size < total
+            _state.update {
+                it.copy(
+                    diaries = page1,
+                    diaryPageCount = 1,
+                    diaryHasMore = hasMore,
+                    diaryTotalCount = total,
+                    isSearching = false,
+                    searchQuery = ""
+                )
+            }
+        }
+    }
+
+    /**
+     * 다음 페이지 추가 로드. LazyColumn 끝에서 호출.
+     */
+    private fun loadMoreDiaryPage() {
+        val s = _state.value
+        if (!s.diaryHasMore || s.isLoadingMoreDiaries || s.isSearching) return
+        _state.update { it.copy(isLoadingMoreDiaries = true) }
+        viewModelScope.launch {
+            val pageSize = s.diaryPageSize
+            val nextOffset = s.diaryPageCount * pageSize
+            val more = withContext(Dispatchers.IO) { repository.pagedMetas(pageSize, nextOffset) }
+            val newList = s.diaries + more
+            val total = s.diaryTotalCount
+            val hasMore = newList.size < total
+            _state.update {
+                it.copy(
+                    diaries = newList,
+                    diaryPageCount = s.diaryPageCount + 1,
+                    diaryHasMore = hasMore,
+                    isLoadingMoreDiaries = false
+                )
+            }
+        }
+    }
+
+    /**
+     * FTS5 기반 검색 실행. 결과를 [DiaryState.diaries] 에 채워넣고
+     * [DiaryState.searchQuery] 에 원본 쿼리를 보관한다.
+     * 검색 모드일 때 페이지네이션은 일시 중지된다 ([loadMoreDiaryPage] 가드).
+     */
+    private fun handleSearch(rawQuery: String) {
+        val q = rawQuery.trim()
+        if (q.isBlank()) {
+            loadFirstDiaryPage()
+            return
+        }
+        _state.update { it.copy(isSearching = true, searchQuery = q) }
+        viewModelScope.launch {
+            val hits = withContext(Dispatchers.IO) { repository.searchDiaries(q, limit = 50) }
+            // FTS hit 의 메타로 DiaryMeta 리스트 채우기
+            val metas = withContext(Dispatchers.IO) {
+                hits.mapNotNull { hit -> repository.metaOf(hit.id) }
+            }
+            _state.update { it.copy(isSearching = false, diaries = metas) }
         }
     }
 
@@ -1243,11 +1376,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             .take(5)
             .joinToString("\n") { "- ${it.text}" }
 
-        // 4순위: 최근 일기 평문
+        // 4순위: 최근 일기 평문 (메타의 contentPreview 사용, 본문 전체는 lazy)
         val recentDiaries = state.diaries
             .take(3)
             .joinToString("\n") { entry ->
-                val plain = entry.contentText.take(120)
+                val plain = entry.contentPreview.take(120)
                 if (plain.isBlank()) "- (제목만: ${entry.title})" else "- ${entry.title}: $plain"
             }
 
@@ -1377,8 +1510,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             state.selectedDateString
         }
         val entries = recent.joinToString("\n\n") { e ->
-            val plain = e.contentText.take(180)
-            val emotion = if (e.emotion.isNullOrBlank() || e.emotion == "Neutral") "" else " [감정: ${e.emotion}]"
+            val plain = e.contentPreview.take(180)
+            val emotion = if (e.emotion.isBlank() || e.emotion == "Neutral") "" else " [감정: ${e.emotion}]"
             "- ${e.title}$emotion: $plain"
         }
         val typeStats = state.diaries.groupingBy { it.contentType.storageKey }
@@ -1711,84 +1844,92 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         val aiMsg = ChatMessage("AI", "생각 중...")
         _state.update { it.copy(chatMessages = it.chatMessages + userMsg + aiMsg) }
 
-        val cleanQuery = query.trim().lowercase()
-        val keywords = cleanQuery.split("\\s+".toRegex())
-            .filter { it.length > 1 }
-            .map { it.replace(Regex("[은는이가을를에에서으로]"), "") }
-            .filter { it.isNotBlank() }
-
-        // 챗봇 전용 RAG 한도 (2B 모델 + 멀티턴 컨텍스트 환경에 맞춤)
-        val ftsHits = repository.searchDiaries(query, limit = 30)
-        val matchedDiaries: List<DiaryEntry> = when {
-            ftsHits.isNotEmpty() -> ftsHits.mapNotNull { hit -> currentState.diaries.firstOrNull { it.id == hit.id } }
-                .take(CHAT_DIARY_CONTEXT_LIMIT)
-            keywords.isNotEmpty() -> currentState.diaries.filter { diary ->
-                keywords.any { kw -> diary.title.lowercase().contains(kw) || diary.contentText.lowercase().contains(kw) }
-            }.take(CHAT_DIARY_CONTEXT_LIMIT)
-            else -> currentState.diaries.take(CHAT_DIARY_CONTEXT_LIMIT)
-        }
-        val matchedTasks = currentState.plannerTasks.filter { task ->
-            keywords.any { kw -> task.text.lowercase().contains(kw) }
-        }.take(CHAT_TASK_CONTEXT_LIMIT)
-        val matchedGoals = currentState.goals.filter { goal ->
-            keywords.any { kw -> goal.text.lowercase().contains(kw) }
-        }.take(CHAT_GOAL_CONTEXT_LIMIT)
-
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val todayTasks = currentState.plannerTasks.filter { it.dateString == todayStr }
-        val selectedDateStr = currentState.selectedDateString
-        val selectedDateTasks = currentState.plannerTasks.filter { it.dateString == selectedDateStr }
-
-        val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) currentState.diaries.take(CHAT_DIARY_CONTEXT_LIMIT) else matchedDiaries
-        val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) currentState.plannerTasks.take(CHAT_TASK_CONTEXT_LIMIT) else matchedTasks
-        val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) currentState.goals.take(CHAT_GOAL_CONTEXT_LIMIT) else matchedGoals
-
-        // 일기 본문은 80자로 강제 truncate → 토큰 폭주 방지
-        val diaryLines = finalDiaries.map { diary ->
-            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
-            "날짜: $dateStr, 제목: ${diary.title}, 본문: ${com.grepiu.aidiary.data.slm.LLMContextBuilder.truncateChars(diary.contentText, CHAT_DIARY_CONTENT_CHARS)}, 감정: ${diary.emotion}"
-        }
-        val taskLinesToday = todayTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
-        val taskLinesSelected = selectedDateTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
-        val taskLinesMatched = finalTasks.map { "계획날짜: ${it.dateString}, 내용: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
-        val goalLines = finalGoals.map { "목표: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
-
-        val contextBlock = engine.buildChatContextBlock(
-            todayStr = todayStr,
-            selectedDateStr = selectedDateStr,
-            todayTasks = taskLinesToday,
-            selectedDateTasks = if (selectedDateStr != todayStr) taskLinesSelected else emptyList(),
-            matchedDiaries = diaryLines,
-            matchedTasks = taskLinesMatched,
-            matchedGoals = goalLines
-        )
-
-        var hasStartedOutput = false
-        engine.onTokenReceived = { token, done ->
-            _state.update { current ->
-                val list = current.chatMessages.toMutableList()
-                if (list.isNotEmpty()) {
-                    val last = list.last()
-                    if (last.sender == "AI") {
-                        val newText = if (!hasStartedOutput) {
-                            hasStartedOutput = true
-                            token
-                        } else {
-                            last.text + token
-                        }
-                        list[list.size - 1] = last.copy(
-                            text = newText.replace("\\n", "\n").replace("\\t", " ")
-                        )
-                    }
-                }
-                current.copy(
-                    chatMessages = list,
-                    isGeneratingChat = !done
-                )
-            }
-        }
-
         chatJob = viewModelScope.launch {
+            val cleanQuery = query.trim().lowercase()
+            val keywords = cleanQuery.split("\\s+".toRegex())
+                .filter { it.length > 1 }
+                .map { it.replace(Regex("[은는이가을를에에서으로]"), "") }
+                .filter { it.isNotBlank() }
+
+            // RAG: FTS5 hit → 매칭 후보 ID → 풀 DiaryEntry lazy 로드
+            val ftsHits = withContext(Dispatchers.IO) { repository.searchDiaries(query, limit = 30) }
+            val stateNow = _state.value
+            val diaryIndex = stateNow.diaries.associateBy { it.id }
+            val candidateIds: List<String> = when {
+                ftsHits.isNotEmpty() -> ftsHits.take(CHAT_DIARY_CONTEXT_LIMIT).map { it.id }
+                keywords.isNotEmpty() -> stateNow.diaries.filter { meta ->
+                    keywords.any { kw -> meta.title.lowercase().contains(kw) || meta.contentPreview.lowercase().contains(kw) }
+                }.take(CHAT_DIARY_CONTEXT_LIMIT).map { it.id }
+                else -> stateNow.diaries.take(CHAT_DIARY_CONTEXT_LIMIT).map { it.id }
+            }
+            // 본문이 필요한 RAG 만 lazy 풀 로드 (3건 정도)
+            val matchedDiaries: List<DiaryEntry> = candidateIds.mapNotNull { id ->
+                diaryIndex[id]?.let { meta ->
+                    withContext(Dispatchers.IO) { repository.loadFullDiary(meta.id) }
+                }
+            }
+
+            val matchedTasks = stateNow.plannerTasks.filter { task ->
+                keywords.any { kw -> task.text.lowercase().contains(kw) }
+            }.take(CHAT_TASK_CONTEXT_LIMIT)
+            val matchedGoals = stateNow.goals.filter { goal ->
+                keywords.any { kw -> goal.text.lowercase().contains(kw) }
+            }.take(CHAT_GOAL_CONTEXT_LIMIT)
+
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val todayTasks = stateNow.plannerTasks.filter { it.dateString == todayStr }
+            val selectedDateStr = stateNow.selectedDateString
+            val selectedDateTasks = stateNow.plannerTasks.filter { it.dateString == selectedDateStr }
+
+            val finalDiaries = if (matchedDiaries.isEmpty() && keywords.isNotEmpty()) emptyList() else matchedDiaries
+            val finalTasks = if (matchedTasks.isEmpty() && keywords.isNotEmpty()) stateNow.plannerTasks.take(CHAT_TASK_CONTEXT_LIMIT) else matchedTasks
+            val finalGoals = if (matchedGoals.isEmpty() && keywords.isNotEmpty()) stateNow.goals.take(CHAT_GOAL_CONTEXT_LIMIT) else matchedGoals
+
+            // 일기 본문은 200자로 강제 truncate → 토큰 폭주 방지
+            val diaryLines = finalDiaries.map { diary ->
+                val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(diary.timestamp))
+                "날짜: $dateStr, 제목: ${diary.title}, 본문: ${com.grepiu.aidiary.data.slm.LLMContextBuilder.truncateChars(diary.contentText, CHAT_DIARY_CONTENT_CHARS)}, 감정: ${diary.emotion}"
+            }
+            val taskLinesToday = todayTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+            val taskLinesSelected = selectedDateTasks.map { "할 일: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+            val taskLinesMatched = finalTasks.map { "계획날짜: ${it.dateString}, 내용: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+            val goalLines = finalGoals.map { "목표: ${it.text}, 상태: ${if (it.isCompleted) "완료" else "미완료"}" }
+
+            val contextBlock = engine.buildChatContextBlock(
+                todayStr = todayStr,
+                selectedDateStr = selectedDateStr,
+                todayTasks = taskLinesToday,
+                selectedDateTasks = if (selectedDateStr != todayStr) taskLinesSelected else emptyList(),
+                matchedDiaries = diaryLines,
+                matchedTasks = taskLinesMatched,
+                matchedGoals = goalLines
+            )
+
+            var hasStartedOutput = false
+            engine.onTokenReceived = { token, done ->
+                _state.update { current ->
+                    val list = current.chatMessages.toMutableList()
+                    if (list.isNotEmpty()) {
+                        val last = list.last()
+                        if (last.sender == "AI") {
+                            val newText = if (!hasStartedOutput) {
+                                hasStartedOutput = true
+                                token
+                            } else {
+                                last.text + token
+                            }
+                            list[list.size - 1] = last.copy(
+                                text = newText.replace("\\n", "\n").replace("\\t", " ")
+                            )
+                        }
+                    }
+                    current.copy(
+                        chatMessages = list,
+                        isGeneratingChat = !done
+                    )
+                }
+            }
+
             try {
                 engine.generateChatResponse(contextBlock, query)
             } catch (e: Exception) {
@@ -2166,12 +2307,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         val engine = llmEngine
         if (engine == null || !currentState.isModelReady) {
-            persistDiary(
-                currentState = currentState,
-                plain = plain,
-                finalEmotion = currentState.draftEmotion,
-                tagAiBlock = null
-            )
+            viewModelScope.launch {
+                persistDiary(
+                    currentState = currentState,
+                    plain = plain,
+                    finalEmotion = currentState.draftEmotion,
+                    tagAiBlock = null
+                )
+            }
             return
         }
 
@@ -2242,23 +2385,27 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             pendingEmotionLabel = null
             _state.update { it.copy(isGeneratingAnalysis = true) }
             val emotionCode = mapEmotionLabelToCode(cached)
-            persistDiary(
-                currentState = currentState,
-                plain = plain,
-                finalEmotion = emotionCode,
-                tagAiBlock = ContentBlock.TagAiBlock(emotion = cached)
-            )
+            viewModelScope.launch {
+                persistDiary(
+                    currentState = currentState,
+                    plain = plain,
+                    finalEmotion = emotionCode,
+                    tagAiBlock = ContentBlock.TagAiBlock(emotion = cached)
+                )
+            }
             return
         }
 
         // 2) 캐시가 없거나 모델 미준비 시 단일 감정 분류 폴백
         if (engine == null) {
-            persistDiary(
-                currentState = currentState,
-                plain = plain,
-                finalEmotion = currentState.draftEmotion,
-                tagAiBlock = null
-            )
+            viewModelScope.launch {
+                persistDiary(
+                    currentState = currentState,
+                    plain = plain,
+                    finalEmotion = currentState.draftEmotion,
+                    tagAiBlock = null
+                )
+            }
             return
         }
         _state.update { it.copy(isGeneratingAnalysis = true) }
@@ -2294,7 +2441,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 실제 영구 저장 + 상태 리셋. TAG AI 블록이 있으면 본문 끝에 append 합니다.
      */
-    private fun persistDiary(
+    private suspend fun persistDiary(
         currentState: DiaryState,
         plain: String,
         finalEmotion: String,
@@ -2317,9 +2464,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         val updated = repository.addEntry(newEntry)
+        // 저장 직후 메타 1페이지 다시 로드 + draft 초기화
+        refreshCurrentMetaPage()
         _state.update {
             it.copy(
-                diaries = updated,
                 phase = DiaryPhase.LIST,
                 draftTitle = "",
                 draftBlocks = emptyList(),
@@ -2330,6 +2478,19 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         sendEffect(DiaryEffect.ShowToast("${currentState.draftContentType.label}이(가) 저장되었어요."))
+    }
+
+    /**
+     * 현재 표시 모드(검색/일반) 를 유지하면서 메타 1페이지만 다시 로드.
+     * - 검색 모드면 검색을 다시 실행
+     * - 일반 모드면 페이지 1로 리셋
+     */
+    private fun refreshCurrentMetaPage() {
+        if (_state.value.isSearching || _state.value.searchQuery.isNotBlank()) {
+            handleSearch(_state.value.searchQuery)
+        } else {
+            loadFirstDiaryPage()
+        }
     }
 
     /**

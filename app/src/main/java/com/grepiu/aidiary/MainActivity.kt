@@ -300,8 +300,9 @@ fun DiaryAppNavigationRouter(
         DiaryPhase.LIST -> {
             DiaryListScreen(
                 state = state,
-                onSelectDiary = { diary ->
-                    viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.DETAIL, diary))
+                onSelectDiary = { meta ->
+                    // 메타만으로 진입 → ViewModel 이 풀 DiaryEntry 를 lazy 로드
+                    viewModel.processIntent(DiaryIntent.LoadFullDiary(meta.id))
                 },
                 onWriteDiary = { contentType ->
                     viewModel.processIntent(

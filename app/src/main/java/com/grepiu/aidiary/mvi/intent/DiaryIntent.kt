@@ -175,4 +175,20 @@ sealed interface DiaryIntent {
     data class DecorateBlock(val blockId: String) : DiaryIntent
     /** 개인정보 처리방침 동의 완료 후 진행을 처리하는 인텐트입니다. */
     data object AcceptTermsAndProceed : DiaryIntent
+
+    // ===== 일기 검색 (FTS5) =====
+    /**
+     * 키워드로 일기를 검색합니다. 부분 문자열 + 날짜 가중치로 정렬된 결과를
+     * [DiaryState.diaries] 에 1회성으로 채워넣고, [DiaryState.searchQuery] 가
+     * non-blank 인 동안 검색 모드로 유지됩니다.
+     */
+    data class SearchDiaries(val query: String) : DiaryIntent
+    /** 검색 모드를 해제하고 원래 전체 일기 목록으로 복귀합니다. */
+    data object ClearDiarySearch : DiaryIntent
+
+    // ===== 페이지네이션 (v3.1) =====
+    /** 다음 페이지 메타를 추가로 로드합니다. LazyColumn 끝에 도달 시 발행. */
+    data object LoadMoreDiaries : DiaryIntent
+    /** 특정 일기 1건의 풀 [com.grepiu.aidiary.data.model.DiaryEntry] 를 lazy 로드. */
+    data class LoadFullDiary(val id: String) : DiaryIntent
 }

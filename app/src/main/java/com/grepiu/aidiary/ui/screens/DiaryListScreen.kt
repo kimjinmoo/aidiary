@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,6 +52,7 @@ import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
+import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.DownloadStatusCard
@@ -76,7 +78,7 @@ data class CalendarDay(
 @Composable
 fun DiaryListScreen(
     state: DiaryState,
-    onSelectDiary: (DiaryEntry) -> Unit,
+    onSelectDiary: (DiaryMeta) -> Unit,
     onWriteDiary: (ContentType) -> Unit,
     onStartDownload: () -> Unit,
     onCancelDownload: () -> Unit,
@@ -296,12 +298,15 @@ fun DiaryListScreen(
                             selectedTypeFilter = selectedTypeFilter,
                             onTypeFilterChange = { selectedTypeFilter = it },
                             onSelectDiary = onSelectDiary,
+                            onLoadMore = { onIntent(DiaryIntent.LoadMoreDiaries) },
             onWriteDiary = { contentType -> onWriteDiary(contentType) },
                             onStartDownload = onStartDownload,
                             onCancelDownload = onCancelDownload,
                             onDismissNotice = onDismissNotice,
                             onDismissWifiWarning = onDismissWifiWarning,
-                            onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("DIARY")) }
+                            onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("DIARY")) },
+                            onSearch = { onIntent(DiaryIntent.SearchDiaries(it)) },
+                            onClearSearch = { onIntent(DiaryIntent.ClearDiarySearch) }
                         )
                     }
                     "PLANNER" -> {
@@ -376,7 +381,7 @@ fun DiaryListScreen(
 fun WeeklyCalendarStrip(
     days: List<CalendarDay>,
     selectedDateStr: String,
-    diaries: List<DiaryEntry>,
+    diaries: List<DiaryMeta>,
     plannerTasks: List<PlannerTask>,
     goals: List<Goal>,
     onDateSelect: (String) -> Unit
@@ -670,13 +675,16 @@ fun DiaryTabContent(
     state: DiaryState,
     selectedTypeFilter: ContentType?,
     onTypeFilterChange: (ContentType?) -> Unit,
-    onSelectDiary: (DiaryEntry) -> Unit,
+    onSelectDiary: (DiaryMeta) -> Unit,
+    onLoadMore: () -> Unit,
     onWriteDiary: (ContentType) -> Unit,
     onStartDownload: () -> Unit,
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
     onDismissWifiWarning: () -> Unit,
-    onRequestBriefing: () -> Unit
+    onRequestBriefing: () -> Unit,
+    onSearch: (String) -> Unit,
+    onClearSearch: () -> Unit
 ) {
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
     val parsedDateText = remember(state.selectedDateString) {
@@ -688,12 +696,16 @@ fun DiaryTabContent(
         }
     }
 
-    // 선택된 날짜에 쓴 일기 및 유형(ContentType) 중첩 필터링
-    val filteredDiaries = remember(state.diaries, state.selectedDateString, selectedTypeFilter) {
-        state.diaries.filter { diary ->
+    val isSearchMode = state.searchQuery.isNotBlank()
+
+    // 선택된 날짜에 쓴 일기 및 유형(ContentType) 중첩 필터링.
+    // 검색 모드일 땐 날짜/타입 필터 무시하고 검색 결과 그대로 노출.
+    val filteredDiaries = remember(state.diaries, state.selectedDateString, selectedTypeFilter, isSearchMode) {
+        if (isSearchMode) state.diaries
+        else state.diaries.filter { diary ->
             val dateMatch = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                 .format(Date(diary.timestamp)) == state.selectedDateString
-            
+
             val typeMatch = if (selectedTypeFilter != null) {
                 diary.contentType == selectedTypeFilter
             } else {
@@ -734,20 +746,32 @@ fun DiaryTabContent(
         // 리스트 필터링 옵션 바 및 책갈피 인덱스 탭 디자인의 타입 필터
         item {
             Column(modifier = Modifier.fillMaxWidth()) {
+                // ===== 검색바 (v3) =====
+                DiarySearchBar(
+                    query = state.searchQuery,
+                    isSearching = state.isSearching,
+                    onSubmit = onSearch,
+                    onClear = onClearSearch
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                 ) {
-                    val typeName = when (selectedTypeFilter) {
-                        ContentType.DIARY -> "일기"
-                        ContentType.POST -> "새 글"
-                        ContentType.NOTE -> "메모"
-                        null -> "전체 기록"
+                    val typeName = when {
+                        isSearchMode -> "'${state.searchQuery}' 검색 결과"
+                        selectedTypeFilter == ContentType.DIARY -> "일기"
+                        selectedTypeFilter == ContentType.POST -> "새 글"
+                        selectedTypeFilter == ContentType.NOTE -> "메모"
+                        else -> "전체 기록"
                     }
                     Text(
-                        text = "$parsedDateText $typeName (${filteredDiaries.size}개)",
+                        text = if (isSearchMode) "$typeName (${filteredDiaries.size}개)"
+                               else "$parsedDateText $typeName (${filteredDiaries.size}개)",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -910,13 +934,91 @@ fun DiaryTabContent(
             items(filteredDiaries, key = { it.id }) { diary ->
                 DiaryListItemCard(diary = diary, onClick = { onSelectDiary(diary) })
             }
+            // 페이지네이션: 검색 모드가 아니고, 더 보기 가능할 때만 끝에 도달하면 추가 로드
+            if (!isSearchMode && state.diaryHasMore) {
+                item {
+                    LaunchedEffect(Unit) { onLoadMore() }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (state.isLoadingMoreDiaries) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text(
+                                text = "더 보기 (${filteredDiaries.size}/${state.diaryTotalCount})",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable { onLoadMore() }
+                            )
+                        }
+                    }
+                }
+            }
         }
-        
+
         // 여백 공간 확보
         item {
             Spacer(modifier = Modifier.height(60.dp))
         }
     }
+}
+
+/**
+ * 일기 검색바. FTS5 기반으로 제목/본문에서 부분 문자열 + 날짜 가중치로 정렬된 결과를
+ * [DiaryState.diaries] 에 채워넣는다. 엔터 시 [onSubmit] 호출, X 버튼은 [onClear].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DiarySearchBar(
+    query: String,
+    isSearching: Boolean,
+    onSubmit: (String) -> Unit,
+    onClear: () -> Unit
+) {
+    var localText by rememberSaveable(query) { mutableStateOf(query) }
+    LaunchedEffect(query) { localText = query }
+
+    OutlinedTextField(
+        value = localText,
+        onValueChange = { localText = it },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        placeholder = { Text("일기 검색 (제목/본문)") },
+        leadingIcon = {
+            Icon(imageVector = Icons.Default.Search, contentDescription = null)
+        },
+        trailingIcon = {
+            when {
+                isSearching -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+                localText.isNotBlank() -> {
+                    IconButton(onClick = {
+                        localText = ""
+                        onClear()
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "검색 해제"
+                        )
+                    }
+                }
+            }
+        },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(
+            onSearch = {
+                if (localText.isNotBlank()) onSubmit(localText.trim())
+            }
+        ),
+        shape = RoundedCornerShape(12.dp)
+    )
 }
 
 /**
@@ -2610,9 +2712,98 @@ fun ChatTabContent(
 
 
 /**
- * 개별 일기 리스트 아이템 카드 컴포저블
+ * 일기 카드 1개 표시. v3.1 부터 [com.grepiu.aidiary.data.repository.DiaryMeta] (메타만) 을 받아
+ * 제목/감정/미리보기만 그린다. 썸네일/첫 이미지는 풀 로드 시점에만 표시하도록 단순화.
  */
 @Composable
+fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
+    val dateText = SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(Date(diary.timestamp))
+    val previewText = diary.contentPreview.replace("\n", " ").trim()
+        .ifBlank { "(본문 없음)" }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
+                Icon(
+                    imageVector = typeIcon,
+                    contentDescription = typeLabel,
+                    tint = typeColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = dateText,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                if (diary.emotion.isNotBlank() && diary.emotion != "Neutral") {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    EmotionChipSmall(diary.emotion)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = diary.title.ifBlank { "(제목 없음)" },
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (previewText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = previewText,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 감정 라벨을 작은 칩으로 표시 (목록 카드용). 메인 theme EmotionChip 과는 별도 가벼운 버전.
+ */
+@Composable
+private fun EmotionChipSmall(emotion: String) {
+    val color = when (emotion) {
+        "Joy" -> Color(0xFFFFB300)
+        "Sadness" -> Color(0xFF1976D2)
+        "Anger" -> Color(0xFFD32F2F)
+        "Anxiety" -> Color(0xFF7B1FA2)
+        "Calm" -> Color(0xFF388E3C)
+        else -> Color.Gray
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.18f))
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
+        Text(text = emotion, fontSize = 11.sp, color = color, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * 구버전 호환용 (외부에서 호출 가능성 대비). v3.1 에서 본문/이미지가 필요하면 풀 로드 후 사용.
+ */
+@Composable
+@Deprecated("DiaryMeta 기반으로 전환됨. 풀 DiaryEntry 가 필요하면 ViewModel 의 LoadFullDiary 사용")
 fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
     val dateText = SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(Date(diary.timestamp))
     val context = LocalContext.current
