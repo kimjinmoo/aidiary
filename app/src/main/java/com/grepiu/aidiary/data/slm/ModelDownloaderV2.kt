@@ -39,11 +39,8 @@ class ModelDownloaderV2(private val context: Context) {
 
     fun isSherpaModelDownloaded(): Boolean {
         val dir = getSherpaModelDir()
-        if (!dir.exists()) return false
-        val actualDir = findModelSubdir(dir) ?: return false
-        val modelFile = actualDir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
-        val tokensFile = File(actualDir, "tokens.txt")
-        return modelFile != null && modelFile.exists() && modelFile.length() > 10L * 1024 * 1024 && tokensFile.exists()
+        val markerFile = File(dir, "download_complete.txt")
+        return dir.exists() && markerFile.exists()
     }
 
     private fun findModelSubdir(dir: File): File? {
@@ -83,6 +80,10 @@ class ModelDownloaderV2(private val context: Context) {
                 extractTarBz2(archiveFile, extractDir)
                 if (archiveFile.exists()) archiveFile.delete() // 압축 파일 삭제
                 
+                // 성공 마커 작성
+                val markerFile = File(extractDir, "download_complete.txt")
+                markerFile.writeText("SUCCESS")
+
                 if (isSherpaModelDownloaded()) {
                     Log.d(TAG, "Sherpa model extracted and verified at $extractDir")
                     Result.success(extractDir)
