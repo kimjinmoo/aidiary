@@ -1254,10 +1254,22 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
             if (block.paths.isNotEmpty()) {
                 val rawFile = File(context.filesDir, block.paths[0])
                 if (rawFile.exists()) {
+                    // 기기 플레이어가 파일명 접미사(_3D_SBS)를 보고 3D 모드를 자동 활성화하도록
+                    // 캐시 폴더에 '_3D_SBS.mp4' 형식의 파일명으로 임시 복사하여 전달합니다.
+                    val baseName = rawFile.nameWithoutExtension
+                    val tempVideoFile = File(context.cacheDir, "${baseName}_3D_SBS.mp4")
+                    
+                    // 파일 복사 실행
+                    rawFile.inputStream().use { input ->
+                        tempVideoFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    
                     val uri = FileProvider.getUriForFile(
                         context,
                         "${context.packageName}.fileprovider",
-                        rawFile
+                        tempVideoFile
                     )
                     intent.setDataAndType(uri, "video/*")
                     
@@ -1270,6 +1282,10 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.putExtra("open_as_3d", true)
                     intent.putExtra("render_mode", "stereo_sbs")
                     intent.putExtra("android.intent.extra.vr.enable_stereo", true)
+                    
+                    // VR/Cardboard 카테고리 추가
+                    intent.addCategory(Intent.CATEGORY_DEFAULT)
+                    intent.addCategory("com.google.intent.category.CARDBOARD")
                     
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     context.startActivity(intent)
@@ -1293,7 +1309,8 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         canvas.drawBitmap(bmpLeft, 0f, 0f, null)
                         canvas.drawBitmap(bmpRight, bmpLeft.width.toFloat(), 0f, null)
 
-                        val tempFile = File(context.cacheDir, "sbs_photo_view.jpg")
+                        // 3D/VR 뷰어가 SBS 파일명 패턴을 자동 분석할 수 있도록 접미사를 추가합니다.
+                        val tempFile = File(context.cacheDir, "sbs_photo_view_3D_SBS.jpg")
                         FileOutputStream(tempFile).use { out ->
                             sbsBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
                         }
@@ -1314,6 +1331,10 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         intent.putExtra("stereo_mode", "sbs")
                         intent.putExtra("open_as_3d", true)
                         intent.putExtra("vr_mode", true)
+                        
+                        // VR/Cardboard 카테고리 추가
+                        intent.addCategory(Intent.CATEGORY_DEFAULT)
+                        intent.addCategory("com.google.intent.category.CARDBOARD")
                         
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         context.startActivity(intent)
