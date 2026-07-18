@@ -66,10 +66,23 @@ class ImageStorageManager(private val context: Context) {
             // 1) 우선 원본을 임시 파일로 복사
             val tempExt = inferImageExtension(sourceUri)
             val temp = File(baseDir, "_tmp_${UUID.randomUUID()}.$tempExt")
-            context.contentResolver.openInputStream(sourceUri).use { input ->
-                requireNotNull(input) { "이미지 스트림을 열 수 없습니다: $sourceUri" }
-                FileOutputStream(temp).use { output ->
-                    input.copyTo(output)
+            val fd = try {
+                context.contentResolver.openAssetFileDescriptor(sourceUri, "r")
+            } catch (e: Exception) {
+                null
+            }
+            if (fd != null) {
+                fd.createInputStream().use { input ->
+                    FileOutputStream(temp).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            } else {
+                context.contentResolver.openInputStream(sourceUri).use { input ->
+                    requireNotNull(input) { "이미지 스트림을 열 수 없습니다: $sourceUri" }
+                    FileOutputStream(temp).use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
             try {
@@ -111,22 +124,12 @@ class ImageStorageManager(private val context: Context) {
                     is Image3DFormat.HeicAux -> {
                         // HEIC aux 추출 시도 — primary 는 원본 그대로, aux 가 있으면 별도 저장
                         val (primary, aux) = extractHeicAux(temp)
-                        if (aux != null) {
-                            ContentBlock.SpatialMediaBlock(
-                                mediaType = SpatialMediaType.PHOTO,
-                                paths = listOf(primary, aux),
-                                captureMode = SpatialCaptureMode.HEIC_AUX
-                            )
-                        } else {
-                            // aux 추출 실패 — 원본을 일반 2D 로 폴백
-                            val rel = "${IMAGE_DIR}/${UUID.randomUUID()}.$tempExt"
-                            temp.copyTo(File(context.filesDir, rel), overwrite = true)
-                            ContentBlock.SpatialMediaBlock(
-                                mediaType = SpatialMediaType.PHOTO,
-                                paths = listOf(rel),
-                                captureMode = SpatialCaptureMode.PLAIN_2D_PHOTO
-                            )
-                        }
+                        val paths = if (aux != null) listOf(primary, aux) else listOf(primary)
+                        ContentBlock.SpatialMediaBlock(
+                            mediaType = SpatialMediaType.PHOTO,
+                            paths = paths,
+                            captureMode = SpatialCaptureMode.HEIC_AUX
+                        )
                     }
                     is Image3DFormat.StereoExif -> {
                         // EXIF 플래그만 있는 경우 — 원본 그대로 두고 라벨만 부착
@@ -219,12 +222,16 @@ class ImageStorageManager(private val context: Context) {
         val out = mutableListOf<Pair<Int, Int>>()
         var i = 0
         while (i < bytes.size - 1) {
-            // SOI 찾기
-            if (bytes[i].toInt() == 0xFF && bytes[i + 1].toInt() == 0xD8) {
+            // SOI (0xFFD8) 찾기
+            val b0 = bytes[i].toInt() and 0xFF
+            val b1 = bytes[i + 1].toInt() and 0xFF
+            if (b0 == 0xFF && b1 == 0xD8) {
                 val start = i
                 var j = i + 2
                 while (j < bytes.size - 1) {
-                    if (bytes[j].toInt() == 0xFF && bytes[j + 1].toInt() == 0xD9) {
+                    val bj0 = bytes[j].toInt() and 0xFF
+                    val bj1 = bytes[j + 1].toInt() and 0xFF
+                    if (bj0 == 0xFF && bj1 == 0xD9) { // EOI (0xFFD9)
                         out.add(start to (j + 2))
                         i = j + 2
                         break

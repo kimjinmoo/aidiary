@@ -782,7 +782,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             val result = imageStore.importDetectingFormat(uri)
             result.onSuccess { block ->
                 successCount++
-                if (block is ContentBlock.SpatialMediaBlock) spatialCount++
+                if (block is ContentBlock.SpatialMediaBlock && block.captureMode.is3D) spatialCount++
                 _state.update {
                     it.copy(draftBlocks = it.draftBlocks + block)
                 }

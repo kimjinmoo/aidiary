@@ -33,10 +33,23 @@ class VideoStorageManager(private val context: Context) {
         runCatching {
             val ext = inferExtension(sourceUri)
             val target = File(baseDir, "${UUID.randomUUID()}.$ext")
-            context.contentResolver.openInputStream(sourceUri).use { input ->
-                requireNotNull(input) { "영상 스트림을 열 수 없습니다: $sourceUri" }
-                FileOutputStream(target).use { output ->
-                    input.copyTo(output)
+            val fd = try {
+                context.contentResolver.openAssetFileDescriptor(sourceUri, "r")
+            } catch (e: Exception) {
+                null
+            }
+            if (fd != null) {
+                fd.createInputStream().use { input ->
+                    FileOutputStream(target).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            } else {
+                context.contentResolver.openInputStream(sourceUri).use { input ->
+                    requireNotNull(input) { "영상 스트림을 열 수 없습니다: $sourceUri" }
+                    FileOutputStream(target).use { output ->
+                        input.copyTo(output)
+                    }
                 }
             }
             "${VIDEO_DIR}/${target.name}"

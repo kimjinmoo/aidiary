@@ -27,7 +27,7 @@ object VideoFormatDetector {
     fun detect(file: File): Video3DFormat {
         if (!file.exists() || file.length() < 16) return Video3DFormat.Plain2D
         return try {
-            val scanLimit = minOf(file.length(), DEFAULT_SCAN_LIMIT)
+            val scanLimit = file.length()
             val raf = RandomAccessFile(file, "r")
             try {
                 val top = readBoxes(raf, 0L, scanLimit)
@@ -41,8 +41,8 @@ object VideoFormatDetector {
                     Log.d(TAG, "Detected stereo MP4 (video tracks=$videoTrackCount): ${file.name}")
                     return Video3DFormat.StereoMp4
                 }
-                if (containsBoxTypeDeep(moov, "st3d")) {
-                    Log.d(TAG, "Detected MOV st3d: ${file.name}")
+                if (containsBoxTypeDeep(moov, "st3d") || containsBoxTypeDeep(moov, "proj") || containsBoxTypeDeep(moov, "svpi")) {
+                    Log.d(TAG, "Detected Spatial/VR Video (st3d/proj/svpi): ${file.name}")
                     return Video3DFormat.MovSpatial
                 }
                 // 단일 비디오 트랙일 때 MV-HEVC 인지 판정 (hvcC.box 의 general_profile_idc)
@@ -178,6 +178,9 @@ object VideoFormatDetector {
             } else emptyList()
             boxes.add(Box(type = type, start = pos, end = boxEnd, children = children))
             pos = boxEnd
+            if (type == "moov") {
+                break
+            }
         }
         return boxes
     }
