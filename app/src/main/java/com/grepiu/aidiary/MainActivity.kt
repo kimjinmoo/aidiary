@@ -9,6 +9,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -272,8 +280,19 @@ fun My2DContent(
 }
 
 /**
- * 현재 MVI State의 Phase에 근거하여 목록, 작성, 상세 화면을 분기/제어하는 라우터 컴포저블입니다.
+ * 현재 MVI State의 Phase에 근거하여 목록, 작성, 상세 화면을 분기/제어하는 라우터 컴포저블.
+ * Phase 전환 방향에 따라 슬라이드-업/다운 혹은 페이드 애니메이션을 적용합니다.
  */
+// Phase의 화면 깊이(depth) — 숫자가 클수록 '앞으로 나온' 화면
+private fun DiaryPhase.depth(): Int = when (this) {
+    DiaryPhase.SPLASH  -> 0
+    DiaryPhase.WELCOME -> 1
+    DiaryPhase.LIST    -> 2
+    DiaryPhase.WRITE   -> 3
+    DiaryPhase.DETAIL  -> 3
+}
+
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun DiaryAppNavigationRouter(
     state: DiaryState,
@@ -282,125 +301,167 @@ fun DiaryAppNavigationRouter(
     onTakePhoto: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    when (state.phase) {
-        DiaryPhase.SPLASH -> {
-            DiarySplashScreen(
-                onTimeout = {
-                    viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
-                },
-                modifier = modifier
-            )
-        }
-        DiaryPhase.WELCOME -> {
-            DiaryWelcomeScreen(
-                onIntent = { intent -> viewModel.processIntent(intent) },
-                modifier = modifier
-            )
-        }
-        DiaryPhase.LIST -> {
-            DiaryListScreen(
-                state = state,
-                onSelectDiary = { meta ->
-                    // 메타만으로 진입 → ViewModel 이 풀 DiaryEntry 를 lazy 로드
-                    viewModel.processIntent(DiaryIntent.LoadFullDiary(meta.id))
-                },
-                onWriteDiary = { contentType ->
-                    viewModel.processIntent(
-                        DiaryIntent.NavigateTo(DiaryPhase.WRITE, initialContentType = contentType)
-                    )
-                },
-                onStartDownload = {
-                    viewModel.processIntent(DiaryIntent.StartDownload)
-                },
-                onCancelDownload = {
-                    viewModel.processIntent(DiaryIntent.CancelDownload)
-                },
-                onDismissNotice = {
-                    viewModel.processIntent(DiaryIntent.ShowDownloadNotice(false))
-                },
-                onDismissWifiWarning = {
-                    viewModel.processIntent(DiaryIntent.ShowWifiWarning(false))
-                },
-                onIntent = { intent -> viewModel.processIntent(intent) },
-                modifier = modifier
-            )
-        }
-        DiaryPhase.WRITE -> {
-            DiaryWriteScreen(
-                state = state,
-                onIntent = { intent -> viewModel.processIntent(intent) },
-                onContentTypeChange = { contentType ->
-                    viewModel.processIntent(DiaryIntent.UpdateDraftType(contentType))
-                },
-                onUpdateTitleStyle = { style ->
-                    viewModel.processIntent(DiaryIntent.UpdateDraftTitleStyle(style))
-                },
-                onAddBlock = { block ->
-                    viewModel.processIntent(DiaryIntent.AddBlock(block))
-                },
-                onInsertBlock = { index, block ->
-                    viewModel.processIntent(DiaryIntent.InsertBlock(index, block))
-                },
-                onUpdateBlockText = { blockId, text, formatting ->
-                    viewModel.processIntent(DiaryIntent.UpdateBlockText(blockId, text, formatting))
-                },
-                onUpdateBlockCaption = { blockId, caption ->
-                    viewModel.processIntent(DiaryIntent.UpdateBlockCaption(blockId, caption))
-                },
-                onRemoveBlock = { blockId ->
-                    viewModel.processIntent(DiaryIntent.RemoveBlock(blockId))
-                },
-                onMoveBlock = { blockId, dir ->
-                    viewModel.processIntent(DiaryIntent.MoveBlock(blockId, dir))
-                },
-                onPickGallery = onPickGallery,
-                onTakePhoto = onTakePhoto,
-                onSaveDiary = {
-                    viewModel.processIntent(DiaryIntent.SaveDiary)
-                },
-                onBack = {
-                    viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
-                },
-                onStartRecording = {
-                    viewModel.processIntent(DiaryIntent.StartRecording)
-                },
-                onStopRecording = {
-                    viewModel.processIntent(DiaryIntent.StopRecording)
-                },
-                onSuggestTitle = {
-                    viewModel.processIntent(DiaryIntent.SuggestTitle)
-                },
-                onUpdateTitle = { text ->
-                    viewModel.processIntent(DiaryIntent.UpdateDraftTitle(text))
-                },
-                onClassifyType = {
-                    viewModel.processIntent(DiaryIntent.ClassifyContentType)
-                },
-                onProofreadBlock = { blockId ->
-                    viewModel.processIntent(DiaryIntent.ProofreadBlock(blockId))
-                },
-                onDecorateBlock = { blockId ->
-                    viewModel.processIntent(DiaryIntent.DecorateBlock(blockId))
-                },
-                modifier = modifier
-            )
-        }
-        DiaryPhase.DETAIL -> {
-            state.selectedDiary?.let { diary ->
-                DiaryDetailScreen(
-                    diary = diary,
-                    onDelete = {
-                        viewModel.processIntent(DiaryIntent.DeleteDiary(diary.id))
+    AnimatedContent(
+        targetState = state.phase,
+        transitionSpec = {
+            val fromDepth = initialState.depth()
+            val toDepth   = targetState.depth()
+            when {
+                // 앞으로 이동 (LIST→WRITE, LIST→DETAIL)
+                toDepth > fromDepth -> (
+                    slideInVertically(
+                        animationSpec = tween(350),
+                        initialOffsetY = { it / 4 }
+                    ) + fadeIn(tween(300))
+                ) togetherWith (
+                    slideOutVertically(
+                        animationSpec = tween(300),
+                        targetOffsetY = { -it / 8 }
+                    ) + fadeOut(tween(200))
+                )
+                // 뒤로 이동 (WRITE→LIST, DETAIL→LIST)
+                toDepth < fromDepth -> (
+                    slideInVertically(
+                        animationSpec = tween(350),
+                        initialOffsetY = { -it / 8 }
+                    ) + fadeIn(tween(300))
+                ) togetherWith (
+                    slideOutVertically(
+                        animationSpec = tween(300),
+                        targetOffsetY = { it / 4 }
+                    ) + fadeOut(tween(200))
+                )
+                // 같은 깊이 또는 초기 진입 (SPLASH→LIST 등)
+                else -> (
+                    fadeIn(tween(400))
+                ) togetherWith (
+                    fadeOut(tween(250))
+                )
+            }
+        },
+        label = "PhaseTransition",
+        modifier = modifier
+    ) { phase ->
+        when (phase) {
+            DiaryPhase.SPLASH -> {
+                DiarySplashScreen(
+                    onTimeout = {
+                        viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            DiaryPhase.WELCOME -> {
+                DiaryWelcomeScreen(
+                    onIntent = { intent -> viewModel.processIntent(intent) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            DiaryPhase.LIST -> {
+                DiaryListScreen(
+                    state = state,
+                    onSelectDiary = { meta ->
+                        viewModel.processIntent(DiaryIntent.LoadFullDiary(meta.id))
+                    },
+                    onWriteDiary = { contentType ->
+                        viewModel.processIntent(
+                            DiaryIntent.NavigateTo(DiaryPhase.WRITE, initialContentType = contentType)
+                        )
+                    },
+                    onStartDownload = {
+                        viewModel.processIntent(DiaryIntent.StartDownload)
+                    },
+                    onCancelDownload = {
+                        viewModel.processIntent(DiaryIntent.CancelDownload)
+                    },
+                    onDismissNotice = {
+                        viewModel.processIntent(DiaryIntent.ShowDownloadNotice(false))
+                    },
+                    onDismissWifiWarning = {
+                        viewModel.processIntent(DiaryIntent.ShowWifiWarning(false))
+                    },
+                    onIntent = { intent -> viewModel.processIntent(intent) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            DiaryPhase.WRITE -> {
+                DiaryWriteScreen(
+                    state = state,
+                    onIntent = { intent -> viewModel.processIntent(intent) },
+                    onContentTypeChange = { contentType ->
+                        viewModel.processIntent(DiaryIntent.UpdateDraftType(contentType))
+                    },
+                    onUpdateTitleStyle = { style ->
+                        viewModel.processIntent(DiaryIntent.UpdateDraftTitleStyle(style))
+                    },
+                    onAddBlock = { block ->
+                        viewModel.processIntent(DiaryIntent.AddBlock(block))
+                    },
+                    onInsertBlock = { index, block ->
+                        viewModel.processIntent(DiaryIntent.InsertBlock(index, block))
+                    },
+                    onUpdateBlockText = { blockId, text, formatting ->
+                        viewModel.processIntent(DiaryIntent.UpdateBlockText(blockId, text, formatting))
+                    },
+                    onUpdateBlockCaption = { blockId, caption ->
+                        viewModel.processIntent(DiaryIntent.UpdateBlockCaption(blockId, caption))
+                    },
+                    onRemoveBlock = { blockId ->
+                        viewModel.processIntent(DiaryIntent.RemoveBlock(blockId))
+                    },
+                    onMoveBlock = { blockId, dir ->
+                        viewModel.processIntent(DiaryIntent.MoveBlock(blockId, dir))
+                    },
+                    onPickGallery = onPickGallery,
+                    onTakePhoto = onTakePhoto,
+                    onSaveDiary = {
+                        viewModel.processIntent(DiaryIntent.SaveDiary)
                     },
                     onBack = {
                         viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
                     },
-                    modifier = modifier
+                    onStartRecording = {
+                        viewModel.processIntent(DiaryIntent.StartRecording)
+                    },
+                    onStopRecording = {
+                        viewModel.processIntent(DiaryIntent.StopRecording)
+                    },
+                    onSuggestTitle = {
+                        viewModel.processIntent(DiaryIntent.SuggestTitle)
+                    },
+                    onUpdateTitle = { text ->
+                        viewModel.processIntent(DiaryIntent.UpdateDraftTitle(text))
+                    },
+                    onClassifyType = {
+                        viewModel.processIntent(DiaryIntent.ClassifyContentType)
+                    },
+                    onProofreadBlock = { blockId ->
+                        viewModel.processIntent(DiaryIntent.ProofreadBlock(blockId))
+                    },
+                    onDecorateBlock = { blockId ->
+                        viewModel.processIntent(DiaryIntent.DecorateBlock(blockId))
+                    },
+                    modifier = Modifier.fillMaxSize()
                 )
+            }
+            DiaryPhase.DETAIL -> {
+                state.selectedDiary?.let { diary ->
+                    DiaryDetailScreen(
+                        diary = diary,
+                        onDelete = {
+                            viewModel.processIntent(DiaryIntent.DeleteDiary(diary.id))
+                        },
+                        onBack = {
+                            viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
             }
         }
     }
 }
+
 
 @Composable
 fun FullSpaceModeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
