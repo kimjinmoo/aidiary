@@ -1,8 +1,13 @@
 package com.grepiu.aidiary.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -313,7 +318,11 @@ fun DiaryListScreen(
                             onSearch = { onIntent(DiaryIntent.SearchDiaries(it)) },
                             onClearSearch = { onIntent(DiaryIntent.ClearDiarySearch) },
                             isSearchFocused = isSearchFocused,
-                            onSearchFocusChange = { isSearchFocused = it }
+                            onSearchFocusChange = { isSearchFocused = it },
+                            onCancelSearch = {
+                                isSearchFocused = false
+                                onIntent(DiaryIntent.ClearDiarySearch)
+                            }
                         )
                     }
                     "PLANNER" -> {
@@ -693,7 +702,8 @@ fun DiaryTabContent(
     onSearch: (String) -> Unit,
     onClearSearch: () -> Unit,
     isSearchFocused: Boolean,
-    onSearchFocusChange: (Boolean) -> Unit
+    onSearchFocusChange: (Boolean) -> Unit,
+    onCancelSearch: () -> Unit
 ) {
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
     val parsedDateText = remember(state.selectedDateString) {
@@ -736,14 +746,19 @@ fun DiaryTabContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // ===== 검색바 (v3) - 상단 고정 =====
+        // ===== 검색바 (v4) - 상단 고정, 취소 버튼 포함 =====
         DiarySearchBar(
             query = state.searchQuery,
             isSearching = state.isSearching,
             onSubmit = onSearch,
             onClear = onClearSearch,
             isFocused = isSearchFocused,
-            onFocusChange = onSearchFocusChange
+            onFocusChange = onSearchFocusChange,
+            onCancel = {
+                focusManager.clearFocus()
+                onClearSearch()
+                onCancelSearch()
+            }
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -994,10 +1009,10 @@ fun DiaryTabContent(
 }
 
 /**
- * 일기 검색바. FTS5 기반으로 제목/본문에서 부분 문자열 + 날짜 가중치로 정렬된 결과를
- * [DiaryState.diaries] 에 채워넣는다. 엔터 시 [onSubmit] 호출, X 버튼은 [onClear].
+ * 다이어리 검색바 v4. FTS5 기반으로 제목/본문에서 부분 문자열 + 날짜 가중치로 정렬된 결과를
+ * [DiaryState.diaries] 에 채워넣는다. 검색 활성 시 우측에 '취소' 버튼이 슬라이드-인된다.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
 @Composable
 fun DiarySearchBar(
     query: String,
@@ -1005,93 +1020,134 @@ fun DiarySearchBar(
     onSubmit: (String) -> Unit,
     onClear: () -> Unit,
     isFocused: Boolean,
-    onFocusChange: (Boolean) -> Unit
+    onFocusChange: (Boolean) -> Unit,
+    onCancel: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var localText by rememberSaveable(query) { mutableStateOf(query) }
     LaunchedEffect(query) { localText = query }
 
-    OutlinedTextField(
-        value = localText,
-        onValueChange = {
-            localText = it
-            if (it.trim().isNotBlank()) {
-                onSubmit(it)
-            } else {
-                onClear()
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { onFocusChange(it.isFocused) }
-            .background(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                shape = RoundedCornerShape(24.dp)
-            )
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
-                shape = RoundedCornerShape(24.dp)
-            ),
-        singleLine = true,
-        placeholder = { 
-            Text(
-                text = "일기 제목, 본문 검색...", 
-                fontSize = 14.sp, 
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-            ) 
-        },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
-                modifier = Modifier.size(20.dp)
-            )
-        },
-        trailingIcon = {
-            when {
-                isSearching -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+    val isActive = isFocused || localText.isNotBlank()
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = localText,
+            onValueChange = {
+                localText = it
+                if (it.trim().isNotBlank()) {
+                    onSubmit(it)
+                } else {
+                    onClear()
                 }
-                localText.isNotBlank() -> {
-                    IconButton(
-                        onClick = {
-                            localText = ""
-                            onClear()
-                        },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "검색 해제",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+            },
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { onFocusChange(it.isFocused) }
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = if (isActive)
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    else
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(24.dp)
+                ),
+            singleLine = true,
+            placeholder = {
+                Text(
+                    text = "다이어리 기록 검색...",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = if (isActive)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                    modifier = Modifier.size(20.dp)
+                )
+            },
+            trailingIcon = {
+                when {
+                    isSearching -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
+                    localText.isNotBlank() -> {
+                        IconButton(
+                            onClick = {
+                                localText = ""
+                                onClear()
+                                // 텍스트만 지우고 포커스는 유지 (취소는 별도 버튼)
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "텍스트 지우기",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                disabledBorderColor = Color.Transparent,
+                errorBorderColor = Color.Transparent
+            ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    if (localText.isNotBlank()) onSubmit(localText.trim())
+                    focusManager.clearFocus()
+                }
+            ),
+            shape = RoundedCornerShape(24.dp)
+        )
+
+        // 취소 버튼 — 검색 활성 시 슬라이드-인
+        AnimatedVisibility(
+            visible = isActive,
+            enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+            exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+        ) {
+            TextButton(
+                onClick = {
+                    localText = ""
+                    focusManager.clearFocus()
+                    onCancel()
+                },
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Text(
+                    text = "취소",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
-        },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-            focusedBorderColor = Color.Transparent,
-            unfocusedBorderColor = Color.Transparent,
-            disabledBorderColor = Color.Transparent,
-            errorBorderColor = Color.Transparent
-        ),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        keyboardActions = KeyboardActions(
-            onSearch = {
-                if (localText.isNotBlank()) onSubmit(localText.trim())
-            }
-        ),
-        shape = RoundedCornerShape(24.dp)
-    )
+        }
+    }
 }
+
 
 /**
  * 4. [플래너 할 일] 탭 본문 영역
