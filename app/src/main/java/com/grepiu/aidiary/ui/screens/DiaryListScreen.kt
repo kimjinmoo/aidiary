@@ -317,7 +317,6 @@ fun DiaryListScreen(
                             onCancelDownload = onCancelDownload,
                             onDismissNotice = onDismissNotice,
                             onDismissWifiWarning = onDismissWifiWarning,
-                            onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("DIARY")) },
                             onSearch = { onIntent(DiaryIntent.SearchDiaries(it)) },
                             onClearSearch = { onIntent(DiaryIntent.ClearDiarySearch) },
                             isSearchFocused = isSearchFocused,
@@ -702,7 +701,6 @@ fun DiaryTabContent(
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
     onDismissWifiWarning: () -> Unit,
-    onRequestBriefing: () -> Unit,
     onSearch: (String) -> Unit,
     onClearSearch: () -> Unit,
     isSearchFocused: Boolean,
@@ -772,17 +770,6 @@ fun DiaryTabContent(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // AI 브리핑 카드 (탭 상단, 사용자가 명시적으로 요청)
-            item {
-                AiBriefingCard(
-                    title = "기록 AI 브리핑",
-                    briefing = state.diaryBriefing,
-                    isLoading = state.isBriefingDiary,
-                    isModelReady = state.isModelReady,
-                    onRequest = onRequestBriefing
-                )
-            }
-
             // AI 모델 다운로드 카드
             if (!state.isModelReady) {
                 item {
