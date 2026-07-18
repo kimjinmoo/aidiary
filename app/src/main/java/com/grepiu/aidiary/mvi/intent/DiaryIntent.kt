@@ -60,6 +60,8 @@ sealed interface DiaryIntent {
     data object CopyDraftToClipboard : DiaryIntent
 
     // ===== 블록 기반 콘텐츠 =====
+    /** 현재 위치 정보를 가져와 LocationBlock 을 추가하도록 요청합니다. */
+    data object RequestLocationBlock : DiaryIntent
     /** 새 블록을 마지막에 추가합니다. */
     data class AddBlock(val block: ContentBlock) : DiaryIntent
     /** 특정 위치에 새 블록을 삽입합니다. */

@@ -96,6 +96,19 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 위치 권한 요청 런처
+                val locationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
+                ) { permissions ->
+                    val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+                    val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+                    if (fineGranted || coarseGranted) {
+                        viewModel.fetchLocationAndAddBlock()
+                    } else {
+                        Toast.makeText(context, "위치 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
                 // 갤러리 픽업 런처 (PhotoPicker - 다중 선택)
                 val pickImageLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20)
@@ -135,6 +148,14 @@ class MainActivity : ComponentActivity() {
                             }
                             is DiaryEffect.RequestCameraPermission -> {
                                 cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                            is DiaryEffect.RequestLocationPermission -> {
+                                locationPermissionLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    )
+                                )
                             }
                             is DiaryEffect.LaunchCamera -> {
                                 pendingCameraUri.value = effect.targetUri

@@ -75,6 +75,13 @@ sealed class ContentBlock {
         val cells: List<List<String>>
     ) : ContentBlock()
 
+    data class LocationBlock(
+        override val id: String = UUID.randomUUID().toString(),
+        val latitude: Double,
+        val longitude: Double,
+        val address: String
+    ) : ContentBlock()
+
     companion object {
         const val TYPE_HEADING = "heading"
         const val TYPE_TEXT = "text"
@@ -83,6 +90,7 @@ sealed class ContentBlock {
         const val TYPE_DIVIDER = "divider"
         const val TYPE_TAG_AI = "tagAi"
         const val TYPE_TABLE = "table"
+        const val TYPE_LOCATION = "location"
 
         /**
          * JSON 객체로부터 [ContentBlock] 인스턴스를 복원합니다.
@@ -127,6 +135,12 @@ sealed class ContentBlock {
                     }
                     TableBlock(id = id, rows = rows, cols = cols, cells = cells)
                 }
+                TYPE_LOCATION -> LocationBlock(
+                    id = id,
+                    latitude = obj.optDouble("latitude", 0.0),
+                    longitude = obj.optDouble("longitude", 0.0),
+                    address = obj.optString("address", "")
+                )
                 else -> TextBlock(id = id, text = obj.optString("text", ""))
             }
         }
@@ -183,6 +197,13 @@ fun ContentBlock.toJson(): JSONObject = when (this) {
         }
         put("cells", cellsArr)
     }
+    is ContentBlock.LocationBlock -> JSONObject().apply {
+        put("type", ContentBlock.TYPE_LOCATION)
+        put("id", id)
+        put("latitude", latitude)
+        put("longitude", longitude)
+        put("address", address)
+    }
 }
 
 /**
@@ -200,6 +221,7 @@ fun List<ContentBlock>.extractPlainText(): String =
             is ContentBlock.TableBlock -> block.cells.joinToString(" | ") { row ->
                 row.joinToString(" | ")
             }.ifBlank { null }
+            is ContentBlock.LocationBlock -> "📍 위치: ${block.address}"
             else -> null
         }
     }.joinToString(separator = "\n")

@@ -8,6 +8,7 @@ sealed interface DiaryEffect {
     data class TranscriptionResult(val text: String) : DiaryEffect
     data object RequestAudioPermission : DiaryEffect
     data object RequestCameraPermission : DiaryEffect
+    data object RequestLocationPermission : DiaryEffect
     /** 카메라 촬영을 위한 임시 출력 URI 를 UI 측에 요청합니다. */
     data class LaunchCamera(val targetUri: android.net.Uri) : DiaryEffect
 }

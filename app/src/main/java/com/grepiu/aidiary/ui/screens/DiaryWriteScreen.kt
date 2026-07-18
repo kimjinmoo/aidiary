@@ -235,6 +235,7 @@ fun DiaryWriteScreen(
                 onAdd = onAddBlock,
                 onPickGallery = onPickGallery,
                 onTakePhoto = onTakePhoto,
+                onAddLocation = { onIntent(DiaryIntent.RequestLocationBlock) },
                 hasHeading = state.hasHeadingBlock,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )

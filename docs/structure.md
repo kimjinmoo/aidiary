@@ -7,7 +7,7 @@
 
 - **언어/플랫폼**: Kotlin + Jetpack Compose, Android XR(API 34+) 타깃
 - **아키텍처**: MVI 단방향 흐름 (`State` → `Composable` → `Intent` → `ViewModel` → `State`)
-- **콘텐츠 모델**: 블록 기반(`ContentBlock` 시즈 클래스) - 텍스트/제목/인용/이미지/구분선
+- **콘텐츠 모델**: 블록 기반(`ContentBlock` 시즈 클래스) - 텍스트/제목/인용/이미지/구분선/위치
 - **콘텐츠 타입**: `ContentType` (DIARY / POST / NOTE) - 일기/새 글/메모 3종, 작성 시 선택. AI 분석은 DIARY 에서만 노출
 - **인라인 텍스트 서식**: `TextFormatting` 으로 bold/italic/underline/strikethrough/color/size 6종 지원 (입력 중 인라인 프리뷰)
 - **기본 폰트**: Pretendard (Regular/Medium/SemiBold/Bold 4개 weight, OTF, `res/font/`)
@@ -29,7 +29,7 @@ app/src/main/java/com/grepiu/aidiary/
 ├── data/
 │   ├── model/
 │   │   ├── DiaryEntry.kt            # 일기 엔트리 (id, title, blocks, content 평문, emotion, aiAnalysis, contentType)
-│   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider) + JSON 직렬화
+│   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider/Location) + JSON 직렬화
 │   │   ├── ContentType.kt           # 콘텐츠 타입 enum (DIARY/POST/NOTE) + storageKey 기반 영속화
 │   │   └── TextFormatting.kt        # 인라인 서식 (bold/italic/underline/strikethrough/color/size) + AnnotatedString 변환
 │   ├── repository/

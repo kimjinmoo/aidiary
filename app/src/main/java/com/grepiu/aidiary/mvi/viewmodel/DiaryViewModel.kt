@@ -56,6 +56,8 @@ import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.coroutines.suspendCoroutine
+import kotlin.coroutines.resume
 
 /**
  * 일기 앱의 비즈니스 로직 및 온디바이스 AI 라이프사이클을 조율하는 Android ViewModel입니다.
@@ -288,6 +290,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // ===== 블록 기반 콘텐츠 =====
+            is DiaryIntent.RequestLocationBlock -> {
+                requestLocationBlock()
+            }
             is DiaryIntent.AddBlock -> {
                 // HeadingBlock 은 단일만 허용 (두 번째 추가는 무시 + 토스트)
                 if (intent.block is ContentBlock.HeadingBlock && _state.value.hasHeadingBlock) {
@@ -668,6 +673,140 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         val authority = "${getApplication<Application>().packageName}.fileprovider"
         val uri = FileProvider.getUriForFile(getApplication(), authority, tempFile)
         sendEffect(DiaryEffect.LaunchCamera(uri))
+    }
+
+    /**
+     * 현재 위치를 가져오기 위한 권한 체크 및 요청을 수행하고, 권한이 있을 경우 위치 블록을 추가합니다.
+     */
+    fun requestLocationBlock() {
+        val fineLocationGranted = ContextCompat.checkSelfPermission(
+            getApplication(),
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseLocationGranted = ContextCompat.checkSelfPermission(
+            getApplication(),
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!fineLocationGranted && !coarseLocationGranted) {
+            sendEffect(DiaryEffect.RequestLocationPermission)
+            return
+        }
+
+        fetchLocationAndAddBlock()
+    }
+
+    /**
+     * 기기의 GPS/Network 프로바이더를 사용하여 현재 위경도 좌표를 조회하고,
+     * Geocoder API를 통해 한국어 주소로 변환한 뒤 일기에 LocationBlock으로 추가합니다.
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    fun fetchLocationAndAddBlock() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val locationManager = getApplication<Application>()
+                    .getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+
+                // 사용 가능한 모든 프로바이더 조회
+                val providers = locationManager.getProviders(true)
+                var bestLocation: android.location.Location? = null
+
+                // 1단계: 마지막으로 기록된 가장 정확한 위치 탐색
+                for (provider in providers) {
+                    val loc = locationManager.getLastKnownLocation(provider) ?: continue
+                    if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
+                        bestLocation = loc
+                    }
+                }
+
+                // 2단계: 마지막 위치가 확인되지 않으면 실시간으로 단발성 업데이트(getCurrentLocation) 시도
+                if (bestLocation == null) {
+                    if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                        val loc = suspendCoroutine<android.location.Location?> { cont ->
+                            locationManager.getCurrentLocation(
+                                android.location.LocationManager.GPS_PROVIDER,
+                                null,
+                                executor
+                            ) { resultLoc ->
+                                cont.resume(resultLoc)
+                            }
+                        }
+                        if (loc != null) {
+                            bestLocation = loc
+                        }
+                    }
+                }
+                
+                if (bestLocation == null) {
+                    if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                        val loc = suspendCoroutine<android.location.Location?> { cont ->
+                            locationManager.getCurrentLocation(
+                                android.location.LocationManager.NETWORK_PROVIDER,
+                                null,
+                                executor
+                            ) { resultLoc ->
+                                cont.resume(resultLoc)
+                            }
+                        }
+                        if (loc != null) {
+                            bestLocation = loc
+                        }
+                    }
+                }
+
+                if (bestLocation != null) {
+                    val lat = bestLocation.latitude
+                    val lng = bestLocation.longitude
+
+                    // Geocoder API를 통해 좌표 -> 주소 변환
+                    val geocoder = android.location.Geocoder(getApplication(), Locale.KOREAN)
+                    var addressStr = ""
+
+                    try {
+                        @Suppress("DEPRECATION")
+                        val addresses = geocoder.getFromLocation(lat, lng, 1)
+                        if (!addresses.isNullOrEmpty()) {
+                            val address = addresses[0]
+                            addressStr = address.getAddressLine(0) ?: ""
+                            // 대한민국 주소에 붙는 불필요한 국가명 제거 가공
+                            if (addressStr.startsWith("대한민국 ")) {
+                                addressStr = addressStr.removePrefix("대한민국 ")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                    if (addressStr.isBlank()) {
+                        addressStr = "위도: ${String.format(Locale.US, "%.5f", lat)}, 경도: ${String.format(Locale.US, "%.5f", lng)}"
+                    }
+
+                    val locationBlock = ContentBlock.LocationBlock(
+                        latitude = lat,
+                        longitude = lng,
+                        address = addressStr
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        _state.update { current ->
+                            current.copy(draftBlocks = current.draftBlocks + locationBlock)
+                        }
+                        sendEffect(DiaryEffect.ShowToast("현재 위치 블록이 추가되었습니다."))
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        sendEffect(DiaryEffect.ShowToast("현재 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지 확인해 주세요."))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    sendEffect(DiaryEffect.ShowToast("위치 정보를 가져오는 중 오류가 발생했습니다: ${e.message}"))
+                }
+            }
+        }
     }
 
     /**

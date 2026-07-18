@@ -3,6 +3,8 @@ package com.grepiu.aidiary.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Title
@@ -261,6 +264,51 @@ fun BlockEditor(
                     onRemoveColumn = onTableRemoveColumn
                 )
             }
+            is ContentBlock.LocationBlock -> {
+                LocationBlockEditor(block = block)
+            }
+        }
+    }
+}
+
+/**
+ * 에디터 내 위치 블록 렌더러.
+ * 현재 주소와 위경도 좌표를 깔끔하게 출력합니다.
+ */
+@Composable
+private fun LocationBlockEditor(
+    block: ContentBlock.LocationBlock,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Place,
+            contentDescription = "위치",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = block.address.ifBlank { "알 수 없는 주소" },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "위도: ${String.format(java.util.Locale.US, "%.5f", block.latitude)}, 경도: ${String.format(java.util.Locale.US, "%.5f", block.longitude)}",
+                fontSize = 10.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+            )
         }
     }
 }
@@ -733,13 +781,16 @@ fun AddBlockBar(
     onAdd: (ContentBlock) -> Unit,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
+    onAddLocation: () -> Unit,
     hasHeading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
         ) {
             AddChip(
                 icon = Icons.Default.Title,
@@ -758,7 +809,9 @@ fun AddBlockBar(
         Spacer(modifier = Modifier.height(8.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
         ) {
             AddChip(
                 icon = Icons.Default.Image,
@@ -776,6 +829,11 @@ fun AddBlockBar(
                 icon = Icons.Default.HorizontalRule,
                 label = "구분선",
                 onClick = { onAdd(ContentBlock.DividerBlock()) }
+            )
+            AddChip(
+                icon = Icons.Default.Place,
+                label = "위치",
+                onClick = onAddLocation
             )
         }
     }
@@ -825,6 +883,7 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
     is ContentBlock.DividerBlock -> Triple("구분선", Icons.Default.HorizontalRule, MaterialTheme.colorScheme.outline)
     is ContentBlock.TagAiBlock -> Triple("AI 태그", Icons.Default.AutoAwesome, Color(0xFF7B1FA2))
     is ContentBlock.TableBlock -> Triple("표", Icons.Filled.GridOn, Color(0xFF455A64))
+    is ContentBlock.LocationBlock -> Triple("현재 위치", Icons.Default.Place, MaterialTheme.colorScheme.secondary)
 }
 
 /**
