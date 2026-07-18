@@ -2267,12 +2267,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             val actualDir = modelDir.listFiles()
                 ?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }
                 ?: modelDir
-            sherpaEngine = SherpaEngine.create(
+            val engine = SherpaEngine.create(
                 actualDir.absolutePath,
                 language = _state.value.voiceLanguage
             )
-            _state.update { it.copy(isSherpaModelReady = true) }
-            Log.d("DiaryViewModel", "Sherpa engine ready (lang=${_state.value.voiceLanguage})")
+            if (engine != null) {
+                sherpaEngine = engine
+                _state.update { it.copy(isSherpaModelReady = true) }
+                Log.d("DiaryViewModel", "Sherpa engine ready (lang=${_state.value.voiceLanguage})")
+            } else {
+                _state.update { it.copy(isSherpaModelReady = false) }
+                Log.e("DiaryViewModel", "Sherpa engine initialization failed (null returned)")
+                // 깨진 모델 파일 유실 정리 (재다운로드 유도)
+                modelDir.deleteRecursively()
+            }
         } catch (e: Exception) {
             Log.e("DiaryViewModel", "Sherpa init failed: ${e.message}")
         }

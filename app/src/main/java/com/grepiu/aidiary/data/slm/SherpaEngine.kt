@@ -13,33 +13,41 @@ class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
          * 모델은 sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17 (zh/en/ja/ko/yue + auto).
          * @param language "auto" | "ko" | "en" | "ja" | "zh" | "yue"
          */
-        fun create(modelDir: String, language: String = "auto"): SherpaEngine {
-            var dir = File(modelDir)
-            dir.listFiles()?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }?.let { dir = it }
+        fun create(modelDir: String, language: String = "auto"): SherpaEngine? {
+            return try {
+                var dir = File(modelDir)
+                dir.listFiles()?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }?.let { dir = it }
 
-            val modelFile = dir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
-            val tok = File(dir, "tokens.txt")
-            require(modelFile != null && tok.exists()) { "Model files missing" }
+                val modelFile = dir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
+                val tok = File(dir, "tokens.txt")
+                if (modelFile == null || !tok.exists()) {
+                    Log.w(TAG, "Sherpa model files missing in $modelDir")
+                    return null
+                }
 
-            val normalizedLanguage = when (language) {
-                "ko", "en", "ja", "zh", "yue", "auto" -> language
-                else -> "auto"
-            }
+                val normalizedLanguage = when (language) {
+                    "ko", "en", "ja", "zh", "yue", "auto" -> language
+                    else -> "auto"
+                }
 
-            val cfg = OfflineRecognizerConfig(
-                modelConfig = OfflineModelConfig(
-                    senseVoice = OfflineSenseVoiceModelConfig(
-                        model = modelFile.absolutePath,
-                        language = normalizedLanguage,
-                        useInverseTextNormalization = true
+                val cfg = OfflineRecognizerConfig(
+                    modelConfig = OfflineModelConfig(
+                        senseVoice = OfflineSenseVoiceModelConfig(
+                            model = modelFile.absolutePath,
+                            language = normalizedLanguage,
+                            useInverseTextNormalization = true
+                        ),
+                        tokens = tok.absolutePath,
+                        numThreads = 4,
+                        provider = "cpu"
                     ),
-                    tokens = tok.absolutePath,
-                    numThreads = 4,
-                    provider = "cpu"
-                ),
-                decodingMethod = "greedy_search"
-            )
-            return SherpaEngine(OfflineRecognizer(config = cfg))
+                    decodingMethod = "greedy_search"
+                )
+                SherpaEngine(OfflineRecognizer(config = cfg))
+            } catch (e: Exception) {
+                Log.e(TAG, "SherpaEngine initialization failed due to native exception", e)
+                null
+            }
         }
     }
 

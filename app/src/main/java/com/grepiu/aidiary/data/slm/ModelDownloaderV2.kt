@@ -39,38 +39,61 @@ class ModelDownloaderV2(private val context: Context) {
 
     fun isSherpaModelDownloaded(): Boolean {
         val dir = getSherpaModelDir()
-        // tar.bz2 내부 디렉토리 감안하여 tokens.txt 검색
-        return dir.exists() && (File(dir, "tokens.txt").exists() || findModelSubdir(dir) != null)
+        if (!dir.exists()) return false
+        val actualDir = findModelSubdir(dir) ?: return false
+        val modelFile = actualDir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
+        val tokensFile = File(actualDir, "tokens.txt")
+        return modelFile != null && modelFile.exists() && modelFile.length() > 10L * 1024 * 1024 && tokensFile.exists()
     }
 
     private fun findModelSubdir(dir: File): File? {
         val subs = dir.listFiles { f -> f.isDirectory && !f.name.startsWith(".") }
-        if (subs != null && subs.size == 1 && File(subs[0], "tokens.txt").exists()) return subs[0]
-        return dir.takeIf { File(it, "tokens.txt").exists() }
+        if (subs != null && subs.size == 1) {
+            val sub = subs[0]
+            val modelFile = sub.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
+            val tokensFile = File(sub, "tokens.txt")
+            if (modelFile != null && tokensFile.exists()) return sub
+        }
+        val rootModelFile = dir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
+        val rootTokensFile = File(dir, "tokens.txt")
+        if (rootModelFile != null && rootTokensFile.exists()) return dir
+        return null
     }
 
     suspend fun downloadSherpaModel(
         url: String,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit
     ): Result<File> {
+        val archiveFile = File(modelDir, SHERPA_ARCHIVE)
+        val extractDir = getSherpaModelDir()
+        
         // 1. tar.bz2 다운로드
         val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 10L * 1024 * 1024, onProgress)
-        if (archiveResult.isFailure) return archiveResult
+        if (archiveResult.isFailure) {
+            if (archiveFile.exists()) archiveFile.delete()
+            return archiveResult
+        }
 
         // 2. 압축 해제
         return withContext(Dispatchers.IO) {
             try {
-                val archiveFile = File(modelDir, SHERPA_ARCHIVE)
-                val extractDir = getSherpaModelDir()
                 if (extractDir.exists()) extractDir.deleteRecursively()
                 extractDir.mkdirs()
 
                 extractTarBz2(archiveFile, extractDir)
-                archiveFile.delete() // 압축 파일 삭제
-                Log.d(TAG, "Sherpa model extracted to $extractDir")
-                Result.success(extractDir)
+                if (archiveFile.exists()) archiveFile.delete() // 압축 파일 삭제
+                
+                if (isSherpaModelDownloaded()) {
+                    Log.d(TAG, "Sherpa model extracted and verified at $extractDir")
+                    Result.success(extractDir)
+                } else {
+                    if (extractDir.exists()) extractDir.deleteRecursively()
+                    Result.failure(IOException("Sherpa model verification failed (ONNX model missing or corrupted)"))
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Sherpa model extraction failed", e)
+                if (extractDir.exists()) extractDir.deleteRecursively()
+                if (archiveFile.exists()) archiveFile.delete()
                 Result.failure(e)
             }
         }
