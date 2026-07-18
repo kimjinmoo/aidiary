@@ -1302,6 +1302,8 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.putExtra("android.intent.extra.vr.enable_stereo", true)
                     
                     intent.addCategory(Intent.CATEGORY_DEFAULT)
+                    // XR 환경에서 안전하게 새 작업 창으로 분리되도록 플래그 설정
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     
                     Log.d("External3DViewer", "비디오 ACTION_VIEW 인텐트 실행 시도")
@@ -1347,6 +1349,8 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.putExtra("vr_mode", true)
                     
                     intent.addCategory(Intent.CATEGORY_DEFAULT)
+                    // XR 환경에서 안전하게 새 작업 창으로 분리되도록 플래그 설정
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     
                     Log.d("External3DViewer", "단일 사진 ACTION_VIEW 인텐트 실행 시도")
@@ -1398,6 +1402,8 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         intent.putExtra("vr_mode", true)
                         
                         intent.addCategory(Intent.CATEGORY_DEFAULT)
+                        // XR 환경에서 안전하게 새 작업 창으로 분리되도록 플래그 설정
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         
                         Log.d("External3DViewer", "사진 ACTION_VIEW 인텐트 실행 시도")
@@ -1436,6 +1442,8 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
                     setDataAndType(uri, "image/*")
                 }
+                // XR 환경에서 안전하게 새 작업 창으로 분리되도록 플래그 설정
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(fallbackIntent)
