@@ -711,21 +711,38 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 val providers = locationManager.getProviders(true)
                 var bestLocation: android.location.Location? = null
 
-                // 1단계: 마지막으로 기록된 가장 정확한 위치 탐색
-                for (provider in providers) {
-                    val loc = locationManager.getLastKnownLocation(provider) ?: continue
-                    if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
+                // 1단계: 실시간으로 GPS 프로바이더를 사용하여 최고 정확도의 위치 획득 시도 (QUALITY_HIGH_ACCURACY)
+                if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                    val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    val locationRequest = android.location.LocationRequest.Builder(0)
+                        .setQuality(android.location.LocationRequest.QUALITY_HIGH_ACCURACY)
+                        .build()
+                    val loc = suspendCoroutine<android.location.Location?> { cont ->
+                        locationManager.getCurrentLocation(
+                            android.location.LocationManager.GPS_PROVIDER,
+                            locationRequest,
+                            null,
+                            executor
+                        ) { resultLoc ->
+                            cont.resume(resultLoc)
+                        }
+                    }
+                    if (loc != null) {
                         bestLocation = loc
                     }
                 }
 
-                // 2단계: 마지막 위치가 확인되지 않으면 실시간으로 단발성 업데이트(getCurrentLocation) 시도
+                // 2단계: GPS 획득 실패 시 네트워크 프로바이더를 통해 고정밀 위치 획득 시도
                 if (bestLocation == null) {
-                    if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                    if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
                         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                        val locationRequest = android.location.LocationRequest.Builder(0)
+                            .setQuality(android.location.LocationRequest.QUALITY_HIGH_ACCURACY)
+                            .build()
                         val loc = suspendCoroutine<android.location.Location?> { cont ->
                             locationManager.getCurrentLocation(
-                                android.location.LocationManager.GPS_PROVIDER,
+                                android.location.LocationManager.NETWORK_PROVIDER,
+                                locationRequest,
                                 null,
                                 executor
                             ) { resultLoc ->
@@ -737,20 +754,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
-                
+
+                // 3단계: 실시간 위치 측정이 모두 안 되면, 마지막으로 기록된 캐시 위치 중 가장 높은 정확도의 값 사용
                 if (bestLocation == null) {
-                    if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-                        val loc = suspendCoroutine<android.location.Location?> { cont ->
-                            locationManager.getCurrentLocation(
-                                android.location.LocationManager.NETWORK_PROVIDER,
-                                null,
-                                executor
-                            ) { resultLoc ->
-                                cont.resume(resultLoc)
-                            }
-                        }
-                        if (loc != null) {
+                    for (provider in providers) {
+                        val loc = locationManager.getLastKnownLocation(provider) ?: continue
+                        if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
                             bestLocation = loc
                         }
                     }
