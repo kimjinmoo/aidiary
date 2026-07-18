@@ -2032,7 +2032,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
                     val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt()
                     launch(Dispatchers.Main) { _state.update { it.copy(recordingSeconds = elapsed, recordingVolume = vol) } }
-                    if (elapsed >= 180) { launch(Dispatchers.Main) { stopRecording() }; break }
+                    if (elapsed >= 120) { launch(Dispatchers.Main) { stopRecording() }; break }
                 }
 
                 rec.stop(); rec.release(); fos.close()

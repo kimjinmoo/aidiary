@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.grepiu.aidiary.data.model.ContentBlock
@@ -529,6 +530,8 @@ private fun TitleHeroField(
                 text = "오늘의 제목을 입력하세요",
                 fontSize = titleSize.sp,
                 fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
             )
         },
@@ -643,7 +646,10 @@ private fun TitleStyleInline(
         // 색상
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
         ) {
             colorOptions.forEach { hex ->
                 val isSelected = currentStyle.color == hex
@@ -677,7 +683,7 @@ private fun TitleStyleInline(
                     }
                 }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(12.dp))
             // 사이즈
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 sizeOptions.forEach { (sizeSp, label) ->
@@ -928,7 +934,7 @@ private fun RecordingActiveBody(
     modifier: Modifier = Modifier
 ) {
     val recColor = Color(0xFFE53935)
-    val maxSeconds = 180
+    val maxSeconds = 120
     val progress = (seconds / maxSeconds.toFloat()).coerceIn(0f, 1f)
     val remainingSeconds = (maxSeconds - seconds).coerceAtLeast(0)
     val minutesStr = String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
@@ -978,7 +984,7 @@ private fun RecordingActiveBody(
             )
         }
         Spacer(Modifier.height(6.dp))
-        // 3분 한도 게이지 바
+        // 2분 한도 게이지 바
         Box(
             modifier = Modifier
                 .fillMaxWidth()
