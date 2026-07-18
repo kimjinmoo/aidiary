@@ -96,7 +96,7 @@ fun DiaryWelcomeScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "온디바이스 AI 일기장에 오신 것을 환영합니다.\n서비스 시작을 위해 아래 동의와 권한 확인이 필요합니다.",
+                text = "온디바이스 AI 다이어리에 오신 것을 환영합니다.\n서비스 시작을 위해 아래 동의와 권한 확인이 필요합니다.",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -143,7 +143,7 @@ fun DiaryWelcomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "* 선택 권한은 해당 기능을 사용할 때 요청하며, 동의하지 않아도 기본적인 일기 쓰기 서비스 이용은 가능합니다.",
+                text = "* 선택 권한은 해당 기능을 사용할 때 요청하며, 동의하지 않아도 기본적인 다이어리 기록 서비스 이용은 가능합니다.",
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                 modifier = Modifier.fillMaxWidth(),
