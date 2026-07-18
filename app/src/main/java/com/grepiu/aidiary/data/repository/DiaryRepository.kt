@@ -301,6 +301,46 @@ class DiaryRepository(
         }
     }
 
+    suspend fun getAllEntries(): List<DiaryEntry> = withContext(Dispatchers.IO) {
+        loadAllFromRoom()
+    }
+
+    suspend fun addAllEntries(entries: List<DiaryEntry>) = withContext(Dispatchers.IO) {
+        database.runInTransaction {
+            entries.forEach { entry ->
+                val diaryEntity = entry.toDiaryEntity(PREVIEW_CHARS)
+                val blockEntities = entry.toBlockEntities()
+                val ftsRow = entry.toFtsRow(maxContentChars = DiarySearchDao.MAX_CONTENT_CHARS)
+                
+                dao.upsertBlocking(diaryEntity)
+                dao.deleteBlocksForBlocking(diaryEntity.id)
+                blockEntities.forEach { dao.insertBlockBlocking(it) }
+                supportDb.insertFtsBlocking(ftsRow)
+            }
+        }
+        // FTS5 rebuild
+        runCatching {
+            database.openHelper.writableDatabase
+                .execSQL("INSERT INTO diary_fts(diary_fts) VALUES('rebuild')")
+        }
+        invalidateCache()
+    }
+    suspend fun getRawBackupData(): Pair<List<DiaryEntity>, List<BlockEntity>> = withContext(Dispatchers.IO) {
+        val diaries = dao.allBlocking()
+        val blocks = dao.allBlocksBlocking()
+        diaries to blocks
+    }
+
+    suspend fun restoreRawBackupData(diaries: List<DiaryEntity>, blocks: List<BlockEntity>) = withContext(Dispatchers.IO) {
+        val blocksByDiary = blocks.groupBy { it.diaryId }
+        val restoredEntries = diaries.mapNotNull { diaryEntity ->
+            val blocksForThis = blocksByDiary[diaryEntity.id].orEmpty()
+                .sortedBy { it.orderIndex }
+                .mapNotNull { it.toContentBlock() }
+            diaryEntity.toDiaryEntry(blocks = blocksForThis)
+        }
+        addAllEntries(restoredEntries)
+    }
     private fun loadAllFromRoom(): List<DiaryEntry> {
         // 메타만 가져오기 (paged LIMIT 없이 모두)
         val metas = dao.allBlocking()

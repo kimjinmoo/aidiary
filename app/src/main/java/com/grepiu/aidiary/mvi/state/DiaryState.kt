@@ -107,6 +107,11 @@ data class DiaryState(
     // 이미지 픽업/촬영 진행 상태
     val isImportingImage: Boolean = false,
 
+    // 데이터 백업 및 복원 진행 상태
+    val isBackupProcessing: Boolean = false,                 // 백업/복원 진행 여부
+    val backupProgressMessage: String? = null,               // 로딩 중 노출할 메시지
+    val backupSuccessMessage: String? = null,                // 백업/복원 성공 시 팝업에 노출할 메시지 (null이 아니면 팝업 표시)
+
     // 본문 AI 한글 번역
     /** true: 본문 → 한글 번역 LLM 호출 중 */
     val isTranslatingDraft: Boolean = false,

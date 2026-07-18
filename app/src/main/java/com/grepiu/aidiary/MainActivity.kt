@@ -152,6 +152,24 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 백업 파일 생성(내보내기) 런처
+                val exportBackupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument("application/zip")
+                ) { uri ->
+                    if (uri != null) {
+                        viewModel.processIntent(DiaryIntent.ExportBackup(uri))
+                    }
+                }
+
+                // 백업 파일 열기(가져오기) 런처
+                val importBackupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) {
+                        viewModel.processIntent(DiaryIntent.ImportBackup(uri))
+                    }
+                }
+
                 // 카메라 촬영 런처
                 val pendingCameraUri = androidx.compose.runtime.remember {
                     androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
@@ -214,6 +232,12 @@ class MainActivity : ComponentActivity() {
                             }
                             is DiaryEffect.LaunchCloudPicker -> {
                                 pickCloudLauncher.launch("*/*")
+                            }
+                            is DiaryEffect.LaunchExportBackupPicker -> {
+                                exportBackupLauncher.launch(effect.fileName)
+                            }
+                            is DiaryEffect.LaunchImportBackupPicker -> {
+                                importBackupLauncher.launch(arrayOf("application/zip"))
                             }
                         }
                     }

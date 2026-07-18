@@ -21,6 +21,7 @@ import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryRepository
+import com.grepiu.aidiary.data.repository.BackupManager
 import com.grepiu.aidiary.data.repository.DiaryDatabase
 import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.data.repository.DiarySearchHit
@@ -71,6 +72,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val downloader = ModelDownloaderV2(application)
     private val repository = DiaryRepository(application)
+    private val backupManager = BackupManager(application, repository)
     private val imageStore = ImageStorageManager(application)
     private val videoStore = com.grepiu.aidiary.data.repository.VideoStorageManager(application)
     private val plannerRepository = PlannerRepository(application)
@@ -538,6 +540,64 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.CloudFilesPicked -> {
                 if (intent.uris.isNotEmpty()) importCloudFiles(intent.uris)
+            }
+            is DiaryIntent.RequestExportBackup -> {
+                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                sendEffect(DiaryEffect.LaunchExportBackupPicker("aidiary_backup_$timeStamp.zip"))
+            }
+            is DiaryIntent.ExportBackup -> {
+                viewModelScope.launch {
+                    _state.update {
+                        it.copy(
+                            isBackupProcessing = true,
+                            backupProgressMessage = "일기 데이터와 사진/영상을 백업 파일로 묶는 중입니다…"
+                        )
+                    }
+                    val result = backupManager.exportToZip(intent.uri)
+                    _state.update {
+                        it.copy(
+                            isBackupProcessing = false,
+                            backupProgressMessage = null,
+                            backupSuccessMessage = if (result.isSuccess) "모든 일기 본문과 미디어 파일이 성공적으로 백업되었습니다!" else null
+                        )
+                    }
+                    if (!result.isSuccess) {
+                        val e = result.exceptionOrNull()
+                        sendEffect(DiaryEffect.ShowToast("백업 내보내기 실패: ${e?.localizedMessage}"))
+                    }
+                }
+            }
+            is DiaryIntent.RequestImportBackup -> {
+                sendEffect(DiaryEffect.LaunchImportBackupPicker)
+            }
+            is DiaryIntent.ImportBackup -> {
+                viewModelScope.launch {
+                    _state.update {
+                        it.copy(
+                            isBackupProcessing = true,
+                            backupProgressMessage = "백업 파일에서 데이터와 미디어를 복원하는 중입니다…"
+                        )
+                    }
+                    val result = backupManager.importFromZip(intent.uri)
+                    val count = result.getOrNull() ?: 0
+                    if (result.isSuccess) {
+                        refreshCurrentMetaPage()
+                    }
+                    _state.update {
+                        it.copy(
+                            isBackupProcessing = false,
+                            backupProgressMessage = null,
+                            backupSuccessMessage = if (result.isSuccess) "성공적으로 ${count}개의 일기와 사진/영상 복원을 완료했습니다!" else null
+                        )
+                    }
+                    if (!result.isSuccess) {
+                        val e = result.exceptionOrNull()
+                        sendEffect(DiaryEffect.ShowToast("백업 가져오기 실패: ${e?.localizedMessage}"))
+                    }
+                }
+            }
+            is DiaryIntent.DismissBackupSuccess -> {
+                _state.update { it.copy(backupSuccessMessage = null) }
             }
 
             // ===== 플래너 및 목표 기록 =====

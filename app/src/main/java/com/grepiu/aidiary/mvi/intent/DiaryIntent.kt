@@ -102,6 +102,18 @@ sealed interface DiaryIntent {
     /** 클라우드에서 다중 선택 완료된 URI 목록을 전달합니다. */
     data class CloudFilesPicked(val uris: List<Uri>) : DiaryIntent
 
+    // ===== 백업 및 복원 =====
+    /** 백업 파일 저장 공간 픽커 요청 */
+    data object RequestExportBackup : DiaryIntent
+    /** 백업 파일 저장 완료 및 작성 처리 */
+    data class ExportBackup(val uri: Uri) : DiaryIntent
+    /** 백업 가져오기 픽커 요청 */
+    data object RequestImportBackup : DiaryIntent
+    /** 백업 파일 가져오기 완료 및 복원 처리 */
+    data class ImportBackup(val uri: Uri) : DiaryIntent
+    /** 백업/복원 성공 안내 다이얼로그 닫기 */
+    data object DismissBackupSuccess : DiaryIntent
+
     // ===== 표 =====
     /** 표의 (row, col) 셀 텍스트를 갱신합니다. */
     data class UpdateTableCell(

@@ -94,6 +94,119 @@ fun DiaryListScreen(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    var showBackupDialog by remember { mutableStateOf(false) }
+
+    if (showBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupDialog = false },
+            title = {
+                Text(
+                    text = "데이터 백업 및 복원",
+                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    text = "모든 일기 본문과 분석 데이터, 그리고 첨부된 사진/동영상 미디어를 하나의 ZIP 파일로 내보내거나, 기존 백업에서 전체 복원할 수 있습니다.\n\n※ 복원 시 동일한 날짜의 일기는 덮어써집니다.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TextButton(
+                        onClick = {
+                            showBackupDialog = false
+                            onIntent(DiaryIntent.RequestImportBackup)
+                        }
+                    ) {
+                        Text("가져오기 (Import)", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = {
+                            showBackupDialog = false
+                            onIntent(DiaryIntent.RequestExportBackup)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Text("내보내기 (Export)", fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackupDialog = false }) {
+                    Text("취소")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // 1) 백업/복원 진행 중 로딩 다이얼로그
+    if (state.isBackupProcessing) {
+        AlertDialog(
+            onDismissRequest = {}, // 취소 불가
+            title = null,
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(vertical = 12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = state.backupProgressMessage ?: "데이터 백업/복원을 진행 중입니다…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = null,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // 2) 백업/복원 성공 안내 다이얼로그
+    if (state.backupSuccessMessage != null) {
+        AlertDialog(
+            onDismissRequest = { onIntent(DiaryIntent.DismissBackupSuccess) },
+            title = {
+                Text(
+                    text = "백업 및 복원 완료",
+                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Text(
+                    text = state.backupSuccessMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onIntent(DiaryIntent.DismissBackupSuccess) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("확인", fontWeight = FontWeight.Bold)
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 
     // 캘린더 일주일+ 일자 데이터 생성 (선택된 날짜 기준 앞뒤 7일씩 총 15일 구성)
     val calendarDays = remember(state.selectedDateString) {
@@ -270,6 +383,26 @@ fun DiaryListScreen(
                         Icon(
                             imageVector = Icons.Default.DateRange,
                             contentDescription = "달력 선택 피커",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // 백업/설정 버튼
+                    IconButton(
+                        onClick = { showBackupDialog = true },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "백업 및 설정",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
                         )

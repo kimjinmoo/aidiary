@@ -17,4 +17,8 @@ sealed interface DiaryEffect {
     data object LaunchVideoPicker : DiaryEffect
     /** 클라우드 picker(시스템 파일 탐색기)를 UI 측에 띄우도록 알립니다. */
     data object LaunchCloudPicker : DiaryEffect
+    /** 백업 ZIP 파일 저장을 위한 CreateDocument 런처 호출 이펙트 */
+    data class LaunchExportBackupPicker(val fileName: String) : DiaryEffect
+    /** 백업 ZIP 파일 불러오기를 위한 OpenDocument 런처 호출 이펙트 */
+    data object LaunchImportBackupPicker : DiaryEffect
 }
