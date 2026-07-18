@@ -36,17 +36,11 @@ class PlannerRepository(private val context: Context) {
     private val tasksFile = File(context.filesDir, "planner_tasks.json")
 
     /**
-     * 목표 리스트를 로드합니다. 데이터가 없으면 초기 웰컴 목표들을 자동 생성합니다.
+     * 목표 리스트를 로드합니다. 데이터가 없으면 빈 리스트를 반환합니다.
      */
     fun loadGoals(): List<Goal> {
         if (!goalsFile.exists()) {
-            val defaultGoals = listOf(
-                Goal(text = "매일 일기 한 장 기록하기 ✍️", isCompleted = false, category = "자기개발"),
-                Goal(text = "하루에 한 번 나를 위한 명상 🧘", isCompleted = false, category = "건강"),
-                Goal(text = "매주 3회 가볍게 운동하기 🏃", isCompleted = false, category = "건강")
-            )
-            saveGoals(defaultGoals)
-            return defaultGoals
+            return emptyList()
         }
         return try {
             val jsonStr = goalsFile.readText()
@@ -94,18 +88,11 @@ class PlannerRepository(private val context: Context) {
     }
 
     /**
-     * 할 일 플래너 리스트를 로드합니다. 데이터가 없으면 오늘 날짜의 웰컴 할 일들을 자동 생성합니다.
+     * 할 일 플래너 리스트를 로드합니다. 데이터가 없으면 빈 리스트를 반환합니다.
      */
     fun loadTasks(): List<PlannerTask> {
         if (!tasksFile.exists()) {
-            val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-            val defaultTasks = listOf(
-                PlannerTask(text = "오늘의 일기 잊지 않고 쓰기 📝", isCompleted = false, dateString = todayStr),
-                PlannerTask(text = "플래너에 할 일 3가지 계획하기 🎯", isCompleted = false, dateString = todayStr),
-                PlannerTask(text = "나를 행복하게 한 일 한 가지 떠올리기 ✨", isCompleted = false, dateString = todayStr)
-            )
-            saveTasks(defaultTasks)
-            return defaultTasks
+            return emptyList()
         }
         return try {
             val jsonStr = tasksFile.readText()

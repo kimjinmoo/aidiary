@@ -226,7 +226,7 @@ UI 규약:
 | `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM, 다국어(`auto`/`ko`/`en`/`ja`/`zh`/`yue`) | 모델 디렉토리에서 `.onnx` + `tokens.txt` 자동 탐지. `SherpaEngine.create(modelDir, language)` 로 언어 전달. 기본 `auto` |
 | `ModelDownloaderV2` | HuggingFace 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 콜백 |
 | `DiaryState` | 모든 UI 상태의 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실, 플래너/목표 및 AI 챗봇 대화 기록 동시 관리 |
-| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 (`PlannerTask` 필드: id / text / isCompleted / dateString / startTime / endTime / location / **seriesId** / timestamp) | `seriesId` 는 반복 계획 일괄 등록 그룹 식별자. 같은 시리즈의 모든 일자에 동일 UUID 가 부여되어 시리즈 단위 삭제가 가능. 데이터가 비어 있으면 시작 시 웰컴 가이드 데이터들을 자동 세팅 |
+| `PlannerRepository` | 할 일 및 목표의 로컬 JSON 영속화 관리 (`PlannerTask` 필드: id / text / isCompleted / dateString / startTime / endTime / location / **seriesId** / timestamp) | `seriesId` 는 반복 계획 일괄 등록 그룹 식별자. 같은 시리즈의 모든 일자에 동일 UUID 가 부여되어 시리즈 단위 삭제가 가능. 최초 설치 시 데이터 파일이 없으면 빈 리스트를 반환하며, 사용자가 직접 등록해야 함 |
 
 ## 6. 의존성/플러그인 위치
 
