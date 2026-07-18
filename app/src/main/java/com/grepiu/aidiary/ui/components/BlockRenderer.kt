@@ -1301,10 +1301,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.putExtra("render_mode", "stereo_sbs")
                     intent.putExtra("android.intent.extra.vr.enable_stereo", true)
                     
-                    // VR/Cardboard 카테고리 추가
                     intent.addCategory(Intent.CATEGORY_DEFAULT)
-                    intent.addCategory("com.google.intent.category.CARDBOARD")
-                    
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     
                     Log.d("External3DViewer", "비디오 ACTION_VIEW 인텐트 실행 시도")
@@ -1319,6 +1316,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
             }
         } else {
             Log.d("External3DViewer", "사진 입체 렌더링 모드 준비 - paths size: ${block.paths.size}")
+            // PHOTO의 경우, 좌/우 이미지를 임시 SBS(Side-by-Side) 이미지로 합쳐서 캐시 폴더에 저장 후 뷰어로 보냄
             if (block.paths.size == 1) {
                 // 단일 파일인 경우: 원본 자체가 이미 SBS 형태로 합쳐진 이미지로 판단
                 val rawFile = File(context.filesDir, block.paths[0])
@@ -1348,10 +1346,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.putExtra("open_as_3d", true)
                     intent.putExtra("vr_mode", true)
                     
-                    // VR/Cardboard 카테고리 추가
                     intent.addCategory(Intent.CATEGORY_DEFAULT)
-                    intent.addCategory("com.google.intent.category.CARDBOARD")
-                    
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     
                     Log.d("External3DViewer", "단일 사진 ACTION_VIEW 인텐트 실행 시도")
@@ -1402,10 +1397,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         intent.putExtra("open_as_3d", true)
                         intent.putExtra("vr_mode", true)
                         
-                        // VR/Cardboard 카테고리 추가
                         intent.addCategory(Intent.CATEGORY_DEFAULT)
-                        intent.addCategory("com.google.intent.category.CARDBOARD")
-                        
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         
                         Log.d("External3DViewer", "사진 ACTION_VIEW 인텐트 실행 시도")
@@ -1422,6 +1414,35 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
             } else {
                 Log.e("External3DViewer", "3D 사진 감상에는 최소 1장 이상의 경로가 필요합니다. (현재: ${block.paths.size})")
             }
+        }
+    } catch (e: android.content.ActivityNotFoundException) {
+        Log.w("External3DViewer", "특정 3D/VR 뷰어 앱 매핑 실패, 순수 플레이어로 폴백 실행 시도", e)
+        try {
+            // 패키지 및 고유 필터를 완전히 걷어내어 시스템 기본 플레이어 선택창이 뜨도록 복구 처리
+            val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                if (block.mediaType == SpatialMediaType.VIDEO) {
+                    val rawFile = File(context.filesDir, block.paths[0])
+                    val baseName = rawFile.nameWithoutExtension
+                    val tempVideoFile = File(context.cacheDir, "${baseName}_3D_SBS.mp4")
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempVideoFile)
+                    setDataAndType(uri, "video/*")
+                } else {
+                    val tempFile = if (block.paths.size == 1) {
+                        val rawFile = File(context.filesDir, block.paths[0])
+                        File(context.cacheDir, "${rawFile.nameWithoutExtension}_3D_SBS.jpg")
+                    } else {
+                        File(context.cacheDir, "sbs_photo_view_3D_SBS.jpg")
+                    }
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", tempFile)
+                    setDataAndType(uri, "image/*")
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(fallbackIntent)
+            Log.d("External3DViewer", "순수 ACTION_VIEW 폴백 실행 성공")
+        } catch (fallbackEx: Exception) {
+            Log.e("External3DViewer", "폴백 실행마저 실패", fallbackEx)
+            Toast.makeText(context, "플레이어 앱을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
         }
     } catch (e: Exception) {
         Log.e("External3DViewer", "내장 뷰어 실행 중 예외 발생", e)
