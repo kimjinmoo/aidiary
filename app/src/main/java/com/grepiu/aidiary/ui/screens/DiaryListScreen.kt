@@ -914,10 +914,11 @@ fun DiaryTabContent(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // AI 모델 다운로드 카드 (LLM 또는 Sherpa 상태에 따라 표시)
+            // AI 모델 다운로드 카드 (LLM / Sherpa 각각 독립 카드로 표시)
             val showDownloadCard = !state.isModelReady || state.isModelInitializing ||
-                state.showWifiWarning || state.isDownloadingModel ||
-                (!state.isSherpaModelReady && state.showSherpaDownloadNotice)
+                state.showWifiWarning || state.isDownloadingModel || state.isExtractingModel ||
+                state.showDownloadNotice || state.showSherpaDownloadNotice ||
+                state.isDeviceUnsupported
             if (showDownloadCard) {
                 item {
                     DownloadStatusCard(

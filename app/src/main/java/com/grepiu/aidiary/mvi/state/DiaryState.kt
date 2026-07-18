@@ -51,6 +51,7 @@ data class DiaryState(
     val isDownloadingModel: Boolean = false,                 // 다운로드 진행 여부
     val modelDownloadProgress: Float = 0f,                   // 다운로드 진행률 (0.0 ~ 1.0f)
     val modelDownloadSizeText: String? = null,               // 다운로드 용량 표기
+    val isExtractingModel: Boolean = false,                  // 다운로드 완료 후 압축 해제 진행 중
     val showDownloadNotice: Boolean = false,                 // 다운로드 안내 팝업 표시 여부
     val showSherpaDownloadNotice: Boolean = false,            // Sherpa 음성인식 모델 다운로드 안내 표시 여부
     /** Wi-Fi 경고가 어느 다운로드에서 발생했는지 추적 (null = none, "llm" = Gemma, "sherpa" = 음성인식) */

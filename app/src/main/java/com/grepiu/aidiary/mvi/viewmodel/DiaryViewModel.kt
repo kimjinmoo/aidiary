@@ -1480,22 +1480,27 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "음성인식 모델 다운로드 중...", showSherpaDownloadNotice = false, showWifiWarning = false, wifiWarningSource = null) }
 
             try {
-                downloader.downloadSherpaModel(SHERPA_DOWNLOAD_URL) { bytesRead, totalBytes ->
-                    val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
-                    val label = if (progress >= 0.99f) "압축 해제 중..." else "음성인식 모델 다운로드 중..."
-                    val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
-                    _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "$label $sizeText") }
-                }.onSuccess {
-                    _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
+                downloader.downloadSherpaModel(
+                    url = SHERPA_DOWNLOAD_URL,
+                    onProgress = { bytesRead, totalBytes ->
+                        val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                        val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
+                        _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "음성인식 모델 다운로드 중... $sizeText") }
+                    },
+                    onExtracting = {
+                        _state.update { it.copy(isExtractingModel = true, modelDownloadProgress = 1f, modelDownloadSizeText = "압축 해제 중... 잠시만 기다려 주세요") }
+                    }
+                )                .onSuccess {
+                    _state.update { it.copy(isDownloadingModel = false, isExtractingModel = false, modelDownloadSizeText = null) }
                     initSherpa()
                 }.onFailure { e ->
-                    _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null, showSherpaDownloadNotice = true) }
+                    _state.update { it.copy(isDownloadingModel = false, isExtractingModel = false, modelDownloadSizeText = null, showSherpaDownloadNotice = true) }
                     Log.e("DiaryViewModel", "Sherpa download failed: ${e.message}", e)
                     sendEffect(DiaryEffect.ShowToast("음성인식 모델 다운로드 실패: ${e.message}"))
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) return@launch
-                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null, showSherpaDownloadNotice = true) }
+                _state.update { it.copy(isDownloadingModel = false, isExtractingModel = false, modelDownloadSizeText = null, showSherpaDownloadNotice = true) }
                 Log.e("DiaryViewModel", "Sherpa download error", e)
                 sendEffect(DiaryEffect.ShowToast("음성인식 모델 다운로드 에러: ${e.message}"))
             }

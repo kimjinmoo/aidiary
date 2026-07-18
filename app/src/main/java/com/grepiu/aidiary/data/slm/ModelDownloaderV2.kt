@@ -59,19 +59,22 @@ class ModelDownloaderV2(private val context: Context) {
 
     suspend fun downloadSherpaModel(
         url: String,
-        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit
+        onProgress: (bytesRead: Long, totalBytes: Long) -> Unit,
+        onExtracting: (suspend () -> Unit)? = null
     ): Result<File> {
         val archiveFile = File(modelDir, SHERPA_ARCHIVE)
         val extractDir = getSherpaModelDir()
         
         // 1. tar.bz2 다운로드
-        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 10L * 1024 * 1024, onProgress)
+        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 1050L * 1024 * 1024, onProgress)
         if (archiveResult.isFailure) {
             if (archiveFile.exists()) archiveFile.delete()
             return archiveResult
         }
 
-        // 2. 압축 해제
+        // 2. 압축 해제 — 시작 시점에 콜백 호출
+        onExtracting?.invoke()
+
         return withContext(Dispatchers.IO) {
             try {
                 if (extractDir.exists()) extractDir.deleteRecursively()
