@@ -1170,11 +1170,11 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
     is ContentBlock.TagAiBlock -> Triple("AI 태그", Icons.Default.AutoAwesome, Color(0xFF7B1FA2))
     is ContentBlock.TableBlock -> Triple("표", Icons.Filled.GridOn, Color(0xFF455A64))
     is ContentBlock.LocationBlock -> Triple("현재 위치", Icons.Default.Place, MaterialTheme.colorScheme.secondary)
-    is ContentBlock.SpatialMediaBlock -> Triple(
-        if (block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO) "3D 사진" else "3D 영상",
-        Icons.Default.Movie,
-        Color(0xFF7C4DFF)
-    )
+    is ContentBlock.SpatialMediaBlock -> {
+        val is3D = block.captureMode.is3D
+        val label = if (block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO) "사진" else "영상"
+        Triple(label, Icons.Default.Movie, if (is3D) Color(0xFF7C4DFF) else MaterialTheme.colorScheme.outline)
+    }
 }
 
 /**
