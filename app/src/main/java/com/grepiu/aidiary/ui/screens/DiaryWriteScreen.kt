@@ -110,6 +110,7 @@ fun DiaryWriteScreen(
     onPickGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
     onPickVideo: () -> Unit = {},
+    onPickCloud: () -> Unit = {},
     onSaveDiary: () -> Unit = {},
     onBack: () -> Unit = {},
     onStartRecording: () -> Unit = {},
@@ -248,6 +249,7 @@ fun DiaryWriteScreen(
                 onTakePhoto = onTakePhoto,
                 onAddLocation = { onIntent(DiaryIntent.RequestLocationBlock) },
                 onPickVideo = onPickVideo,
+                onPickCloud = onPickCloud,
                 hasHeading = state.hasHeadingBlock,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )

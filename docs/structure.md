@@ -469,9 +469,12 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
 | `allPermissionsLauncher` | `DiaryEffect.RequestAllWelcomePermissions` | 마이크·위치·카메라 일괄 |
 | `pickImageLauncher` (PhotoPicker) | WRITE 화면 "+ 갤러리" | `ImagesPicked(uris)` |
 | `pickVideoLauncher` (VideoPicker) | WRITE 화면 "+ 영상(최대 30초)" | `VideoPicked(uri)` |
+| `pickCloudLauncher` (FilePicker/GetMultipleContents) | WRITE 화면 "+ 클라우드" | `CloudFilesPicked(uris)` |
 | `takePictureLauncher` | `DiaryEffect.LaunchCamera(uri)` | `CameraImageCaptured(uri)` |
 
 `viewModel.requestVideoImport()` 호출 시 `DiaryEffect.LaunchVideoPicker` 송출 → `MainActivity` 가 `pickVideoLauncher` 실행.
+클라우드 칩 클릭 시 `DiaryIntent.RequestCloudImport` 송출 → `DiaryEffect.LaunchCloudPicker` 송출 → `MainActivity` 가 `pickCloudLauncher` 실행.
+
 
 ---
 

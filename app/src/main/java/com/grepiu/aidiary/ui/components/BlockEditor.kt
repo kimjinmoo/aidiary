@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Title
 import androidx.compose.material.icons.filled.HorizontalRule
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -1015,6 +1016,7 @@ fun AddBlockBar(
     onTakePhoto: () -> Unit,
     onAddLocation: () -> Unit,
     onPickVideo: (() -> Unit)? = null,
+    onPickCloud: (() -> Unit)? = null,
     hasHeading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -1068,6 +1070,15 @@ fun AddBlockBar(
                     label = "영상(최대 30초)",
                     accent = Color(0xFF7C4DFF),
                     onClick = onPickVideo,
+                    enabled = canAddImage
+                )
+            }
+            if (onPickCloud != null) {
+                AddChip(
+                    icon = Icons.Default.CloudUpload,
+                    label = "클라우드",
+                    accent = Color(0xFF0288D1),
+                    onClick = onPickCloud,
                     enabled = canAddImage
                 )
             }

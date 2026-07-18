@@ -97,6 +97,10 @@ sealed interface DiaryIntent {
      * 3D 이면 [ContentBlock.SpatialMediaBlock] (VIDEO), 2D 이면 토스트로 안내.
      */
     data class VideoPicked(val uri: Uri) : DiaryIntent
+    /** 클라우드에서 미디어 업로드를 요청합니다. */
+    data object RequestCloudImport : DiaryIntent
+    /** 클라우드에서 다중 선택 완료된 URI 목록을 전달합니다. */
+    data class CloudFilesPicked(val uris: List<Uri>) : DiaryIntent
 
     // ===== 표 =====
     /** 표의 (row, col) 셀 텍스트를 갱신합니다. */

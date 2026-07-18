@@ -143,6 +143,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 클라우드 파일 픽업 런처 (다중 선택)
+                val pickCloudLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.GetMultipleContents()
+                ) { uris ->
+                    if (uris.isNotEmpty()) {
+                        viewModel.processIntent(DiaryIntent.CloudFilesPicked(uris))
+                    }
+                }
+
                 // 카메라 촬영 런처
                 val pendingCameraUri = androidx.compose.runtime.remember {
                     androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
@@ -203,6 +212,9 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                             }
+                            is DiaryEffect.LaunchCloudPicker -> {
+                                pickCloudLauncher.launch("*/*")
+                            }
                         }
                     }
                 }
@@ -223,6 +235,9 @@ class MainActivity : ComponentActivity() {
                             onTakePhoto = {
                                 viewModel.requestCameraCapture()
                             },
+                            onPickCloud = {
+                                viewModel.processIntent(DiaryIntent.RequestCloudImport)
+                            },
                             onRequestHomeSpaceMode = spatialConfiguration::requestHomeSpaceMode
                         )
                     }
@@ -240,6 +255,9 @@ class MainActivity : ComponentActivity() {
                         onTakePhoto = {
                             viewModel.requestCameraCapture()
                         },
+                        onPickCloud = {
+                            viewModel.processIntent(DiaryIntent.RequestCloudImport)
+                        },
                         onRequestFullSpaceMode = spatialConfiguration::requestFullSpaceMode
                     )
                 }
@@ -255,6 +273,7 @@ fun MySpatialContent(
     viewModel: DiaryViewModel,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
+    onPickCloud: () -> Unit,
     onRequestHomeSpaceMode: () -> Unit
 ) {
     SpatialPanel(SubspaceModifier.width(1080.dp).height(720.dp).resizable().movable()) {
@@ -264,6 +283,7 @@ fun MySpatialContent(
                 viewModel = viewModel,
                 onPickGallery = onPickGallery,
                 onTakePhoto = onTakePhoto,
+                onPickCloud = onPickCloud,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -288,6 +308,7 @@ fun My2DContent(
     viewModel: DiaryViewModel,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
+    onPickCloud: () -> Unit,
     onRequestFullSpaceMode: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -297,6 +318,7 @@ fun My2DContent(
                 viewModel = viewModel,
                 onPickGallery = onPickGallery,
                 onTakePhoto = onTakePhoto,
+                onPickCloud = onPickCloud,
                 modifier = Modifier.fillMaxSize()
             )
             // XR 기기 세션이 활성화된 상태에서만 공간화 모드 전환 버튼 노출
@@ -332,6 +354,7 @@ fun DiaryAppNavigationRouter(
     viewModel: DiaryViewModel,
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
+    onPickCloud: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     AnimatedContent(
@@ -448,6 +471,7 @@ fun DiaryAppNavigationRouter(
                     onPickGallery = onPickGallery,
                     onTakePhoto = onTakePhoto,
                     onPickVideo = { viewModel.requestVideoImport() },
+                    onPickCloud = onPickCloud,
                     onSaveDiary = {
                         viewModel.processIntent(DiaryIntent.SaveDiary)
                     },
@@ -526,6 +550,7 @@ fun My2dContentPreview() {
             viewModel = viewModel(),
             onPickGallery = {},
             onTakePhoto = {},
+            onPickCloud = {},
             onRequestFullSpaceMode = {}
         )
     }

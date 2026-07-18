@@ -15,4 +15,6 @@ sealed interface DiaryEffect {
     data class LaunchCamera(val targetUri: android.net.Uri) : DiaryEffect
     /** 비디오 picker 를 UI 측에 띄우도록 알립니다. */
     data object LaunchVideoPicker : DiaryEffect
+    /** 클라우드 picker(시스템 파일 탐색기)를 UI 측에 띄우도록 알립니다. */
+    data object LaunchCloudPicker : DiaryEffect
 }
