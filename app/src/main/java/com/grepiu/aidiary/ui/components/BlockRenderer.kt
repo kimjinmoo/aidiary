@@ -1234,6 +1234,20 @@ private fun SbsControllerOverlay(
     }
 }
 
+private fun safeStartActivity(context: Context, intent: Intent) {
+    val finalIntent = if (intent.getPackage() == null) {
+        // 패키지가 매핑되지 않은 암시적 인텐트인 경우(연결 프로그램 선택창을 띄워야 하는 상황)
+        // 안드로이드 선택 모달이 2D 앱 창 뒤에 가려지거나 파묻히는 현상을 해결하기 위해
+        // Chooser 인텐트 자체에 FLAG_ACTIVITY_NEW_TASK 플래그를 명시 주입하여 새로운 윈도우 레이어 전면에 띄웁니다.
+        Intent.createChooser(intent, "3D/VR 미디어 플레이어 선택").apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    } else {
+        intent
+    }
+    context.startActivity(finalIntent)
+}
+
 private fun launchExternal3DViewer(context: Context, block: ContentBlock.SpatialMediaBlock) {
     Log.d("External3DViewer", "launchExternal3DViewer 시작 - mediaType: ${block.mediaType}, paths: ${block.paths}")
     try {
@@ -1307,7 +1321,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     
                     Log.d("External3DViewer", "비디오 ACTION_VIEW 인텐트 실행 시도")
-                    context.startActivity(intent)
+                    safeStartActivity(context, intent)
                     Log.d("External3DViewer", "비디오 ACTION_VIEW 인텐트 실행 성공")
                 } else {
                     Log.e("External3DViewer", "비디오 파일이 존재하지 않아 인텐트를 발송하지 못했습니다.")
@@ -1354,7 +1368,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     
                     Log.d("External3DViewer", "단일 사진 ACTION_VIEW 인텐트 실행 시도")
-                    context.startActivity(intent)
+                    safeStartActivity(context, intent)
                     Log.d("External3DViewer", "단일 사진 ACTION_VIEW 인텐트 실행 성공")
                 } else {
                     Log.e("External3DViewer", "단일 3D 사진 파일이 존재하지 않습니다.")
@@ -1407,7 +1421,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         
                         Log.d("External3DViewer", "사진 ACTION_VIEW 인텐트 실행 시도")
-                        context.startActivity(intent)
+                        safeStartActivity(context, intent)
                         Log.d("External3DViewer", "사진 ACTION_VIEW 인텐트 실행 성공")
                     } else {
                         Log.e("External3DViewer", "비트맵 디코딩 실패 (좌: ${bmpLeft != null}, 우: ${bmpRight != null})")
@@ -1446,7 +1460,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(fallbackIntent)
+            safeStartActivity(context, fallbackIntent)
             Log.d("External3DViewer", "순수 ACTION_VIEW 폴백 실행 성공")
         } catch (fallbackEx: Exception) {
             Log.e("External3DViewer", "폴백 실행마저 실패", fallbackEx)
