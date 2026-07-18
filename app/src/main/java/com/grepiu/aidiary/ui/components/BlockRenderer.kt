@@ -458,7 +458,6 @@ private fun SpatialMediaBlockView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var showSbsViewer by remember { mutableStateOf(false) }
     val resolvedPaths = remember(block.paths) {
         block.paths.mapNotNull { rel ->
             if (rel.isBlank()) null
@@ -471,14 +470,6 @@ private fun SpatialMediaBlockView(
     val mediaTypeLabel = if (isPhoto) "사진" else "영상"
     val accent = if (is3D) Color(0xFF7C4DFF) else MaterialTheme.colorScheme.outline
     val secondaryLabel = if (is3D) block.captureMode.label else null
-
-    if (showSbsViewer && resolvedPaths.isNotEmpty()) {
-        StereoSbsViewerDialog(
-            isPhoto = isPhoto,
-            resolvedPaths = resolvedPaths,
-            onDismiss = { showSbsViewer = false }
-        )
-    }
 
     Column(
         modifier = modifier
@@ -533,25 +524,20 @@ private fun SpatialMediaBlockView(
 
             if (is3D) {
                 Spacer(modifier = Modifier.weight(1f))
-                val isSpatialUi = LocalSpatialCapabilities.current.isSpatialUiEnabled
                 val context = LocalContext.current
                 androidx.compose.material3.Button(
                     onClick = {
-                        if (isSpatialUi) {
-                            launchExternal3DViewer(context, block)
-                        } else {
-                            showSbsViewer = true
-                        }
+                        launchExternal3DViewer(context, block)
                     },
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = if (isSpatialUi) Color(0xFF7C4DFF) else Color(0xFF7C4DFF).copy(alpha = 0.85f)
+                        containerColor = Color(0xFF7C4DFF)
                     ),
                     shape = RoundedCornerShape(20.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     modifier = Modifier
                         .height(30.dp)
                         .shadow(
-                            elevation = if (isSpatialUi) 8.dp else 2.dp,
+                            elevation = 8.dp,
                             shape = RoundedCornerShape(20.dp),
                             clip = false,
                             ambientColor = Color(0xFF7C4DFF),
