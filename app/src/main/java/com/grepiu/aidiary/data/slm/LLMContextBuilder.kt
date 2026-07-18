@@ -50,12 +50,12 @@ object LLMContextBuilder {
      */
     fun classifyContentType(content: String, currentTypeLabel: String? = null): Pair<String, String> {
         val system = "$DOMAIN_HEADER " +
-                "주어진 본문을 보고 DIARY(개인 일기/회고), POST(정보/의견/아이디어), NOTE(짧은 메모) 중 하나로만 분류하세요. " +
-                "설명 없이 분류 키 한 단어만 출력하세요."
+                "주어진 본문을 분석하여 DIARY(개인 일기/회고/감정기록), POST(정보/지식전달/의견/긴 글), NOTE(짧은 메모/할 일/단편 기록) 중 하나로만 분류하세요. " +
+                "설명 없이 분류 키 한 단어(DIARY, POST, NOTE 중 하나)만 출력하세요."
         val user = buildString {
-            if (!currentTypeLabel.isNullOrBlank()) append("[현재 선택된 타입] $currentTypeLabel\n")
+            if (!currentTypeLabel.isNullOrBlank()) append("- 사용자가 현재 선택한 타입: $currentTypeLabel\n\n")
             append("[본문]\n")
-            append(truncateChars(content, 600))
+            append(truncateChars(content, 1500))
             append("\n\n분류:")
         }
         return system to user
@@ -145,14 +145,14 @@ object LLMContextBuilder {
         val system = "$DOMAIN_HEADER " +
                 "당신은 한국어 일기 분석기입니다. " +
                 "본문을 보고 (1) 글 타입, (2) 핵심 감정 을 동시에 답하세요. " +
-                "글 타입은 DIARY/POST/NOTE 셋 중 하나, " +
+                "글 타입은 DIARY(개인 일기/회고/감정기록), POST(정보/지식전달/의견/긴 글), NOTE(짧은 메모/할 일/단편 기록) 셋 중 하나로 분류하고, " +
                 "감정은 기쁨/슬픔/분노/불안/평온 다섯 단어 중 하나입니다. " +
                 "오직 JSON 한 줄로만 답하세요. 다른 텍스트/설명/마크다운은 절대 쓰지 마세요."
         val user = buildString {
             append("[일기 메타]\n")
             append("- 날짜: $dateString\n")
             append("- 제목: ${title.ifBlank { "(제목 없음)" }}\n")
-            append("- 사용자가 미리 선택한 타입: $currentTypeLabel\n\n")
+            append("- 사용자가 현재 선택한 타입: $currentTypeLabel\n\n")
             append("[본문]\n")
             append(truncateChars(content, 1500))
             append("\n\n[출력 형식 (정확히 한 줄 JSON)]\n")
