@@ -43,6 +43,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.xr.compose.platform.LocalSpatialCapabilities
 import coil.compose.AsyncImage
 import com.grepiu.aidiary.data.model.ContentBlock
 import java.io.File
@@ -440,6 +449,7 @@ private fun SpatialMediaBlockView(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var showSbsViewer by remember { mutableStateOf(false) }
     val resolvedPaths = remember(block.paths) {
         block.paths.mapNotNull { rel ->
             if (rel.isBlank()) null
@@ -453,12 +463,20 @@ private fun SpatialMediaBlockView(
     val accent = if (is3D) Color(0xFF7C4DFF) else MaterialTheme.colorScheme.outline
     val secondaryLabel = if (is3D) block.captureMode.label else null
 
+    if (showSbsViewer && resolvedPaths.isNotEmpty()) {
+        StereoSbsViewerDialog(
+            isPhoto = isPhoto,
+            resolvedPaths = resolvedPaths,
+            onDismiss = { showSbsViewer = false }
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
     ) {
-        // 3D 배지 + 포맷 라벨
+        // 3D 배지 + 포맷 라벨 + 3D 입체 보기 버튼
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -502,6 +520,46 @@ private fun SpatialMediaBlockView(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (is3D) {
+                Spacer(modifier = Modifier.weight(1f))
+                val isSpatialUi = LocalSpatialCapabilities.current.isSpatialUiEnabled
+                androidx.compose.material3.Button(
+                    onClick = { showSbsViewer = true },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = if (isSpatialUi) Color(0xFF7C4DFF) else Color(0xFF7C4DFF).copy(alpha = 0.85f)
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .height(30.dp)
+                        .shadow(
+                            elevation = if (isSpatialUi) 8.dp else 2.dp,
+                            shape = RoundedCornerShape(20.dp),
+                            clip = false,
+                            ambientColor = Color(0xFF7C4DFF),
+                            spotColor = Color(0xFF7C4DFF)
+                        )
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = "3D 입체 감상",
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "3D 입체 보기",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
             }
         }
 
@@ -800,6 +858,374 @@ private fun SpatialMediaBlockView(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+    }
+}
+
+// 싱크 유지를 위한 좌/우 플레이어 참조 홀더
+private class SbsSyncHolder {
+    var leftPlayer: android.widget.VideoView? = null
+    var rightPlayer: android.widget.VideoView? = null
+    var isPreparedLeft = false
+    var isPreparedRight = false
+}
+
+@Composable
+private fun StereoSbsViewerDialog(
+    isPhoto: Boolean,
+    resolvedPaths: List<File>,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var isPlaying by remember { mutableStateOf(false) }
+    var currentPos by remember { mutableStateOf(0) }
+    var duration by remember { mutableStateOf(0) }
+    var isPrepared by remember { mutableStateOf(false) }
+
+    // 싱크 홀더
+    val syncHolder = remember { SbsSyncHolder() }
+
+    // 비디오 재생 싱크 맞춤용 LaunchedEffect
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (true) {
+                val left = syncHolder.leftPlayer
+                val right = syncHolder.rightPlayer
+                if (left != null && right != null) {
+                    currentPos = left.currentPosition
+                    // 좌우 간 싱크 오차 250ms 이상 날 시 강제 맞춤
+                    val diff = Math.abs(left.currentPosition - right.currentPosition)
+                    if (diff > 250) {
+                        right.seekTo(left.currentPosition)
+                    }
+                }
+                kotlinx.coroutines.delay(100)
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = {
+            syncHolder.leftPlayer?.stopPlayback()
+            syncHolder.rightPlayer?.stopPlayback()
+            onDismiss()
+        },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            // 1. SBS 좌/우 시야 분할
+            Row(modifier = Modifier.fillMaxSize()) {
+                // 좌안(Left Eye)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isPhoto) {
+                        val leftFile = resolvedPaths.firstOrNull()
+                        if (leftFile != null) {
+                            AsyncImage(
+                                model = leftFile,
+                                contentDescription = "좌안 시점",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        val videoFile = resolvedPaths.firstOrNull()
+                        if (videoFile != null) {
+                            SbsVideoPlayer(
+                                videoFile = videoFile,
+                                isLeft = true,
+                                syncHolder = syncHolder,
+                                isPlayingState = isPlaying,
+                                seekPos = currentPos,
+                                onPrepared = { d ->
+                                    duration = d
+                                    if (syncHolder.isPreparedLeft && syncHolder.isPreparedRight) {
+                                        isPrepared = true
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // 우안(Right Eye)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isPhoto) {
+                        val rightFile = if (resolvedPaths.size >= 2) resolvedPaths[1] else resolvedPaths.firstOrNull()
+                        if (rightFile != null) {
+                            AsyncImage(
+                                model = rightFile,
+                                contentDescription = "우안 시점",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        val videoFile = resolvedPaths.firstOrNull()
+                        if (videoFile != null) {
+                            SbsVideoPlayer(
+                                videoFile = videoFile,
+                                isLeft = false,
+                                syncHolder = syncHolder,
+                                isPlayingState = isPlaying,
+                                seekPos = currentPos,
+                                onPrepared = { _ ->
+                                    if (syncHolder.isPreparedLeft && syncHolder.isPreparedRight) {
+                                        isPrepared = true
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. 중앙 가이드 수직 분할선
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .align(Alignment.Center)
+            )
+
+            // 3. 사진용 하단 3D 태그 표출 / 비디오용 플레이어 컨트롤 바 (좌우 대칭으로 듀얼 렌더링하여 양안에 다 보이게 함)
+            if (!isPhoto && isPrepared) {
+                // 비디오 조작 컨트롤러 (좌안용)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .fillMaxHeight()
+                        .align(Alignment.BottomStart)
+                ) {
+                    SbsControllerOverlay(
+                        isPlaying = isPlaying,
+                        currentPos = currentPos.toFloat(),
+                        duration = duration.toFloat(),
+                        onPlayToggle = {
+                            isPlaying = !isPlaying
+                            syncHolder.leftPlayer?.let { lp ->
+                                if (isPlaying) lp.start() else lp.pause()
+                            }
+                            syncHolder.rightPlayer?.let { rp ->
+                                if (isPlaying) rp.start() else rp.pause()
+                            }
+                        },
+                        onSeek = { pos ->
+                            currentPos = pos.toInt()
+                            syncHolder.leftPlayer?.seekTo(currentPos)
+                            syncHolder.rightPlayer?.seekTo(currentPos)
+                        }
+                    )
+                }
+
+                // 비디오 조작 컨트롤러 (우안용)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .fillMaxHeight()
+                        .align(Alignment.BottomEnd)
+                ) {
+                    SbsControllerOverlay(
+                        isPlaying = isPlaying,
+                        currentPos = currentPos.toFloat(),
+                        duration = duration.toFloat(),
+                        onPlayToggle = {
+                            isPlaying = !isPlaying
+                            syncHolder.leftPlayer?.let { lp ->
+                                if (isPlaying) lp.start() else lp.pause()
+                            }
+                            syncHolder.rightPlayer?.let { rp ->
+                                if (isPlaying) rp.start() else rp.pause()
+                            }
+                        },
+                        onSeek = { pos ->
+                            currentPos = pos.toInt()
+                            syncHolder.leftPlayer?.seekTo(currentPos)
+                            syncHolder.rightPlayer?.seekTo(currentPos)
+                        }
+                    )
+                }
+            }
+
+            // 4. 대칭형 상단 닫기 버튼
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // 좌안 닫기
+                IconButton(
+                    onClick = {
+                        syncHolder.leftPlayer?.stopPlayback()
+                        syncHolder.rightPlayer?.stopPlayback()
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .padding(start = 24.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "닫기",
+                        tint = Color.White
+                    )
+                }
+
+                // 우안 닫기
+                IconButton(
+                    onClick = {
+                        syncHolder.leftPlayer?.stopPlayback()
+                        syncHolder.rightPlayer?.stopPlayback()
+                        onDismiss()
+                    },
+                    modifier = Modifier
+                        .padding(end = 24.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "닫기",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SbsVideoPlayer(
+    videoFile: File,
+    isLeft: Boolean,
+    syncHolder: SbsSyncHolder,
+    isPlayingState: Boolean,
+    seekPos: Int,
+    onPrepared: (Int) -> Unit
+) {
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { ctx ->
+            android.widget.VideoView(ctx).apply {
+                setVideoURI(android.net.Uri.fromFile(videoFile))
+                setOnPreparedListener { mp ->
+                    mp.isLooping = true
+                    // 에코 방지를 위해 사운드는 한쪽(Left)에서만 출력
+                    mp.setVolume(if (isLeft) 1f else 0f, if (isLeft) 1f else 0f)
+                    if (isLeft) {
+                        syncHolder.leftPlayer = this
+                        syncHolder.isPreparedLeft = true
+                    } else {
+                        syncHolder.rightPlayer = this
+                        syncHolder.isPreparedRight = true
+                    }
+                    onPrepared(mp.duration)
+                }
+            }
+        },
+        update = { vv ->
+            // 실시간 재생 여부 동기화
+            if (syncHolder.isPreparedLeft && syncHolder.isPreparedRight) {
+                if (isPlayingState) {
+                    if (!vv.isPlaying) vv.start()
+                } else {
+                    if (vv.isPlaying) vv.pause()
+                }
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
+private fun SbsControllerOverlay(
+    isPlaying: Boolean,
+    currentPos: Float,
+    duration: Float,
+    onPlayToggle: () -> Unit,
+    onSeek: (Float) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // 하단 조작 바
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomCenter)
+                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                .border(0.5.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .padding(12.dp)
+                .clickable(enabled = false) {}
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                IconButton(
+                    onClick = onPlayToggle,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "일시정지" else "재생",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                val formatTime = { ms: Float ->
+                    val totalSecs = (ms / 1000).toInt()
+                    val minutes = totalSecs / 60
+                    val seconds = totalSecs % 60
+                    String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
+                }
+                Text(
+                    text = "${formatTime(currentPos)} / ${formatTime(duration)}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.material3.Slider(
+                value = currentPos.coerceIn(0f, duration),
+                onValueChange = onSeek,
+                valueRange = 0f..maxOf(1f, duration),
+                colors = androidx.compose.material3.SliderDefaults.colors(
+                    thumbColor = Color(0xFF7C4DFF),
+                    activeTrackColor = Color(0xFF7C4DFF),
+                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(18.dp)
             )
         }
     }

@@ -41,9 +41,21 @@ object VideoFormatDetector {
                     Log.d(TAG, "Detected stereo MP4 (video tracks=$videoTrackCount): ${file.name}")
                     return Video3DFormat.StereoMp4
                 }
-                if (containsBoxTypeDeep(moov, "st3d") || containsBoxTypeDeep(moov, "proj") || containsBoxTypeDeep(moov, "svpi")) {
-                    Log.d(TAG, "Detected Spatial/VR Video (st3d/proj/svpi): ${file.name}")
-                    return Video3DFormat.MovSpatial
+                // moov 영역의 bytes를 가져와 st3d, proj, svpi 패턴을 플랫하게 스캔
+                val moovSize = (moov.end - moov.start).toInt()
+                if (moovSize > 0) {
+                    val moovBytes = ByteArray(moovSize)
+                    raf.seek(moov.start)
+                    raf.readFully(moovBytes)
+
+                    val hasSt3d = indexOf(moovBytes, "st3d".toByteArray(Charsets.US_ASCII)) >= 0
+                    val hasProj = indexOf(moovBytes, "proj".toByteArray(Charsets.US_ASCII)) >= 0
+                    val hasSvpi = indexOf(moovBytes, "svpi".toByteArray(Charsets.US_ASCII)) >= 0
+
+                    if (hasSt3d || hasProj || hasSvpi) {
+                        Log.d(TAG, "Detected Spatial/VR Video via flat scanning (st3d/proj/svpi): ${file.name}")
+                        return Video3DFormat.MovSpatial
+                    }
                 }
                 // 단일 비디오 트랙일 때 MV-HEVC 인지 판정 (hvcC.box 의 general_profile_idc)
                 if (isMvHevc(raf, moov)) {
@@ -225,6 +237,16 @@ object VideoFormatDetector {
             if (containsBoxTypeDeep(c, target)) return true
         }
         return false
+    }
+
+    private fun indexOf(buf: ByteArray, pattern: ByteArray): Int {
+        outer@ for (i in 0..buf.size - pattern.size) {
+            for (j in pattern.indices) {
+                if (buf[i + j] != pattern[j]) continue@outer
+            }
+            return i
+        }
+        return -1
     }
 }
 
