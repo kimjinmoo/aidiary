@@ -1250,6 +1250,29 @@ private fun SbsControllerOverlay(
 private fun launchExternal3DViewer(context: Context, block: ContentBlock.SpatialMediaBlock) {
     try {
         val intent = Intent(Intent.ACTION_VIEW)
+        
+        // HMD 디바이스 제조사별 공식 3D/VR 입체 뷰어 패키지 목록 (Android XR, Quest, Pico 등)
+        val xrPackages = listOf(
+            "com.google.android.apps.xr.media.player",
+            "com.google.android.apps.xr.media",
+            "com.google.android.apps.xr.player",
+            "com.oculus.gallery",
+            "com.oculus.tv",
+            "com.pico.gallery"
+        )
+        val pm = context.packageManager
+        var matchedPackage: String? = null
+        for (pkg in xrPackages) {
+            try {
+                pm.getPackageInfo(pkg, 0)
+                matchedPackage = pkg
+                break
+            } catch (_: Exception) {}
+        }
+        if (matchedPackage != null) {
+            intent.setPackage(matchedPackage)
+        }
+
         if (block.mediaType == SpatialMediaType.VIDEO) {
             if (block.paths.isNotEmpty()) {
                 val rawFile = File(context.filesDir, block.paths[0])
