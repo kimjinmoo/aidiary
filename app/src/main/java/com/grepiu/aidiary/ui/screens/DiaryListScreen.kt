@@ -1016,7 +1016,7 @@ fun DiaryTabContent(
  * 다이어리 검색바 v4. FTS5 기반으로 제목/본문에서 부분 문자열 + 날짜 가중치로 정렬된 결과를
  * [DiaryState.diaries] 에 채워넣는다. 검색 활성 시 우측에 '취소' 버튼이 슬라이드-인된다.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun DiarySearchBar(
     query: String,
@@ -1030,6 +1030,14 @@ fun DiarySearchBar(
     val focusManager = LocalFocusManager.current
     var localText by rememberSaveable(query) { mutableStateOf(query) }
     LaunchedEffect(query) { localText = query }
+
+    // 시스템 백버튼등으로 키보드 닫혀도 포커스 해제 안 되는 문제 해결
+    val isImeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(isImeVisible) {
+        if (!isImeVisible && isFocused) {
+            focusManager.clearFocus()
+        }
+    }
 
     val isActive = isFocused || localText.isNotBlank()
 
@@ -2570,6 +2578,7 @@ fun GoalItemRow(
 /**
  * 6. [AI 비서] 챗봇 탭 본문 영역
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatTabContent(
     state: DiaryState,
@@ -2581,6 +2590,14 @@ fun ChatTabContent(
     val listState = rememberLazyListState()
     var isInputFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    // 키보드가 시스템 백버튼 등으로 닫혀도 포커스 해제가 안 되는 문제 해결:
+    // WindowInsets.isImeVisible 로 IME 상태를 감지하여 키보드가 사라지면 강제로 clearFocus()
+    val isImeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(isImeVisible) {
+        if (!isImeVisible && isInputFocused) {
+            focusManager.clearFocus()
+        }
+    }
 
     // 대화가 누적될 때마다 자동으로 스크롤 하단 이동
     LaunchedEffect(state.chatMessages.size) {
