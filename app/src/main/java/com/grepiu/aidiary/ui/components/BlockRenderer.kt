@@ -17,13 +17,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +41,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxSize
 import coil.compose.AsyncImage
 import com.grepiu.aidiary.data.model.ContentBlock
 import java.io.File
@@ -556,34 +565,216 @@ private fun SpatialMediaBlockView(
             // VIDEO — 실제 재생 (sandbox 내부 파일을 VideoView 가 직접 읽음)
             val videoFile = resolvedPaths.firstOrNull()
             if (videoFile != null) {
-                androidx.compose.ui.viewinterop.AndroidView(
-                    factory = { ctx ->
-                        val videoView = android.widget.VideoView(ctx)
-                        videoView.setVideoURI(android.net.Uri.fromFile(videoFile))
-                        val controller = android.widget.MediaController(ctx)
-                        controller.setAnchorView(videoView)
-                        videoView.setMediaController(controller)
-                        videoView.setOnPreparedListener { mp ->
-                            mp.isLooping = false
-                            mp.setVolume(1f, 1f)
+                // 비디오 재생을 제어하기 위한 Compose 상태들
+                var videoViewRef by remember { mutableStateOf<android.widget.VideoView?>(null) }
+                var isPrepared by remember { mutableStateOf(false) }
+                var isPlaying by remember { mutableStateOf(false) }
+                var currentPos by remember { mutableStateOf(0f) }
+                var duration by remember { mutableStateOf(0f) }
+                var showControls by remember { mutableStateOf(true) }
+                var isDraggingSlider by remember { mutableStateOf(false) }
+                var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
+
+                // 비디오 재생 중일 때 주기적으로 현재 재생 시간을 업데이트
+                LaunchedEffect(isPlaying, isDraggingSlider) {
+                    if (isPlaying && !isDraggingSlider) {
+                        while (true) {
+                            videoViewRef?.let { vv ->
+                                currentPos = vv.currentPosition.toFloat()
+                                isPlaying = vv.isPlaying // 실제 동영상 상태와 동기화
+                            }
+                            kotlinx.coroutines.delay(100)
                         }
-                        videoView.setOnErrorListener { _, what, extra ->
-                            android.util.Log.w("BlockRenderer", "VideoView error: what=$what extra=$extra")
-                            true
+                    }
+                }
+
+                // 3초 미조작 시 컨트롤러 자동 페이드아웃 처리
+                LaunchedEffect(showControls, isPlaying, lastInteractionTime) {
+                    if (showControls && isPlaying) {
+                        kotlinx.coroutines.delay(3000)
+                        if (System.currentTimeMillis() - lastInteractionTime >= 3000) {
+                            showControls = false
                         }
-                        videoView
-                    },
+                    }
+                }
+
+                val formatTime = { ms: Float ->
+                    val totalSecs = (ms / 1000).toInt()
+                    val minutes = totalSecs / 60
+                    val seconds = totalSecs % 60
+                    String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
+                }
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(220.dp)
+                        .height(240.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(Color.Black)
                         .border(
-                            width = if (is3D) 1.dp else 0.5.dp,
-                            color = accent.copy(alpha = if (is3D) 0.5f else 0.3f),
+                            width = if (is3D) 1.5.dp else 0.5.dp,
+                            color = accent.copy(alpha = if (is3D) 0.8f else 0.3f),
                             shape = RoundedCornerShape(16.dp)
                         )
-                )
+                        .clickable {
+                            showControls = !showControls
+                            if (showControls) {
+                                lastInteractionTime = System.currentTimeMillis()
+                            }
+                        }
+                ) {
+                    // 1. Android VideoView
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { ctx ->
+                            android.widget.VideoView(ctx).apply {
+                                setVideoURI(android.net.Uri.fromFile(videoFile))
+                                setOnErrorListener { _, what, extra ->
+                                    android.util.Log.w("BlockRenderer", "VideoView error: what=$what extra=$extra")
+                                    true
+                                }
+                                setOnPreparedListener { mp ->
+                                    isPrepared = true
+                                    duration = mp.duration.toFloat()
+                                    mp.isLooping = false
+                                    mp.setVolume(1f, 1f)
+                                }
+                                setOnCompletionListener {
+                                    isPlaying = false
+                                    currentPos = 0f
+                                    seekTo(0)
+                                }
+                                videoViewRef = this
+                            }
+                        },
+                        update = { vv ->
+                            videoViewRef = vv
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .align(Alignment.Center)
+                    )
+
+                    // 2. 초기 로딩 중 스켈레톤/로딩바 오버레이
+                    if (!isPrepared) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.8f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator(
+                                    color = accent,
+                                    modifier = Modifier.size(36.dp),
+                                    strokeWidth = 3.dp
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "동영상을 불러오는 중…",
+                                    fontSize = 11.sp,
+                                    color = Color.LightGray
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. 커스텀 컨트롤러 오버레이 UI (Fade In/Out 효과)
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isPrepared && showControls,
+                        enter = androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.fadeOut(),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f))
+                        ) {
+                            // 중앙 재생/일시정지 큰 버튼
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.25f))
+                                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape)
+                                    .clickable {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        videoViewRef?.let { vv ->
+                                            if (vv.isPlaying) {
+                                                vv.pause()
+                                                isPlaying = false
+                                            } else {
+                                                vv.start()
+                                                isPlaying = true
+                                            }
+                                        }
+                                    }
+                                    .align(Alignment.Center),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = if (isPlaying) "일시정지" else "재생",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+
+                            // 하단 컨트롤 바 (재생 시간 슬라이더 + 타이머)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                        )
+                                    )
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                                    .clickable(enabled = false) {}
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "${formatTime(currentPos)} / ${formatTime(duration)}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                // SeekBar 대체용 슬라이더
+                                androidx.compose.material3.Slider(
+                                    value = currentPos.coerceIn(0f, duration),
+                                    onValueChange = { value ->
+                                        isDraggingSlider = true
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        currentPos = value
+                                    },
+                                    onValueChangeFinished = {
+                                        videoViewRef?.let { vv ->
+                                            vv.seekTo(currentPos.toInt())
+                                        }
+                                        isDraggingSlider = false
+                                    },
+                                    valueRange = 0f..maxOf(1f, duration),
+                                    colors = androidx.compose.material3.SliderDefaults.colors(
+                                        thumbColor = accent,
+                                        activeTrackColor = accent,
+                                        inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             } else {
                 Box(
                     modifier = Modifier
