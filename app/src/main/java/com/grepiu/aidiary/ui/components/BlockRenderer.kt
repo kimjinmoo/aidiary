@@ -55,6 +55,15 @@ import androidx.xr.compose.platform.LocalSpatialCapabilities
 import coil.compose.AsyncImage
 import com.grepiu.aidiary.data.model.ContentBlock
 import java.io.File
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.widget.Toast
+import androidx.core.content.FileProvider
+import com.grepiu.aidiary.data.model.SpatialMediaType
+import java.io.FileOutputStream
 
 /**
  * 일기 상세/목록 미리보기에서 사용되는 읽기 전용 블록 렌더러.
@@ -525,8 +534,15 @@ private fun SpatialMediaBlockView(
             if (is3D) {
                 Spacer(modifier = Modifier.weight(1f))
                 val isSpatialUi = LocalSpatialCapabilities.current.isSpatialUiEnabled
+                val context = LocalContext.current
                 androidx.compose.material3.Button(
-                    onClick = { showSbsViewer = true },
+                    onClick = {
+                        if (isSpatialUi) {
+                            launchExternal3DViewer(context, block)
+                        } else {
+                            showSbsViewer = true
+                        }
+                    },
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(
                         containerColor = if (isSpatialUi) Color(0xFF7C4DFF) else Color(0xFF7C4DFF).copy(alpha = 0.85f)
                     ),
@@ -1230,3 +1246,87 @@ private fun SbsControllerOverlay(
         }
     }
 }
+
+private fun launchExternal3DViewer(context: Context, block: ContentBlock.SpatialMediaBlock) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW)
+        if (block.mediaType == SpatialMediaType.VIDEO) {
+            if (block.paths.isNotEmpty()) {
+                val rawFile = File(context.filesDir, block.paths[0])
+                if (rawFile.exists()) {
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        rawFile
+                    )
+                    intent.setDataAndType(uri, "video/*")
+                    
+                    // 3D 입체 모드 활성화를 위한 다채로운 VR/3D HMD 플레이어 엑스트라 탑재
+                    intent.putExtra("3d_mode", "sbs")
+                    intent.putExtra("3d", true)
+                    intent.putExtra("stereo_mode", "sbs")
+                    intent.putExtra("stereo", "sbs")
+                    intent.putExtra("vr_mode", true)
+                    intent.putExtra("open_as_3d", true)
+                    intent.putExtra("render_mode", "stereo_sbs")
+                    intent.putExtra("android.intent.extra.vr.enable_stereo", true)
+                    
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    context.startActivity(intent)
+                } else {
+                    Toast.makeText(context, "비디오 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            // PHOTO의 경우, 좌/우 이미지를 임시 SBS(Side-by-Side) 이미지로 합쳐서 캐시 폴더에 저장 후 뷰어로 보냄
+            if (block.paths.size >= 2) {
+                val fileL = File(context.filesDir, block.paths[0])
+                val fileR = File(context.filesDir, block.paths[1])
+                if (fileL.exists() && fileR.exists()) {
+                    val bmpLeft = BitmapFactory.decodeFile(fileL.absolutePath)
+                    val bmpRight = BitmapFactory.decodeFile(fileR.absolutePath)
+                    if (bmpLeft != null && bmpRight != null) {
+                        val combinedWidth = bmpLeft.width + bmpRight.width
+                        val combinedHeight = maxOf(bmpLeft.height, bmpRight.height)
+                        val sbsBitmap = Bitmap.createBitmap(combinedWidth, combinedHeight, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(sbsBitmap)
+                        canvas.drawBitmap(bmpLeft, 0f, 0f, null)
+                        canvas.drawBitmap(bmpRight, bmpLeft.width.toFloat(), 0f, null)
+
+                        val tempFile = File(context.cacheDir, "sbs_photo_view.jpg")
+                        FileOutputStream(tempFile).use { out ->
+                            sbsBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                        }
+
+                        bmpLeft.recycle()
+                        bmpRight.recycle()
+                        sbsBitmap.recycle()
+
+                        val uri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.fileprovider",
+                            tempFile
+                        )
+                        intent.setDataAndType(uri, "image/*")
+                        
+                        // 3D 사진 입체 모드를 위한 엑스트라 탑재
+                        intent.putExtra("3d_mode", "sbs")
+                        intent.putExtra("stereo_mode", "sbs")
+                        intent.putExtra("open_as_3d", true)
+                        intent.putExtra("vr_mode", true)
+                        
+                        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        context.startActivity(intent)
+                    } else {
+                        Toast.makeText(context, "사진 데이터 변환에 실패했습니다.", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(context, "3D 사진 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "내장 뷰어 실행 실패: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+    }
+}
+
