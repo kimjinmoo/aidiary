@@ -325,13 +325,8 @@ private fun SpatialMediaEditorView(
     val is3D = block.captureMode.is3D
     val accent = if (is3D) androidx.compose.ui.graphics.Color(0xFF7C4DFF)
                  else MaterialTheme.colorScheme.outline
-    // 배지 텍스트: 2D 는 "사진" / "영상" 만, 3D 는 "3D 사진" / "3D 영상"
-    val badgeText = when {
-        isPhoto && is3D -> "3D 사진"
-        !isPhoto && is3D -> "3D 영상"
-        isPhoto -> "사진"
-        else -> "영상"
-    }
+    // 메인 배지: 항상 "사진" 또는 "영상" (3D 접두사 X)
+    val mediaTypeLabel = if (isPhoto) "사진" else "영상"
     // 보조 라벨: 3D 일 때만 포맷 상세 표시
     val secondaryLabel = if (is3D) block.captureMode.label else null
 
@@ -354,12 +349,28 @@ private fun SpatialMediaEditorView(
                 color = accent.copy(alpha = if (is3D) 0.18f else 0.10f)
             ) {
                 androidx.compose.material3.Text(
-                    text = badgeText,
+                    text = mediaTypeLabel,
                     fontSize = if (is3D) 12.sp else 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = accent,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                 )
+            }
+            if (is3D) {
+                // 3D 소형 칩 (메인 배지 옆)
+                Spacer(modifier = Modifier.width(6.dp))
+                androidx.compose.material3.Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = accent.copy(alpha = 0.12f)
+                ) {
+                    androidx.compose.material3.Text(
+                        text = "3D",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = accent,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(6.dp))
             if (secondaryLabel != null) {

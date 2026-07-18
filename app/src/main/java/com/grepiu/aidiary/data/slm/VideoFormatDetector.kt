@@ -45,6 +45,11 @@ object VideoFormatDetector {
                     Log.d(TAG, "Detected MOV st3d: ${file.name}")
                     return Video3DFormat.MovSpatial
                 }
+                // 단일 비디오 트랙일 때 MV-HEVC 인지 판정 (hvcC.box 의 general_profile_idc)
+                if (isMvHevc(raf, moov)) {
+                    Log.d(TAG, "Detected MV-HEVC: ${file.name}")
+                    return Video3DFormat.MvHevc
+                }
                 Video3DFormat.Plain2D
             } finally {
                 raf.close()
@@ -53,6 +58,75 @@ object VideoFormatDetector {
             Log.w(TAG, "VideoFormatDetector failed for ${file.name}: ${e.message}")
             Video3DFormat.Plain2D
         }
+    }
+
+    /**
+     * 단일 트랙 HEVC 가 MV-HEVC 인지 판정.
+     *
+     * 알고리즘 (ISO/IEC 14496-15):
+     *  1) moov/trak/mdia/minf/stbl/stsd 박스 진입
+     *  2) stsd/sample_entry(hev1 또는 hvc1) 안의 **hvcC** (HEVC Decoder Configuration Record) 찾기
+     *  3) hvcC 22 byte 안의 offset 2 = `general_profile_idc`
+     *      - 6 (MultiView) → MV-HEVC
+     *      - 7 (Scalable)   → MV-HEVC (rare)
+     *      - 그 외 (Main=1 / Main 10=2 / Main Still Picture=3 / Range Extensions=4 등) → 일반 HEVC
+     *
+     * iPhone 15 Pro, Galaxy XR, Pixel XR 등 MV-HEVC 영상은 profile_idc=6 으로 저장되므로
+     * 이 가벼운 휴리스틱으로 거의 모두 잡힘.
+     */
+    private fun isMvHevc(raf: RandomAccessFile, moov: Box): Boolean {
+        val traks = moov.children.filter { it.type == "trak" }
+        for (trak in traks) {
+            val mdia = trak.children.firstOrNull { it.type == "mdia" } ?: continue
+            if (!isVideoTrack(raf, trak)) continue
+            val minf = mdia.children.firstOrNull { it.type == "minf" } ?: continue
+            val stbl = minf.children.firstOrNull { it.type == "stbl" } ?: continue
+            val stsd = stbl.children.firstOrNull { it.type == "stsd" } ?: continue
+            // stsd: FullBox — box header(8) + version/flags(4) + entry_count(4) + entries...
+            val entryCountOffset = stsd.start + 12
+            if (entryCountOffset + 4 > stsd.end) continue
+            raf.seek(entryCountOffset)
+            val entryCount = raf.readInt()
+            var entryPos = entryCountOffset + 4L // stsd.start + 16
+            for (i in 0 until entryCount) {
+                if (entryPos + 8 > stsd.end) break
+                raf.seek(entryPos)
+                val entrySize = raf.readInt().toLong() and 0xFFFFFFFFL
+                if (entrySize < 8 || entryPos + entrySize > stsd.end) break
+                val entryType = ByteArray(4)
+                raf.read(entryType)
+                val type = String(entryType, Charsets.US_ASCII)
+                if (type != "hvc1" && type != "hev1") {
+                    entryPos += entrySize; continue
+                }
+                // sample entry 안에서 "hvcC" 시그니처를 시그니처 스캔으로 찾는다.
+                // SampleEntry(6 reserved + 2 data_ref_index) + VisualSampleEntry 고정 필드를
+                // 건너뛰기 위해 단순 4CC 문자열 매칭을 수행한다.
+                val entryEnd = entryPos + entrySize
+                var scanPos = entryPos + 8
+                while (scanPos + 12 <= entryEnd) {
+                    raf.seek(scanPos + 4)
+                    val fourCC = ByteArray(4)
+                    raf.read(fourCC)
+                    if (String(fourCC, Charsets.US_ASCII) == "hvcC") {
+                        raf.seek(scanPos)
+                        val boxSize = raf.readInt().toLong() and 0xFFFFFFFFL
+                        if (boxSize >= 8 && scanPos + boxSize <= entryEnd) {
+                            if (scanPos + 10 > entryEnd) break
+                            raf.seek(scanPos + 8)
+                            raf.read() // configurationVersion
+                            val profileIdc = raf.read() and 0x1F
+                            Log.d(TAG, "hvcC profile_idc=$profileIdc")
+                            if (profileIdc == 6 || profileIdc == 7) return true
+                        }
+                        break
+                    }
+                    scanPos++
+                }
+                entryPos += entrySize
+            }
+        }
+        return false
     }
 
     // ===== ISOBMFF 박스 파서 =====
@@ -161,4 +235,6 @@ sealed class Video3DFormat(val key: String, val label: String) {
     data object StereoMp4 : Video3DFormat("stereo_mp4", "Stereo MP4 입체 영상")
     /** QuickTime 의 st3d stereoscopic atom */
     data object MovSpatial : Video3DFormat("mov_spatial", "MOV 공간 영상")
+    /** 단일 트랙 MV-HEVC (iPhone 15 Pro / Galaxy XR / Pixel XR). hvcC.profile_idc 6 or 7 */
+    data object MvHevc : Video3DFormat("mv_hevc", "MV-HEVC 공간 영상")
 }

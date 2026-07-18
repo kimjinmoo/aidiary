@@ -412,11 +412,16 @@ fun BlockList(
 /**
  * 입체 미디어(SpatialMediaBlock) 읽기 전용 렌더러.
  *
- * - 3D 모드 (MPO/HEIC_AUX/STEREO_EXIF/STEREO_MP4/MOV_SPATIAL/MV_HEVC):
- *   상단에 "3D 사진" / "3D 영상" 보라색 배지 + 포맷 라벨
- *   PHOTO: paths 가 2장이면 좌/우 SBS 합성 미리보기. 1장이면 단일 + 3D 배지.
- *   VIDEO: 단일 영상 경로 + 3D 배지.
- * - 2D 모드 (PLAIN_2D_VIDEO): 3D 배지 없이 "영상" 회색 라벨만.
+ * 상단 배지 규칙 (사용자 의도):
+ *  - 메인 라벨: 항상 "사진" 또는 "영상" 만 표출 (3D 접두사 없음)
+ *  - 3D 일 때만 별도 소형 "3D" 칩을 메인 배지 옆에 노출
+ *  - 보조 라벨: 3D 일 때만 포맷 상세(MPO/Stereo MP4 등) 표시
+ *
+ * 본문(미디어 영역) 2D/3D 시각 구분:
+ *  - 3D PHOTO: 좌/우 SBS 합성 (paths >= 2 일 때) + 보라 border + purple accent
+ *  - 2D PHOTO: 단일 이미지 + 회색 border
+ *  - 3D VIDEO: VideoView + 보라 border
+ *  - 2D VIDEO: VideoView + 회색 border
  */
 @Composable
 private fun SpatialMediaBlockView(
@@ -434,19 +439,9 @@ private fun SpatialMediaBlockView(
     }
     val isPhoto = block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO
     val is3D = block.captureMode.is3D
-    // 배지 텍스트:
-    //  - 3D 사진 → "3D 사진"
-    //  - 3D 영상 → "3D 영상"
-    //  - 2D 사진 → "사진"     (사용자 의도: 2D 는 미디어 종류만 표출)
-    //  - 2D 영상 → "영상"
-    val badgeText = when {
-        isPhoto && is3D -> "3D 사진"
-        !isPhoto && is3D -> "3D 영상"
-        isPhoto -> "사진"
-        else -> "영상"
-    }
+    // 메인 배지: 항상 "사진" 또는 "영상" (3D 접두사 X)
+    val mediaTypeLabel = if (isPhoto) "사진" else "영상"
     val accent = if (is3D) Color(0xFF7C4DFF) else MaterialTheme.colorScheme.outline
-    // 보조 라벨: 3D 일 때만 포맷 상세(MPO/Stereo MP4 등) 표시, 2D 는 미디어 종류로 충분
     val secondaryLabel = if (is3D) block.captureMode.label else null
 
     Column(
@@ -467,12 +462,28 @@ private fun SpatialMediaBlockView(
                 border = BorderStroke(if (is3D) 1.dp else 0.5.dp, accent.copy(alpha = if (is3D) 0.8f else 0.4f))
             ) {
                 Text(
-                    text = badgeText,
+                    text = mediaTypeLabel,
                     fontSize = if (is3D) 12.sp else 11.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = accent,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                 )
+            }
+            if (is3D) {
+                // 3D 소형 칩 (메인 배지 옆에)
+                Spacer(modifier = Modifier.size(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = accent.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = "3D",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = accent,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.size(6.dp))
             if (secondaryLabel != null) {
@@ -547,21 +558,20 @@ private fun SpatialMediaBlockView(
             if (videoFile != null) {
                 androidx.compose.ui.viewinterop.AndroidView(
                     factory = { ctx ->
-                        android.widget.VideoView(ctx).apply {
-                            setVideoURI(android.net.Uri.fromFile(videoFile))
-                            val controller = android.widget.MediaController(ctx).apply {
-                                setAnchorView(this@apply)
-                            }
-                            setMediaController(controller)
-                            setOnPreparedListener { mp ->
-                                mp.isLooping = false
-                                mp.setVolume(1f, 1f)
-                            }
-                            setOnErrorListener { _, what, extra ->
-                                android.util.Log.w("BlockRenderer", "VideoView error: what=$what extra=$extra")
-                                true
-                            }
+                        val videoView = android.widget.VideoView(ctx)
+                        videoView.setVideoURI(android.net.Uri.fromFile(videoFile))
+                        val controller = android.widget.MediaController(ctx)
+                        controller.setAnchorView(videoView)
+                        videoView.setMediaController(controller)
+                        videoView.setOnPreparedListener { mp ->
+                            mp.isLooping = false
+                            mp.setVolume(1f, 1f)
                         }
+                        videoView.setOnErrorListener { _, what, extra ->
+                            android.util.Log.w("BlockRenderer", "VideoView error: what=$what extra=$extra")
+                            true
+                        }
+                        videoView
                     },
                     modifier = Modifier
                         .fillMaxWidth()

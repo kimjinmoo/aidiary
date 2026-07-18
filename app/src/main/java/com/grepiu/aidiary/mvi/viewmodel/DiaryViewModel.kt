@@ -885,7 +885,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                                 captureMode = com.grepiu.aidiary.data.model.SpatialCaptureMode.PLAIN_2D_VIDEO
                             )
                             _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
-                            sendEffect(DiaryEffect.ShowToast("영상을 첨부했어요. (MV-HEVC 입체 자동 감지는 다음 업데이트 예정)"))
+                            sendEffect(DiaryEffect.ShowToast("영상을 첨부했어요."))
                         }
                         is com.grepiu.aidiary.data.slm.Video3DFormat.StereoMp4 -> {
                             val block = ContentBlock.SpatialMediaBlock(
@@ -904,6 +904,15 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                             )
                             _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
                             sendEffect(DiaryEffect.ShowToast("입체 영상(MOV)을 추가했어요."))
+                        }
+                        is com.grepiu.aidiary.data.slm.Video3DFormat.MvHevc -> {
+                            val block = ContentBlock.SpatialMediaBlock(
+                                mediaType = com.grepiu.aidiary.data.model.SpatialMediaType.VIDEO,
+                                paths = listOf(relPath),
+                                captureMode = com.grepiu.aidiary.data.model.SpatialCaptureMode.MV_HEVC
+                            )
+                            _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
+                            sendEffect(DiaryEffect.ShowToast("MV-HEVC 입체 영상을 추가했어요."))
                         }
                     }
                 }
