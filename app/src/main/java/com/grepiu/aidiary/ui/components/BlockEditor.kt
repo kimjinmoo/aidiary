@@ -152,17 +152,32 @@ fun BlockEditor(
                     block is ContentBlock.HeadingBlock ||
                     block is ContentBlock.QuoteBlock
                 ) {
+                    val hasText = (block as? ContentBlock.TextBlock)?.text?.isNotBlank() == true ||
+                            (block as? ContentBlock.HeadingBlock)?.text?.isNotBlank() == true ||
+                            (block as? ContentBlock.QuoteBlock)?.text?.isNotBlank() == true
+
+                    // 일반 기능인 복사하기 버튼은 AI 메뉴 밖으로 분리해 별도 노출
+                    IconButton(
+                        onClick = onCopy,
+                        enabled = hasText,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "복사",
+                            tint = if (hasText) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
                     BlockAiMenu(
                         enabled = aiAssistEnabled,
                         isProofreading = isProofreading,
                         isDecorating = isDecorating,
                         isTranslating = isTranslating,
-                        hasText = (block as? ContentBlock.TextBlock)?.text?.isNotBlank() == true ||
-                            (block as? ContentBlock.HeadingBlock)?.text?.isNotBlank() == true ||
-                            (block as? ContentBlock.QuoteBlock)?.text?.isNotBlank() == true,
+                        hasText = hasText,
                         onProofread = onProofread,
                         onDecorate = onDecorate,
-                        onCopy = onCopy,
                         onTranslate = onTranslate
                     )
                 }
@@ -921,7 +936,6 @@ private fun BlockAiMenu(
     hasText: Boolean,
     onProofread: () -> Unit,
     onDecorate: () -> Unit,
-    onCopy: () -> Unit,
     onTranslate: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -952,21 +966,6 @@ private fun BlockAiMenu(
             expanded = menuOpen,
             onDismissRequest = { menuOpen = false }
         ) {
-            DropdownMenuItem(
-                text = { Text("복사하기", fontSize = 13.sp) },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                },
-                enabled = hasText,
-                onClick = {
-                    menuOpen = false
-                    onCopy()
-                }
-            )
             DropdownMenuItem(
                 text = { Text("AI 한국어로 번역", fontSize = 13.sp) },
                 leadingIcon = {
