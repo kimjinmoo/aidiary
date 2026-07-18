@@ -72,6 +72,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private val downloader = ModelDownloaderV2(application)
     private val repository = DiaryRepository(application)
     private val imageStore = ImageStorageManager(application)
+    private val videoStore = com.grepiu.aidiary.data.repository.VideoStorageManager(application)
     private val plannerRepository = PlannerRepository(application)
     private var llmEngine: DiaryLLMEngine? = null
     private var sherpaEngine: SherpaEngine? = null
@@ -529,6 +530,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             is DiaryIntent.CameraImageCaptured -> {
                 importCapturedImage(intent.capturedUri)
             }
+            is DiaryIntent.VideoPicked -> {
+                importPickedVideo(intent.uri)
+            }
 
             // ===== 플래너 및 목표 기록 =====
             is DiaryIntent.SelectDate -> {
@@ -758,10 +762,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 외부에서 픽업된 이미지 URI 를 내부 저장소로 복사하고 ImageBlock 으로 추가합니다.
-     */
-    /**
-     * 다중 픽업 이미지(1..N) 를 순차적으로 내부 저장소로 가져와 ImageBlock 들을 본문 끝에 append 합니다.
+     * 다중 픽업 이미지(1..N) 를 순차적으로 내부 저장소로 가져와 본문 끝에 append 합니다.
+     * PR 1 부터 [ImageFormatDetector] 로 3D 포맷 여부를 자동 감지해 [ImageBlock] 또는
+     * [ContentBlock.SpatialMediaBlock] 으로 분기 저장합니다.
+     *
      * 부분 실패는 카운트해서 마지막에 토스트로 요약 알립니다.
      */
     private fun importPickedImages(uris: List<Uri>) {
@@ -769,12 +773,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(isImportingImage = true) }
         viewModelScope.launch {
             var successCount = 0
+            var spatialCount = 0
             var failCount = 0
             for (uri in uris) {
-                val result = imageStore.importFromUri(uri)
-                result.onSuccess { relPath ->
+                val result = imageStore.importDetectingFormat(uri)
+                result.onSuccess { block ->
                     successCount++
-                    val block = ContentBlock.ImageBlock(relativePath = relPath)
+                    if (block is ContentBlock.SpatialMediaBlock) spatialCount++
                     _state.update {
                         it.copy(draftBlocks = it.draftBlocks + block)
                     }
@@ -787,8 +792,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             when {
                 failCount == 0 -> sendEffect(
                     DiaryEffect.ShowToast(
-                        if (successCount == 1) "이미지를 추가했어요."
-                        else "이미지 ${successCount}장을 추가했어요."
+                        buildImageImportMessage(successCount, spatialCount)
                     )
                 )
                 successCount == 0 -> sendEffect(
@@ -801,28 +805,122 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun buildImageImportMessage(totalCount: Int, spatialCount: Int): String {
+        if (totalCount == 1) {
+            return if (spatialCount == 1) "3D 사진을 추가했어요."
+            else "이미지를 추가했어요."
+        }
+        return if (spatialCount == 0) "이미지 ${totalCount}장을 추가했어요."
+        else "이미지 ${totalCount}장 (3D ${spatialCount}장) 추가했어요."
+    }
+
     /**
-     * 카메라 촬영의 [content://] URI 를 ContentResolver 로 읽어 내부 저장소로 복사한 뒤 ImageBlock 으로 추가합니다.
+     * 카메라 촬영의 [content://] URI 를 ContentResolver 로 읽어 내부 저장소로 복사한 뒤
+     * 3D 포맷 자동 감지 분기를 거쳐 [ImageBlock] 또는 [SpatialMediaBlock] 으로 추가합니다.
      */
     private fun importCapturedImage(capturedUri: Uri) {
         if (_state.value.isImportingImage) return
         _state.update { it.copy(isImportingImage = true) }
         viewModelScope.launch {
-            imageStore.importFromUri(capturedUri)
-                .onSuccess { relPath ->
-                    val block = ContentBlock.ImageBlock(relativePath = relPath)
+            imageStore.importDetectingFormat(capturedUri)
+                .onSuccess { block ->
+                    val isSpatial = block is ContentBlock.SpatialMediaBlock
                     _state.update {
                         it.copy(
                             draftBlocks = it.draftBlocks + block,
                             isImportingImage = false
                         )
                     }
+                    sendEffect(
+                        DiaryEffect.ShowToast(
+                            if (isSpatial) "3D 사진으로 저장했어요." else "사진을 저장했어요."
+                        )
+                    )
                 }
                 .onFailure { e ->
                     _state.update { it.copy(isImportingImage = false) }
                     sendEffect(DiaryEffect.ShowToast("카메라 이미지를 저장하지 못했어요: ${e.message}"))
                 }
         }
+    }
+
+    /**
+     * 비디오 picker 에서 사용자가 선택한 단일 URI 를 내부 저장소로 복사한 뒤
+     * [com.grepiu.aidiary.data.slm.VideoFormatDetector] 로 3D 포맷 여부 자동 감지.
+     * 3D 이면 [ContentBlock.SpatialMediaBlock] (VIDEO) 추가, 2D 이면 토스트로 안내하고 무시.
+     */
+    private fun importPickedVideo(uri: Uri) {
+        if (_state.value.isImportingImage) return
+        _state.update { it.copy(isImportingImage = true) }
+        viewModelScope.launch {
+            val importResult = videoStore.importFromUri(uri)
+            importResult
+                .onSuccess { relPath ->
+                    val file = videoStore.resolve(relPath)
+                    if (file == null) {
+                        sendEffect(DiaryEffect.ShowToast("영상 파일을 찾을 수 없어요."))
+                        _state.update { it.copy(isImportingImage = false) }
+                        return@onSuccess
+                    }
+                    // 30초 가드
+                    val durationMs = videoStore.getVideoDurationMs(file)
+                    if (durationMs != null && durationMs > com.grepiu.aidiary.data.repository.VideoStorageManager.MAX_VIDEO_DURATION_MS) {
+                        videoStore.delete(relPath)
+                        sendEffect(
+                            DiaryEffect.ShowToast(
+                                "영상은 최대 30초까지 첨부할 수 있어요. (선택 영상: ${durationMs / 1000}초)"
+                            )
+                        )
+                        _state.update { it.copy(isImportingImage = false) }
+                        return@onSuccess
+                    }
+                    // 비디오 3D 포맷 자동 감지
+                    val format = com.grepiu.aidiary.data.slm.VideoFormatDetector.detect(file)
+                    when (format) {
+                        is com.grepiu.aidiary.data.slm.Video3DFormat.Plain2D -> {
+                            // 2D 영상도 첨부는 허용 (PLAIN_2D_VIDEO 모드). 3D 마크는 표시 안됨.
+                            val block = ContentBlock.SpatialMediaBlock(
+                                mediaType = com.grepiu.aidiary.data.model.SpatialMediaType.VIDEO,
+                                paths = listOf(relPath),
+                                captureMode = com.grepiu.aidiary.data.model.SpatialCaptureMode.PLAIN_2D_VIDEO
+                            )
+                            _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
+                            sendEffect(DiaryEffect.ShowToast("영상을 첨부했어요. (MV-HEVC 입체 자동 감지는 다음 업데이트 예정)"))
+                        }
+                        is com.grepiu.aidiary.data.slm.Video3DFormat.StereoMp4 -> {
+                            val block = ContentBlock.SpatialMediaBlock(
+                                mediaType = com.grepiu.aidiary.data.model.SpatialMediaType.VIDEO,
+                                paths = listOf(relPath),
+                                captureMode = com.grepiu.aidiary.data.model.SpatialCaptureMode.STEREO_MP4
+                            )
+                            _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
+                            sendEffect(DiaryEffect.ShowToast("입체 영상(Stereo MP4)을 추가했어요."))
+                        }
+                        is com.grepiu.aidiary.data.slm.Video3DFormat.MovSpatial -> {
+                            val block = ContentBlock.SpatialMediaBlock(
+                                mediaType = com.grepiu.aidiary.data.model.SpatialMediaType.VIDEO,
+                                paths = listOf(relPath),
+                                captureMode = com.grepiu.aidiary.data.model.SpatialCaptureMode.MOV_SPATIAL
+                            )
+                            _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
+                            sendEffect(DiaryEffect.ShowToast("입체 영상(MOV)을 추가했어요."))
+                        }
+                    }
+                }
+                .onFailure { e ->
+                    sendEffect(DiaryEffect.ShowToast("영상을 가져오지 못했어요: ${e.message}"))
+                }
+            _state.update { it.copy(isImportingImage = false) }
+        }
+    }
+
+    /**
+     * 작성 화면에서 '영상 추가' 버튼이 호출. UI 측에 비디오 picker 런처를 띄우도록 알림.
+     * 현재는 [com.grepiu.aidiary.ui.screens.DiaryWriteScreen] 의 AddBlockBar 와 직접 연결되지
+     * 않으므로 [DiaryEffect.LaunchVideoPicker] 가 송출되면 1회성 picker 가 뜬다.
+     */
+    fun requestVideoImport() {
+        sendEffect(DiaryEffect.LaunchVideoPicker)
     }
 
     /**

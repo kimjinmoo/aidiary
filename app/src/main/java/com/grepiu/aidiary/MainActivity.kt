@@ -134,6 +134,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 비디오 픽업 런처 (단일)
+                val pickVideoLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.PickVisualMedia()
+                ) { uri ->
+                    if (uri != null) {
+                        viewModel.processIntent(DiaryIntent.VideoPicked(uri))
+                    }
+                }
+
                 // 카메라 촬영 런처
                 val pendingCameraUri = androidx.compose.runtime.remember {
                     androidx.compose.runtime.mutableStateOf<android.net.Uri?>(null)
@@ -186,6 +195,13 @@ class MainActivity : ComponentActivity() {
                             is DiaryEffect.LaunchCamera -> {
                                 pendingCameraUri.value = effect.targetUri
                                 takePictureLauncher.launch(effect.targetUri)
+                            }
+                            is DiaryEffect.LaunchVideoPicker -> {
+                                pickVideoLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.VideoOnly
+                                    )
+                                )
                             }
                         }
                     }
@@ -431,6 +447,7 @@ fun DiaryAppNavigationRouter(
                     },
                     onPickGallery = onPickGallery,
                     onTakePhoto = onTakePhoto,
+                    onPickVideo = { viewModel.requestVideoImport() },
                     onSaveDiary = {
                         viewModel.processIntent(DiaryIntent.SaveDiary)
                     },

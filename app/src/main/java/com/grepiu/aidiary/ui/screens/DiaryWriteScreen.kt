@@ -109,6 +109,7 @@ fun DiaryWriteScreen(
     onMoveBlock: (String, Int) -> Unit = { _, _ -> },
     onPickGallery: () -> Unit = {},
     onTakePhoto: () -> Unit = {},
+    onPickVideo: () -> Unit = {},
     onSaveDiary: () -> Unit = {},
     onBack: () -> Unit = {},
     onStartRecording: () -> Unit = {},
@@ -246,12 +247,13 @@ fun DiaryWriteScreen(
                 onPickGallery = onPickGallery,
                 onTakePhoto = onTakePhoto,
                 onAddLocation = { onIntent(DiaryIntent.RequestLocationBlock) },
+                onPickVideo = onPickVideo,
                 hasHeading = state.hasHeadingBlock,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
             if (state.isImportingImage) {
                 Spacer(Modifier.height(10.dp))
-                InlineStatusRow(text = "이미지를 가져오는 중…")
+                InlineStatusRow(text = "이미지/영상을 가져오는 중…")
             }
 
             // 6) 음성 입력

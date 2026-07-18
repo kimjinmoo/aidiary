@@ -91,6 +91,12 @@ sealed interface DiaryIntent {
      * ContentResolver 로 스트림을 열어 내부 저장소로 복사합니다.
      */
     data class CameraImageCaptured(val capturedUri: Uri) : DiaryIntent
+    /**
+     * 비디오 picker 에서 사용자가 선택한 [Uri] 1개. 내부 저장소로 복사한 뒤
+     * [com.grepiu.aidiary.data.slm.VideoFormatDetector] 로 3D 포맷 여부를 자동 감지해
+     * 3D 이면 [ContentBlock.SpatialMediaBlock] (VIDEO), 2D 이면 토스트로 안내.
+     */
+    data class VideoPicked(val uri: Uri) : DiaryIntent
 
     // ===== 표 =====
     /** 표의 (row, col) 셀 텍스트를 갱신합니다. */

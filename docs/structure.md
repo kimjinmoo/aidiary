@@ -7,8 +7,9 @@
 
 - **언어/플랫폼**: Kotlin + Jetpack Compose, Android XR(API 34+) 타깃
 - **아키텍처**: MVI 단방향 흐름 (`State` → `Composable` → `Intent` → `ViewModel` → `State`)
-- **콘텐츠 모델**: 블록 기반(`ContentBlock` 시즈 클래스) - 텍스트/제목/인용/이미지/구분선/위치
+- **콘텐츠 모델**: 블록 기반(`ContentBlock` 시즈 클래스) - 텍스트/제목/인용/이미지/구분선/위치/입체 미디어
 - **콘텐츠 타입**: `ContentType` (DIARY / POST / NOTE) - 일기/새 글/메모 3종, 작성 시 선택. AI 분석은 DIARY 에서만 노출
+- **입체 미디어 자동 감지 (v1)**: 첨부 이미지/영상이 3D 포맷(MPO/HEIC aux/Stereo EXIF/Stereo MP4/MOV spatial)이면 자동으로 [SpatialMediaBlock] 으로 분류. 일반 2D 사진은 기존 ImageBlock 그대로. 2D 영상은 현재 PR 범위 외.
 - **인라인 텍스트 서식**: `TextFormatting` 으로 bold/italic/underline/strikethrough/color/size 6종 지원 (입력 중 인라인 프리뷰)
 - **기본 폰트**: Pretendard (Regular/Medium/SemiBold/Bold 4개 weight, OTF, `res/font/`)
 - **온디바이스 AI**:
@@ -16,8 +17,11 @@
   - 음성 인식: Sherpa-Onnx (오프라인, 한국어 Zipformer)
 - **2B 모델 상하 문맥 보강 (v2)**: 모든 보조 액션 프롬프트는 [LLMContextBuilder] 가 통일. proofread/decorate 는 인접 블록 컨텍스트, 챗봇은 멀티턴 Conversation 재사용 + 직전 N턴 raw + 그 이전 1줄 요약 슬라이딩 윈도우, 저장 시점 (글 타입+감정) 은 1회 통합 호출.
 - **데이터 저장 (v3)**: Room DB (메인) + 파일 시스템
-  - `filesDir/diary.db` (Room DB: `diary`, `block`, `diary_fts` 가상테이블)
+  - `filesDir/diary.db` (Room DB: `diary`, `block` v2 — `spatial_type/spatial_paths_json/spatial_capture_mode` 컬럼 추가, `diary_fts` 가상테이블)
   - `filesDir/diary_images/<uuid>.jpg` (첨부 이미지 원본)
+  - `filesDir/diary_images/<uuid>_L.jpg`, `<uuid>_R.jpg` (MPO 추출 좌/우)
+  - `filesDir/diary_images/<uuid>_main.jpg` (HEIC aux 추출 primary)
+  - `filesDir/diary_videos/<uuid>.<ext>` (첨부 영상, Stereo MP4 / MOV spatial)
   - `filesDir/backup/diary_history_imported_<ts>.json` (구버전 JSON import 후 백업)
   - `cacheDir/` (녹음/카메라 임시 파일)
 - **확장성 (v3.1)**: 200건 상한 제거, **무제한** 일기 저장. FTS5 인덱스 본문 6,000자. RAG ID 매핑 O(1). 2만건 이상에서도 1초 이내 응답 목표.
@@ -35,20 +39,21 @@ app/src/main/java/com/grepiu/aidiary/
 ├── data/
 │   ├── model/
 │   │   ├── DiaryEntry.kt            # 일기 엔트리 (id, title, blocks, content 평문, emotion, aiAnalysis, contentType)
-│   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider/Location/TagAi/Table) + JSON 직렬화
+│   │   ├── ContentBlock.kt          # 블록 시즈 (Heading/Text/Quote/Image/Divider/Location/TagAi/Table/SpatialMedia) + JSON 직렬화
 │   │   ├── ContentType.kt           # 콘텐츠 타입 enum (DIARY/POST/NOTE) + storageKey 기반 영속화
 │   │   └── TextFormatting.kt        # 인라인 서식 (bold/italic/underline/strikethrough/color/size) + AnnotatedString 변환
 │   ├── repository/
 │   │   ├── DiaryRepository.kt       # [v3.1] Room 기반 (일기/블록/FTS5 CRUD), 메타 lazy + 풀 lazy, 페이지네이션
 │   │   ├── DiaryMeta.kt             # [NEW v3.1] 화면 표시용 경량 데이터 (id, timestamp, title, emotion, contentType, contentPreview)
-│   │   ├── DiaryDatabase.kt         # [NEW v3] Room Database 정의 (diary, block, FTS5 가상테이블)
+│   │   ├── DiaryDatabase.kt         # [v2] Room Database 정의 (diary, block v2 + spatial 컬럼, FTS5 가상테이블, MIGRATION_1_2)
 │   │   ├── DiaryDao.kt              # [NEW v3] Room DAO (메타/페이지네이션/Blocking/LIKE 폴백)
 │   │   ├── DiaryEntity.kt           # [NEW v3] Room @Entity (메타 + contentPreview)
-│   │   ├── BlockEntity.kt           # [NEW v3] Room @Entity (블록 1:N)
+│   │   ├── BlockEntity.kt           # [v2] Room @Entity (블록 1:N, v2: spatial_type/spatial_paths_json/spatial_capture_mode)
 │   │   ├── DiaryWithBlocks.kt       # [NEW v3] @Relation 매핑
 │   │   ├── DiarySearchDao.kt        # [NEW v3] FTS5 raw query DAO + MAX_CONTENT_CHARS=6000 + DiaryMetaRow
 │   │   ├── LegacyJsonImporter.kt    # [NEW v3] 구버전 diary_history.json → Room 1회 import (1,000건 batch)
-│   │   ├── ImageStorageManager.kt   # URI/파일 → filesDir/diary_images/ 복사, 블록 경로 resolve/delete
+│   │   ├── ImageStorageManager.kt   # URI/파일 → filesDir/diary_images/ 복사, 3D 포맷 자동 분기(MPO/HEIC aux), SpatialMediaBlock 생성, 블록 경로 resolve/delete
+│   │   ├── VideoStorageManager.kt   # [NEW] URI/파일 → filesDir/diary_videos/ 복사, 일기 삭제 시 일괄 정리
 │   │   └── PlannerRepository.kt     # 플래너 할 일(Tasks) 및 장기 목표(Goals)의 로컬 JSON 파일 영속화 관리
 │   └── slm/
 │       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
@@ -56,7 +61,9 @@ app/src/main/java/com/grepiu/aidiary/
 │       ├── LLMContextBuilder.kt     # 모든 보조 액션 프롬프트의 계층적 빌더 (도메인/세션/인접/현재입력/제약/예시), 인접 컨텍스트 추출, 슬라이딩 윈도우용 롤링 요약
 │       ├── DecorateResult.kt        # AI 꾸미기 추천 JSON 파서 + TextFormatting 변환 (5종 스타일)
 │       ├── ModelDownloaderV2.kt     # Gemma/Whisper 모델 다운로드·압축 해제·에셋 복사
-│       └── SherpaEngine.kt          # 오프라인 음성 인식 추론
+│       ├── SherpaEngine.kt          # 오프라인 음성 인식 추론
+│       ├── ImageFormatDetector.kt   # [NEW] MPO(APP2/MPF) / HEIC aux(auxl·auxC) / Stereo EXIF / Plain2D 자동 감지
+│       └── VideoFormatDetector.kt   # [NEW] MP4 ISOBMFF 박스 파서(자체 구현 ~250줄). 2-track(stereo mp4) / st3d(mov spatial) / Plain2D. MV-HEVC 단일 트랙은 PR 2 예정.
 │
 ├── mvi/
 │   ├── state/
@@ -120,6 +127,7 @@ app/src/main/java/com/grepiu/aidiary/
 | `DividerBlock` | - | 가로 구분선 |
 | `TagAiBlock` | `emotion` | 저장 시 AI 가 자동 생성한 'TAG AI' 블록. `emotion` 은 [기쁨, 슬픔, 분노, 불안, 평온] 5 종 중 하나. 위로/조언 본문은 생성하지 않으며 편집 불가(삭제만 가능). `extractPlainText` 에서는 제외되어 재분석 입력 피드백 루프를 방지 |
 | `TableBlock` | `rows`, `cols`, `cells` | 표 블록. `cells` 는 `rows × cols` 2D 문자열 리스트, 첫 행이 헤더. 기본 2×2 빈 셀로 시작, `DiaryViewModel` 의 `AddTableRow/Column`, `RemoveTableRow/Column` 으로 동적 크기 조정(최대 30×10). 셀 텍스트는 `extractPlainText` 에서 ` \| ` 로 결합되어 AI 분석 입력에 포함 |
+| `SpatialMediaBlock` | `mediaType`, `paths`, `captureMode`, `caption` | 입체 미디어(3D) 블록. `ImageFormatDetector` / `VideoFormatDetector` 가 자동 감지해 3D 포맷이면 생성. PHOTO=[L,R or main,aux] / VIDEO=[단일]. `captureMode` 는 MPO/HEIC_AUX/STEREO_EXIF/STEREO_MP4/MOV_SPATIAL/MV_HEVC. `extractPlainText` 에서는 `[3D 사진]` / `[3D 영상]` + caption 만 포함. `BlockRenderer` 가 3D 배지 + PHOTO 면 좌/우 SBS 합성 미리보기, VIDEO 면 단일 썸네일 |
 
 - 모든 블록은 `id` 를 가져 `UpdateBlockText` / `RemoveBlock` 등 키 기반 업데이트에 사용됩니다.
 - AI 분석용 평문 추출: `List<ContentBlock>.extractPlainText()` (Heading/Text/Quote 의 `text` 와 `TableBlock.cells` 를 ` \| ` 로 결합. `TagAiBlock` 은 AI 생성 결과이므로 제외).
@@ -281,7 +289,7 @@ UI 규약:
 - [ ] **메타 vs 풀 DiaryEntry 분기 (v3.1)** → UI 카드는 `DiaryMeta` 만 받음. 본문/이미지/서식 등 풀 데이터가 필요하면 `LoadFullDiary(id)` 인텐트 발행 후 `state.selectedDiary` 사용
 - [ ] **페이지네이션 진입점 (v3.1)** → LazyColumn 끝에 `onLoadMore: () -> Unit` 추가. 검색 모드일 땐 페이지네이션 자동 비활성화
 - [ ] **FTS5 폴백 (v3.1)** → `DiarySearchDao` 의 `searchByLikeMulti` 가 3 토큰까지 OR LIKE. FTS5 쿼리 실패는 `Log.w(TAG, ...)` 로 추적 가능
-- [ ] **Room 스키마 변경 시 (v3)** → `DiaryDatabase` 의 `version` 올리고 마이그레이션 추가. `fallbackToDestructiveMigration` 사용 금지 (데이터 손실)
+- [ ] **Room 스키마 변경 시 (v2)** → `DiaryDatabase` 의 `version` 을 2 로 올리고 `MIGRATION_1_2` (block 테이블에 spatial 컬럼 3개) 추가. `fallbackToDestructiveMigration` 사용 금지 (데이터 손실)
 - [ ] **FTS5 인덱스 길이 변경 시 (v3)** → `DiarySearchDao.MAX_CONTENT_CHARS` 갱신
 - [ ] **구버전 JSON 포맷 호환 변경 시** → `LegacyJsonImporter.parseEntry` 갱신 + 하위 호환
 - [ ] 권한 추가 시 → `AndroidManifest.xml` + `MainActivity` 의 런처 + `DiaryEffect.RequestXxx`

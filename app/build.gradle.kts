@@ -34,6 +34,14 @@ android {
             )
         }
     }
+
+    // Android framework 메서드 (Log, ExifInterface 등) 가 mock 되지 않은 unit test 환경에서
+    // RuntimeException 을 던지지 않도록 기본값 반환 허용
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -79,6 +87,9 @@ dependencies {
 
     // Coil (이미지 로딩)
     implementation(libs.coil.compose)
+
+    // ExifInterface (3D 사진/영상 포맷 자동 감지)
+    implementation(libs.androidx.exifinterface)
 
     // Room (메인 저장소) - 2만건 이상 확장성 대응
     implementation(libs.androidx.room.runtime)

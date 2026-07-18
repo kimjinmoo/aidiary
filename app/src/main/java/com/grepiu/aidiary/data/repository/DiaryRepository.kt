@@ -41,6 +41,7 @@ import java.util.Locale
 class DiaryRepository(
     private val context: Context,
     private val imageStore: ImageStorageManager = ImageStorageManager(context),
+    private val videoStore: VideoStorageManager = VideoStorageManager(context),
     private val database: DiaryDatabase = DiaryDatabase.get(context)
 ) {
     companion object {
@@ -148,7 +149,10 @@ class DiaryRepository(
         val updated = withContext(Dispatchers.IO) {
             val current = getOrLoadCache()
             val target = current.firstOrNull { it.id == id }
-            if (target != null) imageStore.deleteForEntry(target)
+            if (target != null) {
+                imageStore.deleteForEntry(target)
+                videoStore.deleteForEntry(target)
+            }
             database.runInTransaction {
                 dao.deleteByIdBlocking(id)
                 supportDb.deleteFtsBlocking(id)
@@ -391,42 +395,48 @@ private fun DiaryEntry.toBlockEntities(): List<BlockEntity> = blocks.mapIndexed 
             text = b.text, formattingJson = b.formatting.toJsonStringNullable(),
             path = null, caption = null, emotion = null,
             rows = null, cols = null, cellsJson = null,
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.TextBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_TEXT,
             text = b.text, formattingJson = b.formatting.toJsonStringNullable(),
             path = null, caption = null, emotion = null,
             rows = null, cols = null, cellsJson = null,
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.QuoteBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_QUOTE,
             text = b.text, formattingJson = b.formatting.toJsonStringNullable(),
             path = null, caption = null, emotion = null,
             rows = null, cols = null, cellsJson = null,
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.ImageBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_IMAGE,
             text = null, formattingJson = null,
             path = b.relativePath, caption = b.caption, emotion = null,
             rows = null, cols = null, cellsJson = null,
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.DividerBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_DIVIDER,
             text = null, formattingJson = null,
             path = null, caption = null, emotion = null,
             rows = null, cols = null, cellsJson = null,
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.TagAiBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_TAG_AI,
             text = null, formattingJson = null,
             path = null, caption = null, emotion = b.emotion,
             rows = null, cols = null, cellsJson = null,
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.TableBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_TABLE,
@@ -434,14 +444,26 @@ private fun DiaryEntry.toBlockEntities(): List<BlockEntity> = blocks.mapIndexed 
             path = null, caption = null, emotion = null,
             rows = b.rows, cols = b.cols,
             cellsJson = b.cells.toJsonArrayString(),
-            latitude = null, longitude = null, address = null
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
         )
         is ContentBlock.LocationBlock -> BlockEntity(
             id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_LOCATION,
             text = null, formattingJson = null,
             path = null, caption = null, emotion = null,
             rows = null, cols = null, cellsJson = null,
-            latitude = b.latitude, longitude = b.longitude, address = b.address
+            latitude = b.latitude, longitude = b.longitude, address = b.address,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
+        )
+        is ContentBlock.SpatialMediaBlock -> BlockEntity(
+            id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_SPATIAL_MEDIA,
+            text = null, formattingJson = null,
+            path = null, caption = b.caption, emotion = null,
+            rows = null, cols = null, cellsJson = null,
+            latitude = null, longitude = null, address = null,
+            spatialType = b.mediaType.key,
+            spatialPathsJson = b.paths.toJsonStringArray(),
+            spatialCaptureMode = b.captureMode.key
         )
     }
 }
@@ -464,6 +486,18 @@ private fun BlockEntity.toContentBlock(): ContentBlock? {
         ContentBlock.TYPE_LOCATION -> ContentBlock.LocationBlock(
             id = id, latitude = latitude ?: 0.0, longitude = longitude ?: 0.0, address = address ?: ""
         )
+        ContentBlock.TYPE_SPATIAL_MEDIA -> {
+            val mediaType = com.grepiu.aidiary.data.model.SpatialMediaType.fromKey(spatialType)
+            val mode = com.grepiu.aidiary.data.model.SpatialCaptureMode.fromKey(spatialCaptureMode)
+            val paths = spatialPathsJson?.let { parseStringArray(it) } ?: emptyList()
+            ContentBlock.SpatialMediaBlock(
+                id = id,
+                mediaType = mediaType,
+                paths = paths,
+                captureMode = mode,
+                caption = caption ?: ""
+            )
+        }
         else -> null
     }
 }
@@ -496,6 +530,15 @@ private fun List<List<String>>.toJsonArrayString(): String {
     return arr.toString()
 }
 
+/**
+ * 1D 문자열 리스트 (예: SpatialMediaBlock.paths) 를 JSON 배열 문자열로 직렬화.
+ */
+private fun List<String>.toJsonStringArray(): String {
+    val arr = JSONArray()
+    forEach { arr.put(it) }
+    return arr.toString()
+}
+
 private fun parseCells(json: String, rows: Int, cols: Int): List<List<String>> {
     return try {
         val arr = JSONArray(json)
@@ -507,4 +550,14 @@ private fun parseCells(json: String, rows: Int, cols: Int): List<List<String>> {
     } catch (e: Exception) {
         List(rows) { List(cols) { "" } }
     }
+}
+
+/**
+ * JSON 배열 문자열 → List<String>. 1차원 배열 (파일 경로 리스트) 전용.
+ */
+private fun parseStringArray(json: String): List<String> = try {
+    val arr = JSONArray(json)
+    (0 until arr.length()).mapNotNull { arr.optString(it, null)?.takeIf { it.isNotBlank() } }
+} catch (e: Exception) {
+    emptyList()
 }

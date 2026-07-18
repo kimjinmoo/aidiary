@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
@@ -15,6 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * - v3.1 마이그레이션 (entities 변경 없음, version 유지): v3.0 에서 Room Entity 로 잘못
  *      만들어진 `diary_fts` 일반 테이블이 남아있다면 [recreateFtsVirtualTableIfNeeded] 가
  *      DROP 후 FTS5 가상테이블로 재생성한다.
+ * - v2: [BlockEntity] 에 입체 미디어(SpatialMediaBlock) 지원을 위한 3개 컬럼 추가.
  * - FTS5 미지원 기기(저가 OEM)에서는 검색만 LIKE 폴백. 메인 CRUD 는 정상 동작.
  *
  * 주의:
@@ -23,7 +25,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [DiaryEntity::class, BlockEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class DiaryDatabase : RoomDatabase() {
@@ -34,6 +36,21 @@ abstract class DiaryDatabase : RoomDatabase() {
     companion object {
         private const val TAG = "DiaryDatabase"
         const val DB_NAME = "diary.db"
+
+        /**
+         * v1 → v2: SpatialMediaBlock 지원을 위해 [block] 테이블에 3개 컬럼 추가.
+         *
+         * - `spatial_type`: 'photo' | 'video' (SpatialMediaType.key)
+         * - `spatial_paths_json`: 파일 경로 JSON 배열. PHOTO=[L,R], VIDEO=[단일]
+         * - `spatial_capture_mode`: 'mpo' | 'heic_aux' | 'stereo_exif' | 'stereo_mp4' | 'mov_spatial' | 'mv_hevc'
+         */
+        val MIGRATION_1_2: Migration = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE block ADD COLUMN spatial_type TEXT")
+                db.execSQL("ALTER TABLE block ADD COLUMN spatial_paths_json TEXT")
+                db.execSQL("ALTER TABLE block ADD COLUMN spatial_capture_mode TEXT")
+            }
+        }
 
         @Volatile
         private var instance: DiaryDatabase? = null
@@ -50,6 +67,7 @@ abstract class DiaryDatabase : RoomDatabase() {
                 DiaryDatabase::class.java,
                 DB_NAME
             )
+                .addMigrations(MIGRATION_1_2)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)

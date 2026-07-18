@@ -82,6 +82,25 @@ sealed class ContentBlock {
         val address: String
     ) : ContentBlock()
 
+    /**
+     * 입체(3D) 미디어 블록. 자동 포맷 감지 결과가 3D 일 때 생성되며,
+     * 일반 [ImageBlock] / 비디오 블록과 분리해 다뤄진다.
+     *
+     * - [mediaType]: 사진(PHOTO) 또는 영상(VIDEO)
+     * - [paths]: 앱 내부 저장소(filesDir/) 기준 상대 경로 리스트.
+     *      - PHOTO: [왼쪽(또는 메인), 오른쪽(또는 보조)] 2장
+     *      - VIDEO: [단일 mv-hevc / stereo mp4] 1개
+     * - [captureMode]: 자동 감지된 3D 포맷 종류
+     * - [caption]: 사용자가 입력한 설명 (선택)
+     */
+    data class SpatialMediaBlock(
+        override val id: String = UUID.randomUUID().toString(),
+        val mediaType: SpatialMediaType,
+        val paths: List<String>,
+        val captureMode: SpatialCaptureMode,
+        val caption: String = ""
+    ) : ContentBlock()
+
     companion object {
         const val TYPE_HEADING = "heading"
         const val TYPE_TEXT = "text"
@@ -91,6 +110,7 @@ sealed class ContentBlock {
         const val TYPE_TAG_AI = "tagAi"
         const val TYPE_TABLE = "table"
         const val TYPE_LOCATION = "location"
+        const val TYPE_SPATIAL_MEDIA = "spatialMedia"
 
         /**
          * JSON 객체로부터 [ContentBlock] 인스턴스를 복원합니다.
@@ -141,6 +161,21 @@ sealed class ContentBlock {
                     longitude = obj.optDouble("longitude", 0.0),
                     address = obj.optString("address", "")
                 )
+                TYPE_SPATIAL_MEDIA -> {
+                    val mediaType = SpatialMediaType.fromKey(obj.optString("mediaType"))
+                    val mode = SpatialCaptureMode.fromKey(obj.optString("captureMode"))
+                    val pathsArr = obj.optJSONArray("paths")
+                    val paths = if (pathsArr != null) (0 until pathsArr.length())
+                        .mapNotNull { pathsArr.optString(it, null).takeIf { p -> p != null && p.isNotBlank() } }
+                    else emptyList()
+                    SpatialMediaBlock(
+                        id = id,
+                        mediaType = mediaType,
+                        paths = paths,
+                        captureMode = mode,
+                        caption = obj.optString("caption", "")
+                    )
+                }
                 else -> TextBlock(id = id, text = obj.optString("text", ""))
             }
         }
@@ -204,13 +239,80 @@ fun ContentBlock.toJson(): JSONObject = when (this) {
         put("longitude", longitude)
         put("address", address)
     }
+    is ContentBlock.SpatialMediaBlock -> JSONObject().apply {
+        put("type", ContentBlock.TYPE_SPATIAL_MEDIA)
+        put("id", id)
+        put("mediaType", mediaType.key)
+        val arr = org.json.JSONArray()
+        paths.forEach { arr.put(it) }
+        put("paths", arr)
+        put("captureMode", captureMode.key)
+        put("caption", caption)
+    }
+}
+
+/**
+ * [ContentBlock.SpatialMediaBlock.mediaType] 의 종류. 사진 / 영상.
+ */
+enum class SpatialMediaType(val key: String) {
+    PHOTO("photo"),
+    VIDEO("video");
+
+    companion object {
+        fun fromKey(key: String?): SpatialMediaType = when (key) {
+            "video" -> VIDEO
+            else -> PHOTO
+        }
+    }
+}
+
+/**
+ * 자동 감지된 입체 미디어 포맷.
+ *
+ * - [MPO]: Multi-Picture Object (CIPA). JPEG 의 APP2 MPF 시그니처.
+ * - [HEIC_AUX]: HEIF 컨테이너의 auxiliary 이미지 (Apple Spatial Photo 등).
+ * - [STEREO_EXIF]: EXIF 의 Stereo 플래그 / 키워드.
+ * - [STEREO_MP4]: ISOBMFF MP4 의 비디오 트랙 2개 (좌/우).
+ * - [MOV_SPATIAL]: QuickTime 컨테이너의 st3d stereoscopic atom.
+ * - [MV_HEVC]: 단일 트랙 MV-HEVC (H.265 Annex G). PR 1 에선 검출 안 됨, 향후 PR 에서 HEVC VPS 파싱.
+ * - [PLAIN_2D_VIDEO]: 입체가 아닌 일반 2D 영상. 첨부는 가능하지만 3D 마크 없음.
+ * - [PLAIN_2D_PHOTO]: 입체가 아닌 일반 2D 사진. 첨부는 가능하지만 3D 마크 없음.
+ */
+enum class SpatialCaptureMode(val key: String, val label: String) {
+    MPO("mpo", "MPO 3D 사진"),
+    HEIC_AUX("heic_aux", "HEIC 공간 사진"),
+    STEREO_EXIF("stereo_exif", "Stereo EXIF 3D 사진"),
+    STEREO_MP4("stereo_mp4", "Stereo MP4"),
+    MOV_SPATIAL("mov_spatial", "MOV 공간 영상"),
+    MV_HEVC("mv_hevc", "MV-HEVC 공간 영상"),
+    PLAIN_2D_VIDEO("plain_2d_video", "영상"),
+    PLAIN_2D_PHOTO("plain_2d_photo", "2D 사진");
+
+    /** 3D 입체 미디어 (3D 배지 노출) 여부. PLAIN_2D_VIDEO/PLAIN_2D_PHOTO 는 3D 아님. */
+    val is3D: Boolean
+        get() = this != PLAIN_2D_VIDEO && this != PLAIN_2D_PHOTO
+
+    companion object {
+        fun fromKey(key: String?): SpatialCaptureMode = when (key) {
+            "mpo" -> MPO
+            "heic_aux" -> HEIC_AUX
+            "stereo_exif" -> STEREO_EXIF
+            "stereo_mp4" -> STEREO_MP4
+            "mov_spatial" -> MOV_SPATIAL
+            "mv_hevc" -> MV_HEVC
+            "plain_2d_video" -> PLAIN_2D_VIDEO
+            "plain_2d_photo" -> PLAIN_2D_PHOTO
+            else -> MPO
+        }
+    }
 }
 
 /**
  * 블록 목록에서 AI 분석용 평문 텍스트만 추출합니다.
- * ImageBlock / DividerBlock / TagAiBlock 은 제외됩니다.
+ * ImageBlock / DividerBlock / TagAiBlock / SpatialMediaBlock 은 제외됩니다.
  * (TagAiBlock 은 AI 생성 결과이므로 재분석 입력에 포함하지 않습니다)
  * TableBlock 은 셀 텍스트를 " | " 로 결합해 한 줄로 포함합니다.
+ * SpatialMediaBlock 은 첨부 미디어(사진/영상) 의 caption 만 포함시켜 3D 라는 사실을 AI 가 인지하도록 합니다.
  */
 fun List<ContentBlock>.extractPlainText(): String =
     mapNotNull { block ->
@@ -222,6 +324,11 @@ fun List<ContentBlock>.extractPlainText(): String =
                 row.joinToString(" | ")
             }.ifBlank { null }
             is ContentBlock.LocationBlock -> "📍 위치: ${block.address}"
+            is ContentBlock.SpatialMediaBlock -> {
+                val tag = if (block.mediaType == SpatialMediaType.PHOTO) "[3D 사진]" else "[3D 영상]"
+                val text = block.caption.ifBlank { null }
+                if (text != null) "$tag $text" else tag
+            }
             else -> null
         }
     }.joinToString(separator = "\n")

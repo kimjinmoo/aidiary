@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Remove
@@ -293,6 +294,112 @@ fun BlockEditor(
             is ContentBlock.LocationBlock -> {
                 LocationBlockEditor(block = block)
             }
+            is ContentBlock.SpatialMediaBlock -> {
+                // 작성 화면에서는 입체 미디어 블록의 본문을 직접 편집하지 않음. read-only 안내.
+                SpatialMediaEditorView(block = block)
+            }
+        }
+    }
+}
+
+/**
+ * 작성 화면의 입체 미디어 블록 read-only 미리보기.
+ * 3D 배지 + SBS 합성 (PHOTO) 또는 단일 썸네일 (VIDEO) + 캡션 입력 가능.
+ *
+ *  - 3D 모드: 보라색 진한 배지 ("3D 사진" / "3D 영상")
+ *  - 2D 모드 (PLAIN_2D_VIDEO): 회색 라벨 ("영상") + 3D 마크 없음
+ */
+@Composable
+private fun SpatialMediaEditorView(
+    block: ContentBlock.SpatialMediaBlock,
+    modifier: Modifier = Modifier
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val resolvedPaths = androidx.compose.runtime.remember(block.paths) {
+        block.paths.mapNotNull { rel ->
+            if (rel.isBlank()) null
+            else java.io.File(context.filesDir, rel).takeIf { it.exists() }
+        }
+    }
+    val isPhoto = block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO
+    val is3D = block.captureMode.is3D
+    val accent = if (is3D) androidx.compose.ui.graphics.Color(0xFF7C4DFF)
+                 else MaterialTheme.colorScheme.outline
+    // 배지 텍스트: 2D 는 "사진" / "영상" 만, 3D 는 "3D 사진" / "3D 영상"
+    val badgeText = when {
+        isPhoto && is3D -> "3D 사진"
+        !isPhoto && is3D -> "3D 영상"
+        isPhoto -> "사진"
+        else -> "영상"
+    }
+    // 보조 라벨: 3D 일 때만 포맷 상세 표시
+    val secondaryLabel = if (is3D) block.captureMode.label else null
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(accent.copy(alpha = if (is3D) 0.07f else 0.04f))
+            .border(
+                width = if (is3D) 1.dp else 0.5.dp,
+                color = accent.copy(alpha = if (is3D) 0.5f else 0.3f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = accent.copy(alpha = if (is3D) 0.18f else 0.10f)
+            ) {
+                androidx.compose.material3.Text(
+                    text = badgeText,
+                    fontSize = if (is3D) 12.sp else 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = accent,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            if (secondaryLabel != null) {
+                androidx.compose.material3.Text(
+                    text = secondaryLabel,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        if (resolvedPaths.size >= 2) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                resolvedPaths.take(2).forEach { file ->
+                    coil.compose.AsyncImage(
+                        model = file,
+                        contentDescription = "입체 미리보기",
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                }
+            }
+        } else if (resolvedPaths.size == 1) {
+            coil.compose.AsyncImage(
+                model = resolvedPaths[0],
+                contentDescription = if (isPhoto) "3D 사진" else "영상 미리보기",
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+            )
+        } else {
+            androidx.compose.material3.Text(
+                text = "파일을 찾을 수 없어요",
+                fontSize = 11.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -832,7 +939,24 @@ private fun ImageBlockEditor(
         if (block.relativePath.isBlank()) null
         else File(context.filesDir, block.relativePath).takeIf { it.exists() }
     }
+    // 구 데이터 호환: ImageBlock 은 항상 2D 사진으로 간주
+    val legacy2DAccent = MaterialTheme.colorScheme.outline
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 2D 사진 라벨
+        androidx.compose.material3.Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = legacy2DAccent.copy(alpha = 0.10f),
+            border = BorderStroke(0.5.dp, legacy2DAccent.copy(alpha = 0.4f))
+        ) {
+            Text(
+                text = "2D 사진",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = legacy2DAccent,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
         if (file != null) {
             AsyncImage(
                 model = file,
@@ -879,6 +1003,7 @@ fun AddBlockBar(
     onPickGallery: () -> Unit,
     onTakePhoto: () -> Unit,
     onAddLocation: () -> Unit,
+    onPickVideo: (() -> Unit)? = null,
     hasHeading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -926,6 +1051,15 @@ fun AddBlockBar(
                 onClick = onTakePhoto,
                 enabled = canAddImage
             )
+            if (onPickVideo != null) {
+                AddChip(
+                    icon = Icons.Default.Movie,
+                    label = "영상(최대 30초)",
+                    accent = Color(0xFF7C4DFF),
+                    onClick = onPickVideo,
+                    enabled = canAddImage
+                )
+            }
             AddChip(
                 icon = Icons.Default.HorizontalRule,
                 label = "구분선",
@@ -1025,6 +1159,11 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
     is ContentBlock.TagAiBlock -> Triple("AI 태그", Icons.Default.AutoAwesome, Color(0xFF7B1FA2))
     is ContentBlock.TableBlock -> Triple("표", Icons.Filled.GridOn, Color(0xFF455A64))
     is ContentBlock.LocationBlock -> Triple("현재 위치", Icons.Default.Place, MaterialTheme.colorScheme.secondary)
+    is ContentBlock.SpatialMediaBlock -> Triple(
+        if (block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO) "3D 사진" else "3D 영상",
+        Icons.Default.Movie,
+        Color(0xFF7C4DFF)
+    )
 }
 
 /**

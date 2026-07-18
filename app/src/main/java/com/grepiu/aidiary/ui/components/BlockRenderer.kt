@@ -115,9 +115,27 @@ fun BlockRenderer(
                 if (block.relativePath.isBlank()) null
                 else File(context.filesDir, block.relativePath).takeIf { it.exists() }
             }
+            // 구 데이터 호환: ImageBlock 은 항상 2D 사진으로 간주 — "2D 사진" 라벨 표시
+            val legacy2DAccent = MaterialTheme.colorScheme.outline
             Column(
                 modifier = modifier.fillMaxWidth().padding(vertical = 8.dp)
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = legacy2DAccent.copy(alpha = 0.10f),
+                        border = BorderStroke(0.5.dp, legacy2DAccent.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "2D 사진",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = legacy2DAccent,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
                 if (file != null) {
                     AsyncImage(
                         model = file,
@@ -179,6 +197,14 @@ fun BlockRenderer(
             LocationBlockView(
                 block = block,
                 textColor = textColor,
+                modifier = modifier
+            )
+        }
+        is ContentBlock.SpatialMediaBlock -> {
+            SpatialMediaBlockView(
+                block = block,
+                textColor = textColor,
+                showImageCaption = showImageCaption,
                 modifier = modifier
             )
         }
@@ -379,6 +405,201 @@ fun BlockList(
     ) {
         blocks.forEach { block ->
             BlockRenderer(block = block, textColor = textColor)
+        }
+    }
+}
+
+/**
+ * 입체 미디어(SpatialMediaBlock) 읽기 전용 렌더러.
+ *
+ * - 3D 모드 (MPO/HEIC_AUX/STEREO_EXIF/STEREO_MP4/MOV_SPATIAL/MV_HEVC):
+ *   상단에 "3D 사진" / "3D 영상" 보라색 배지 + 포맷 라벨
+ *   PHOTO: paths 가 2장이면 좌/우 SBS 합성 미리보기. 1장이면 단일 + 3D 배지.
+ *   VIDEO: 단일 영상 경로 + 3D 배지.
+ * - 2D 모드 (PLAIN_2D_VIDEO): 3D 배지 없이 "영상" 회색 라벨만.
+ */
+@Composable
+private fun SpatialMediaBlockView(
+    block: ContentBlock.SpatialMediaBlock,
+    textColor: Color,
+    showImageCaption: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val resolvedPaths = remember(block.paths) {
+        block.paths.mapNotNull { rel ->
+            if (rel.isBlank()) null
+            else File(context.filesDir, rel).takeIf { it.exists() }
+        }
+    }
+    val isPhoto = block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO
+    val is3D = block.captureMode.is3D
+    // 배지 텍스트:
+    //  - 3D 사진 → "3D 사진"
+    //  - 3D 영상 → "3D 영상"
+    //  - 2D 사진 → "사진"     (사용자 의도: 2D 는 미디어 종류만 표출)
+    //  - 2D 영상 → "영상"
+    val badgeText = when {
+        isPhoto && is3D -> "3D 사진"
+        !isPhoto && is3D -> "3D 영상"
+        isPhoto -> "사진"
+        else -> "영상"
+    }
+    val accent = if (is3D) Color(0xFF7C4DFF) else MaterialTheme.colorScheme.outline
+    // 보조 라벨: 3D 일 때만 포맷 상세(MPO/Stereo MP4 등) 표시, 2D 는 미디어 종류로 충분
+    val secondaryLabel = if (is3D) block.captureMode.label else null
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // 3D 배지 + 포맷 라벨
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = accent.copy(alpha = if (is3D) 0.18f else 0.10f),
+                border = BorderStroke(if (is3D) 1.dp else 0.5.dp, accent.copy(alpha = if (is3D) 0.8f else 0.4f))
+            ) {
+                Text(
+                    text = badgeText,
+                    fontSize = if (is3D) 12.sp else 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = accent,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.size(6.dp))
+            if (secondaryLabel != null) {
+                Text(
+                    text = secondaryLabel,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        if (isPhoto) {
+            when {
+                resolvedPaths.size >= 2 -> {
+                    // SBS 합성: 좌/우 2장 나란히
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(0.5.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    ) {
+                        resolvedPaths.take(2).forEachIndexed { idx, file ->
+                            AsyncImage(
+                                model = file,
+                                contentDescription = if (idx == 0) "입체 사진 좌측 시점" else "입체 사진 우측 시점",
+                                contentScale = ContentScale.FillWidth,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+                resolvedPaths.size == 1 -> {
+                    // STEREO_EXIF — 단일 이미지 + 3D 배지만
+                    AsyncImage(
+                        model = resolvedPaths[0],
+                        contentDescription = "입체 사진",
+                        contentScale = ContentScale.FillWidth,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(0.5.dp, accent.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    )
+                }
+                else -> {
+                    // 파일 못 찾음
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "입체 사진 파일을 찾을 수 없어요",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else {
+            // VIDEO — 실제 재생 (sandbox 내부 파일을 VideoView 가 직접 읽음)
+            val videoFile = resolvedPaths.firstOrNull()
+            if (videoFile != null) {
+                androidx.compose.ui.viewinterop.AndroidView(
+                    factory = { ctx ->
+                        android.widget.VideoView(ctx).apply {
+                            setVideoURI(android.net.Uri.fromFile(videoFile))
+                            val controller = android.widget.MediaController(ctx).apply {
+                                setAnchorView(this@apply)
+                            }
+                            setMediaController(controller)
+                            setOnPreparedListener { mp ->
+                                mp.isLooping = false
+                                mp.setVolume(1f, 1f)
+                            }
+                            setOnErrorListener { _, what, extra ->
+                                android.util.Log.w("BlockRenderer", "VideoView error: what=$what extra=$extra")
+                                true
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(
+                            width = if (is3D) 1.dp else 0.5.dp,
+                            color = accent.copy(alpha = if (is3D) 0.5f else 0.3f),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "영상 파일을 찾을 수 없어요",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (showImageCaption && block.caption.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = block.caption,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
         }
     }
 }

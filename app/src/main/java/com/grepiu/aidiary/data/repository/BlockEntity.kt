@@ -62,4 +62,12 @@ data class BlockEntity(
     val longitude: Double?,
     @ColumnInfo(name = "address")
     val address: String?,
+    // ==== 입체 미디어 (SpatialMediaBlock) ====
+    @ColumnInfo(name = "spatial_type")
+    val spatialType: String?,
+    /** 파일 경로 JSON 배열. PHOTO=[L,R] / VIDEO=[단일]. 2D 일반은 null */
+    @ColumnInfo(name = "spatial_paths_json")
+    val spatialPathsJson: String?,
+    @ColumnInfo(name = "spatial_capture_mode")
+    val spatialCaptureMode: String?,
 )
