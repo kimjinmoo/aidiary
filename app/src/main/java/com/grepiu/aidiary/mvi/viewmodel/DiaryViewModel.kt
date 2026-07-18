@@ -80,6 +80,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private var analysisJob: Job? = null
     private var recordingJob: Job? = null
     private var chatJob: Job? = null
+    private var searchJob: Job? = null
     private var voiceLangJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -192,6 +193,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 handleSearch(intent.query)
             }
             is DiaryIntent.ClearDiarySearch -> {
+                searchJob?.cancel()
                 loadFirstDiaryPage()
             }
             is DiaryIntent.StartDownload -> {
@@ -740,7 +742,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         _state.update { it.copy(isSearching = true, searchQuery = q) }
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
             val hits = withContext(Dispatchers.IO) { repository.searchDiaries(q, limit = 50) }
             // FTS hit 의 메타로 DiaryMeta 리스트 채우기
             val metas = withContext(Dispatchers.IO) {

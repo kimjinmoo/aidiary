@@ -715,48 +715,53 @@ fun DiaryTabContent(
         }
     }
 
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // AI 브리핑 카드 (탭 상단, 사용자가 명시적으로 요청)
-        item {
-            AiBriefingCard(
-                title = "기록 AI 브리핑",
-                briefing = state.diaryBriefing,
-                isLoading = state.isBriefingDiary,
-                isModelReady = state.isModelReady,
-                onRequest = onRequestBriefing
-            )
-        }
+        // ===== 검색바 (v3) - 상단 고정 =====
+        DiarySearchBar(
+            query = state.searchQuery,
+            isSearching = state.isSearching,
+            onSubmit = onSearch,
+            onClear = onClearSearch
+        )
 
-        // AI 모델 다운로드 카드
-        if (!state.isModelReady) {
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            // AI 브리핑 카드 (탭 상단, 사용자가 명시적으로 요청)
             item {
-                DownloadStatusCard(
-                    state = state,
-                    onStartDownload = onStartDownload,
-                    onCancelDownload = onCancelDownload,
-                    onDismissNotice = onDismissNotice,
-                    onDismissWifiWarning = onDismissWifiWarning
+                AiBriefingCard(
+                    title = "기록 AI 브리핑",
+                    briefing = state.diaryBriefing,
+                    isLoading = state.isBriefingDiary,
+                    isModelReady = state.isModelReady,
+                    onRequest = onRequestBriefing
                 )
             }
-        }
 
-        // 리스트 필터링 옵션 바 및 책갈피 인덱스 탭 디자인의 타입 필터
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // ===== 검색바 (v3) =====
-                DiarySearchBar(
-                    query = state.searchQuery,
-                    isSearching = state.isSearching,
-                    onSubmit = onSearch,
-                    onClear = onClearSearch
-                )
+            // AI 모델 다운로드 카드
+            if (!state.isModelReady) {
+                item {
+                    DownloadStatusCard(
+                        state = state,
+                        onStartDownload = onStartDownload,
+                        onCancelDownload = onCancelDownload,
+                        onDismissNotice = onDismissNotice,
+                        onDismissWifiWarning = onDismissWifiWarning
+                    )
+                }
+            }
 
-                Spacer(modifier = Modifier.height(10.dp))
+            // 리스트 필터링 옵션 바 및 책갈피 인덱스 탭 디자인의 타입 필터
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                Row(
+                    Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -965,6 +970,7 @@ fun DiaryTabContent(
         }
     }
 }
+}
 
 /**
  * 일기 검색바. FTS5 기반으로 제목/본문에서 부분 문자열 + 날짜 가중치로 정렬된 결과를
@@ -983,41 +989,83 @@ fun DiarySearchBar(
 
     OutlinedTextField(
         value = localText,
-        onValueChange = { localText = it },
-        modifier = Modifier.fillMaxWidth(),
+        onValueChange = {
+            localText = it
+            if (it.trim().isNotBlank()) {
+                onSubmit(it)
+            } else {
+                onClear()
+            }
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                shape = RoundedCornerShape(24.dp)
+            ),
         singleLine = true,
-        placeholder = { Text("일기 검색 (제목/본문)") },
+        placeholder = { 
+            Text(
+                text = "일기 제목, 본문 검색...", 
+                fontSize = 14.sp, 
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            ) 
+        },
         leadingIcon = {
-            Icon(imageVector = Icons.Default.Search, contentDescription = null)
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                modifier = Modifier.size(20.dp)
+            )
         },
         trailingIcon = {
             when {
                 isSearching -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
                 localText.isNotBlank() -> {
-                    IconButton(onClick = {
-                        localText = ""
-                        onClear()
-                    }) {
+                    IconButton(
+                        onClick = {
+                            localText = ""
+                            onClear()
+                        },
+                        modifier = Modifier.size(28.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "검색 해제"
+                            contentDescription = "검색 해제",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
         },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            disabledBorderColor = Color.Transparent,
+            errorBorderColor = Color.Transparent
+        ),
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         keyboardActions = KeyboardActions(
             onSearch = {
                 if (localText.isNotBlank()) onSubmit(localText.trim())
             }
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(24.dp)
     )
 }
 
