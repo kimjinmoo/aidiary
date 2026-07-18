@@ -1,6 +1,7 @@
 package com.grepiu.aidiary.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Translate
@@ -647,6 +650,9 @@ private fun TableToolButton(
  * 외부(예: 음성 전사)에서 [initialText] 가 바뀌었을 때만 로컬 [tfv] 상태를
  * 동기화합니다. 사용자가 한글 IME 로 입력 중인 경우(조합 중)에는 동기화를
  * 건너뛰어 조합 중인 문자가 사라지지 않도록 보호합니다.
+ *
+ * 선택 영역 없이(tfv.selection.collapsed) 서식 버튼을 누르면 '대기(pending)' 상태로
+ * 토글되어, 이후 입력되는 텍스트에 자동으로 해당 서식이 적용됩니다.
  */
 @Composable
 private fun RichTextEditorBody(
@@ -661,22 +667,24 @@ private fun RichTextEditorBody(
     maxChars: Int = 600
 ) {
     val baseColor = MaterialTheme.colorScheme.onSurface
-    // tfv 는 컴포저블 수명 동안 유지 (initialText 가 바뀌어도 재생성하지 않음).
-    // 외부 동기화는 아래 LaunchedEffect 에서 처리.
     var tfv by remember {
         mutableStateOf(TextFieldValue(text = initialText, selection = TextRange(initialText.length)))
     }
     var formatting by remember(initialFormatting) {
         mutableStateOf(initialFormatting)
     }
-    // 마지막으로 외부값을 적용한 시점의 initialText. 이 값과 다른 경우에만 동기화.
     var lastAppliedExternalText by remember { mutableStateOf(initialText) }
 
-    // 외부 텍스트가 변경되었을 때만 동기화 (사용자 타이핑으로 인한 내부 루프 방지).
-    // 한글 IME 조합 중(tfv.composition != null)이라면 강제로 덮어쓰지 않음.
+    // pending format — 선택 없이 서식 버튼을 누르면 활성화, 이후 타이핑에 자동 적용
+    var pendingBold by remember { mutableStateOf(false) }
+    var pendingItalic by remember { mutableStateOf(false) }
+    var pendingUnderline by remember { mutableStateOf(false) }
+    var pendingStrikethrough by remember { mutableStateOf(false) }
+    var pendingColor by remember { mutableStateOf<String?>(null) }
+    var pendingSize by remember { mutableStateOf<Int?>(null) }
+
     LaunchedEffect(initialText) {
         if (initialText != lastAppliedExternalText && tfv.composition == null) {
-            // 단순 동기화: 로컬 상태가 외부와 다르고, 조합 중이 아닐 때만 덮어쓰기
             if (tfv.text != initialText) {
                 tfv = TextFieldValue(
                     text = initialText,
@@ -685,7 +693,6 @@ private fun RichTextEditorBody(
             }
             lastAppliedExternalText = initialText
         } else if (initialText != lastAppliedExternalText && tfv.composition != null) {
-            // 조합 중이라면 다음 프레임에 재시도하도록 플래그만 갱신
             lastAppliedExternalText = initialText
         }
     }
@@ -698,8 +705,19 @@ private fun RichTextEditorBody(
                     val oldText = tfv.text
                     tfv = newTfv
                     formatting = formatting.shift(oldText, newTfv.text)
+
+                    val changeRange = findChangeRange(oldText, newTfv.text)
+                    if (changeRange != null) {
+                        var f = formatting
+                        if (pendingBold) f = f.toggleBold(changeRange)
+                        if (pendingItalic) f = f.toggleItalic(changeRange)
+                        if (pendingUnderline) f = f.toggleUnderline(changeRange)
+                        if (pendingStrikethrough) f = f.toggleStrikethrough(changeRange)
+                        if (pendingColor != null) f = f.setColor(changeRange, pendingColor)
+                        if (pendingSize != null) f = f.setSize(changeRange, pendingSize)
+                        formatting = f
+                    }
                     onUpdate(newTfv.text, formatting)
-                    // 사용자가 직접 입력한 경우, 외부 동기화 플래그를 현재 텍스트로 맞춤
                     lastAppliedExternalText = newTfv.text
                 }
             },
@@ -710,7 +728,7 @@ private fun RichTextEditorBody(
             singleLine = singleLine,
             modifier = Modifier.fillMaxWidth()
         )
-        
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -722,7 +740,7 @@ private fun RichTextEditorBody(
                 text = "$charCount / ${maxChars}자",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
-                color = if (charCount >= maxChars) MaterialTheme.colorScheme.error 
+                color = if (charCount >= maxChars) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
@@ -732,32 +750,76 @@ private fun RichTextEditorBody(
                 formatting = formatting,
                 selection = tfv.selection,
                 onToggleBold = {
-                    formatting = FormattingToggles.toggleBold(formatting, tfv.selection)
-                    onUpdate(tfv.text, formatting)
+                    if (tfv.selection.collapsed) {
+                        pendingBold = !pendingBold
+                    } else {
+                        formatting = FormattingToggles.toggleBold(formatting, tfv.selection)
+                        onUpdate(tfv.text, formatting)
+                    }
                 },
                 onToggleItalic = {
-                    formatting = FormattingToggles.toggleItalic(formatting, tfv.selection)
-                    onUpdate(tfv.text, formatting)
+                    if (tfv.selection.collapsed) {
+                        pendingItalic = !pendingItalic
+                    } else {
+                        formatting = FormattingToggles.toggleItalic(formatting, tfv.selection)
+                        onUpdate(tfv.text, formatting)
+                    }
                 },
                 onToggleUnderline = {
-                    formatting = FormattingToggles.toggleUnderline(formatting, tfv.selection)
-                    onUpdate(tfv.text, formatting)
+                    if (tfv.selection.collapsed) {
+                        pendingUnderline = !pendingUnderline
+                    } else {
+                        formatting = FormattingToggles.toggleUnderline(formatting, tfv.selection)
+                        onUpdate(tfv.text, formatting)
+                    }
                 },
                 onToggleStrikethrough = {
-                    formatting = FormattingToggles.toggleStrikethrough(formatting, tfv.selection)
-                    onUpdate(tfv.text, formatting)
+                    if (tfv.selection.collapsed) {
+                        pendingStrikethrough = !pendingStrikethrough
+                    } else {
+                        formatting = FormattingToggles.toggleStrikethrough(formatting, tfv.selection)
+                        onUpdate(tfv.text, formatting)
+                    }
                 },
                 onSetColor = { hex ->
-                    formatting = FormattingToggles.setColor(formatting, tfv.selection, hex)
-                    onUpdate(tfv.text, formatting)
+                    if (tfv.selection.collapsed) {
+                        pendingColor = if (pendingColor == hex) null else hex
+                    } else {
+                        formatting = FormattingToggles.setColor(formatting, tfv.selection, hex)
+                        onUpdate(tfv.text, formatting)
+                    }
                 },
                 onSetSize = { size ->
-                    formatting = FormattingToggles.setSize(formatting, tfv.selection, size)
-                    onUpdate(tfv.text, formatting)
-                }
+                    if (tfv.selection.collapsed) {
+                        pendingSize = if (pendingSize == size) null else size
+                    } else {
+                        formatting = FormattingToggles.setSize(formatting, tfv.selection, size)
+                        onUpdate(tfv.text, formatting)
+                    }
+                },
+                pendingBold = pendingBold,
+                pendingItalic = pendingItalic,
+                pendingUnderline = pendingUnderline,
+                pendingStrikethrough = pendingStrikethrough,
+                pendingColor = pendingColor,
+                pendingSize = pendingSize
             )
         }
     }
+}
+
+private fun findChangeRange(oldText: String, newText: String): IntRange? {
+    val oldLen = oldText.length
+    val newLen = newText.length
+    var start = 0
+    while (start < oldLen && start < newLen && oldText[start] == newText[start]) start++
+    var oldEnd = oldLen - 1
+    var newEnd = newLen - 1
+    while (oldEnd >= start && newEnd >= start && oldText[oldEnd] == newText[newEnd]) {
+        oldEnd--
+        newEnd--
+    }
+    return if (start <= newEnd) IntRange(start, newEnd) else null
 }
 
 @Composable
@@ -821,53 +883,59 @@ fun AddBlockBar(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-        ) {
+        BlockCategoryRow(caption = "텍스트") {
             AddChip(
                 icon = Icons.Default.Title,
                 label = if (hasHeading) "섹션 제목(추가됨)" else "섹션 제목",
+                accent = Color(0xFF1565C0),
                 onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) },
                 enabled = !hasHeading
             )
-            AddChip(icon = Icons.AutoMirrored.Filled.Notes, label = "본문", onClick = { onAdd(ContentBlock.TextBlock(text = "")) })
-            AddChip(icon = Icons.Default.FormatQuote, label = "인용", onClick = { onAdd(ContentBlock.QuoteBlock(text = "")) })
+            AddChip(
+                icon = Icons.AutoMirrored.Filled.Notes,
+                label = "본문",
+                accent = MaterialTheme.colorScheme.primary,
+                onClick = { onAdd(ContentBlock.TextBlock(text = "")) }
+            )
+            AddChip(
+                icon = Icons.Default.FormatQuote,
+                label = "인용",
+                accent = Color(0xFF6A1B9A),
+                onClick = { onAdd(ContentBlock.QuoteBlock(text = "")) }
+            )
             AddChip(
                 icon = Icons.Default.GridOn,
                 label = "표",
+                accent = Color(0xFF455A64),
                 onClick = { onAdd(ContentBlock.TableBlock(rows = 2, cols = 2, cells = listOf(listOf("", ""), listOf("", "")))) }
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-        ) {
+        Spacer(modifier = Modifier.height(10.dp))
+        BlockCategoryRow(caption = "미디어·기타") {
             AddChip(
                 icon = Icons.Default.Image,
                 label = "갤러리",
+                accent = Color(0xFF2E7D32),
                 onClick = onPickGallery,
                 enabled = canAddImage
             )
             AddChip(
-                icon = Icons.Default.Image,
+                icon = Icons.Default.CameraAlt,
                 label = "카메라",
+                accent = Color(0xFF2E7D32),
                 onClick = onTakePhoto,
                 enabled = canAddImage
             )
             AddChip(
                 icon = Icons.Default.HorizontalRule,
                 label = "구분선",
+                accent = MaterialTheme.colorScheme.outline,
                 onClick = { onAdd(ContentBlock.DividerBlock()) }
             )
             AddChip(
                 icon = Icons.Default.Place,
                 label = "위치",
+                accent = MaterialTheme.colorScheme.secondary,
                 onClick = onAddLocation
             )
         }
@@ -878,34 +946,72 @@ fun AddBlockBar(
 private fun AddChip(
     icon: ImageVector,
     label: String,
+    accent: Color,
     onClick: () -> Unit,
     enabled: Boolean = true
 ) {
+    val bgColor = if (enabled) accent.copy(alpha = 0.10f)
+        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.30f)
+    val borderColor = if (enabled) accent.copy(alpha = 0.30f)
+        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f)
+    val badgeBg = if (enabled) accent.copy(alpha = 0.18f)
+        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)
+    val contentTint = if (enabled) accent
+        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (enabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-            )
+            .background(bgColor)
+            .border(BorderStroke(1.dp, borderColor), RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray
-        )
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(CircleShape)
+                .background(badgeBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp),
+                tint = contentTint
+            )
+        }
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = label,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) MaterialTheme.colorScheme.onSurface else Color.Gray
+            color = contentTint
         )
+    }
+}
+
+@Composable
+private fun BlockCategoryRow(
+    caption: String,
+    chips: @Composable RowScope.() -> Unit
+) {
+    Column {
+        Text(
+            text = caption,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+        ) { chips() }
     }
 }
 

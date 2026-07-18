@@ -59,30 +59,36 @@ fun RichTextToolbar(
     onToggleStrikethrough: () -> Unit,
     onSetColor: (String?) -> Unit,
     onSetSize: (Int?) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    pendingBold: Boolean = false,
+    pendingItalic: Boolean = false,
+    pendingUnderline: Boolean = false,
+    pendingStrikethrough: Boolean = false,
+    pendingColor: String? = null,
+    pendingSize: Int? = null,
 ) {
-    val isBold = remember(formatting, selection) {
-        if (selection.collapsed) false
+    val isBold = remember(formatting, selection, pendingBold) {
+        if (selection.collapsed) pendingBold
         else formatting.isAllBold(selection.start, selection.end)
     }
-    val isItalic = remember(formatting, selection) {
-        if (selection.collapsed) false
+    val isItalic = remember(formatting, selection, pendingItalic) {
+        if (selection.collapsed) pendingItalic
         else formatting.isAllItalic(selection.start, selection.end)
     }
-    val isUnder = remember(formatting, selection) {
-        if (selection.collapsed) false
+    val isUnder = remember(formatting, selection, pendingUnderline) {
+        if (selection.collapsed) pendingUnderline
         else formatting.isAllUnderline(selection.start, selection.end)
     }
-    val isStrike = remember(formatting, selection) {
-        if (selection.collapsed) false
+    val isStrike = remember(formatting, selection, pendingStrikethrough) {
+        if (selection.collapsed) pendingStrikethrough
         else formatting.isAllStrikethrough(selection.start, selection.end)
     }
-    val currentColor = remember(formatting, selection) {
-        if (selection.collapsed) null
+    val currentColor = remember(formatting, selection, pendingColor) {
+        if (selection.collapsed) pendingColor
         else (selection.start until selection.end).map { formatting.colorAt(it) }.toSet().singleOrNull()
     }
-    val currentSize = remember(formatting, selection) {
-        if (selection.collapsed) null
+    val currentSize = remember(formatting, selection, pendingSize) {
+        if (selection.collapsed) pendingSize
         else (selection.start until selection.end).map { formatting.sizeAt(it) }.toSet().singleOrNull()
     }
 
