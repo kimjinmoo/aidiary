@@ -695,15 +695,37 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        fetchLocationAndAddBlock()
+        startLocationFetchFlow()
+    }
+
+    /**
+     * 화면에 위치 정보를 가져오는 중임을 나타내는 로딩 상태의 LocationBlock을 먼저 '즉시 추가'하고,
+     * 백그라운드 코루틴으로 위경도 수신 및 역지오코딩을 수행하여 해당 블록을 비동기적으로 업데이트합니다.
+     */
+    fun startLocationFetchFlow() {
+        val blockId = java.util.UUID.randomUUID().toString()
+        val loadingBlock = ContentBlock.LocationBlock(
+            id = blockId,
+            latitude = 0.0,
+            longitude = 0.0,
+            address = "위치 정보를 가져오는 중..."
+        )
+
+        // 1. 로딩 상태 블록 먼저 즉시 화면에 주입
+        _state.update { current ->
+            current.copy(draftBlocks = current.draftBlocks + loadingBlock)
+        }
+
+        // 2. 비동기 위치 탐색 및 해당 블록 업데이트 진행
+        fetchLocationAndUpdateBlock(blockId)
     }
 
     /**
      * 기기의 GPS/Network 프로바이더를 사용하여 현재 위경도 좌표를 조회하고,
-     * Geocoder API를 통해 한국어 주소로 변환한 뒤 일기에 LocationBlock으로 추가합니다.
+     * Geocoder API를 통해 한국어 주소로 변환한 뒤 특정 ID의 LocationBlock 정보를 업데이트합니다.
      */
     @android.annotation.SuppressLint("MissingPermission")
-    fun fetchLocationAndAddBlock() {
+    fun fetchLocationAndUpdateBlock(blockId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val locationManager = getApplication<Application>()
@@ -713,7 +735,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 val providers = locationManager.getProviders(true)
                 var bestLocation: android.location.Location? = null
 
-                // 1단계: 실시간으로 GPS 프로바이더를 사용하여 최고 정확도의 위치 획득 시도 (QUALITY_HIGH_ACCURACY)
+                // 1단계: 실시간으로 GPS 프로바이더를 사용하여 최고 정확도의 위치 획득 시도 (QUALITY_HIGH_ACCURACY, 4초 타임아웃)
                 if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
                     val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
                     val locationRequest = android.location.LocationRequest.Builder(0)
@@ -748,7 +770,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // 2단계: GPS 획득 실패 시 네트워크 프로바이더를 통해 고정밀 위치 획득 시도
+                // 2단계: GPS 획득 실패 시 네트워크 프로바이더를 통해 고정밀 위치 획득 시도 (3초 타임아웃)
                 if (bestLocation == null) {
                     if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
                         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -822,27 +844,46 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         addressStr = "위도: ${String.format(Locale.US, "%.5f", lat)}, 경도: ${String.format(Locale.US, "%.5f", lng)}"
                     }
 
-                    val locationBlock = ContentBlock.LocationBlock(
-                        latitude = lat,
-                        longitude = lng,
-                        address = addressStr
-                    )
-
+                    val finalAddress = addressStr
                     withContext(Dispatchers.Main) {
                         _state.update { current ->
-                            current.copy(draftBlocks = current.draftBlocks + locationBlock)
+                            current.copy(
+                                draftBlocks = current.draftBlocks.map { block ->
+                                    if (block.id == blockId && block is ContentBlock.LocationBlock) {
+                                        block.copy(latitude = lat, longitude = lng, address = finalAddress)
+                                    } else block
+                                }
+                            )
                         }
-                        sendEffect(DiaryEffect.ShowToast("현재 위치 블록이 추가되었습니다."))
+                        sendEffect(DiaryEffect.ShowToast("위치 정보를 성공적으로 가져왔습니다."))
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        sendEffect(DiaryEffect.ShowToast("현재 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지 확인해 주세요."))
+                        _state.update { current ->
+                            current.copy(
+                                draftBlocks = current.draftBlocks.map { block ->
+                                    if (block.id == blockId && block is ContentBlock.LocationBlock) {
+                                        block.copy(address = "위치를 가져올 수 없습니다. (GPS 확인 필요)")
+                                    } else block
+                                }
+                            )
+                        }
+                        sendEffect(DiaryEffect.ShowToast("위치 정보를 수신하지 못했습니다."))
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    sendEffect(DiaryEffect.ShowToast("위치 정보를 가져오는 중 오류가 발생했습니다: ${e.message}"))
+                    _state.update { current ->
+                        current.copy(
+                            draftBlocks = current.draftBlocks.map { block ->
+                                if (block.id == blockId && block is ContentBlock.LocationBlock) {
+                                    block.copy(address = "위치 탐색 오류: ${e.localizedMessage}")
+                                } else block
+                            }
+                        )
+                    }
+                    sendEffect(DiaryEffect.ShowToast("위치 정보를 가져오는 중 오류가 발생했습니다."))
                 }
             }
         }

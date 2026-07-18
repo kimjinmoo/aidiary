@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                     val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
                     val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
                     if (fineGranted || coarseGranted) {
-                        viewModel.fetchLocationAndAddBlock()
+                        viewModel.startLocationFetchFlow()
                     } else {
                         Toast.makeText(context, "위치 권한이 필요합니다.", Toast.LENGTH_SHORT).show()
                     }

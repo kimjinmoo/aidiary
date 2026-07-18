@@ -194,6 +194,8 @@ private fun LocationBlockView(
     textColor: Color,
     modifier: Modifier = Modifier
 ) {
+    val isLoading = block.latitude == 0.0 && block.longitude == 0.0 && block.address == "위치 정보를 가져오는 중..."
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -214,12 +216,20 @@ private fun LocationBlockView(
             modifier = Modifier.size(36.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Place,
-                    contentDescription = "위치",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(18.dp)
-                )
+                if (isLoading) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Place,
+                        contentDescription = "위치",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.width(12.dp))
@@ -230,12 +240,14 @@ private fun LocationBlockView(
                 fontWeight = FontWeight.Bold,
                 color = textColor
             )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = "위도: ${String.format(java.util.Locale.US, "%.5f", block.latitude)}, 경도: ${String.format(java.util.Locale.US, "%.5f", block.longitude)}",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (!isLoading) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "위도: ${String.format(java.util.Locale.US, "%.5f", block.latitude)}, 경도: ${String.format(java.util.Locale.US, "%.5f", block.longitude)}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
