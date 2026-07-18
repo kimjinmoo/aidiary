@@ -582,6 +582,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     val count = result.getOrNull() ?: 0
                     if (result.isSuccess) {
                         refreshCurrentMetaPage()
+                        val initialGoals = plannerRepository.loadGoals()
+                        val initialTasks = plannerRepository.loadTasks()
+                        _state.update {
+                            it.copy(
+                                goals = initialGoals,
+                                plannerTasks = initialTasks
+                            )
+                        }
                     }
                     _state.update {
                         it.copy(

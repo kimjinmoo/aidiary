@@ -80,6 +80,16 @@ class BackupManager(
                             }
                         }
                     }
+
+                    // 2-3) 플래너 및 목표 데이터 추가
+                    val goalsFile = File(context.filesDir, "goals.json")
+                    if (goalsFile.exists() && goalsFile.isFile) {
+                        addFileToZip(zos, goalsFile, "goals.json")
+                    }
+                    val tasksFile = File(context.filesDir, "planner_tasks.json")
+                    if (tasksFile.exists() && tasksFile.isFile) {
+                        addFileToZip(zos, tasksFile, "planner_tasks.json")
+                    }
                 }
             } ?: throw IllegalStateException("백업 출력 스트림을 열 수 없습니다.")
         }
@@ -108,6 +118,12 @@ class BackupManager(
                             targetFile.parentFile?.let {
                                 if (!it.exists()) it.mkdirs()
                             }
+                            FileOutputStream(targetFile).use { fos ->
+                                zis.copyTo(fos)
+                            }
+                        } else if (name == "goals.json" || name == "planner_tasks.json") {
+                            // 플래너 및 목표 파일 복사
+                            val targetFile = File(context.filesDir, name)
                             FileOutputStream(targetFile).use { fos ->
                                 zis.copyTo(fos)
                             }
