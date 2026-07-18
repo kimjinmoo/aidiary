@@ -1319,8 +1319,50 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
             }
         } else {
             Log.d("External3DViewer", "사진 입체 렌더링 모드 준비 - paths size: ${block.paths.size}")
-            // PHOTO의 경우, 좌/우 이미지를 임시 SBS(Side-by-Side) 이미지로 합쳐서 캐시 폴더에 저장 후 뷰어로 보냄
-            if (block.paths.size >= 2) {
+            if (block.paths.size == 1) {
+                // 단일 파일인 경우: 원본 자체가 이미 SBS 형태로 합쳐진 이미지로 판단
+                val rawFile = File(context.filesDir, block.paths[0])
+                Log.d("External3DViewer", "단일 3D 사진 원본 파일 경로: ${rawFile.absolutePath}, 존재여부: ${rawFile.exists()}")
+                if (rawFile.exists()) {
+                    val baseName = rawFile.nameWithoutExtension
+                    val tempFile = File(context.cacheDir, "${baseName}_3D_SBS.jpg")
+                    
+                    // 파일 복사 실행
+                    rawFile.inputStream().use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Log.d("External3DViewer", "단일 3D 사진 복사 완료 - 크기: ${tempFile.length()} bytes")
+
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        tempFile
+                    )
+                    intent.setDataAndType(uri, "image/*")
+                    
+                    // 3D 사진 입체 모드를 위한 엑스트라 탑재
+                    intent.putExtra("3d_mode", "sbs")
+                    intent.putExtra("stereo_mode", "sbs")
+                    intent.putExtra("open_as_3d", true)
+                    intent.putExtra("vr_mode", true)
+                    
+                    // VR/Cardboard 카테고리 추가
+                    intent.addCategory(Intent.CATEGORY_DEFAULT)
+                    intent.addCategory("com.google.intent.category.CARDBOARD")
+                    
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    
+                    Log.d("External3DViewer", "단일 사진 ACTION_VIEW 인텐트 실행 시도")
+                    context.startActivity(intent)
+                    Log.d("External3DViewer", "단일 사진 ACTION_VIEW 인텐트 실행 성공")
+                } else {
+                    Log.e("External3DViewer", "단일 3D 사진 파일이 존재하지 않습니다.")
+                    Toast.makeText(context, "사진 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
+                }
+            } else if (block.paths.size >= 2) {
+                // 분리된 파일인 경우: 좌/우 이미지를 임시 SBS(Side-by-Side) 이미지로 합쳐서 캐시 폴더에 저장 후 뷰어로 보냄
                 val fileL = File(context.filesDir, block.paths[0])
                 val fileR = File(context.filesDir, block.paths[1])
                 Log.d("External3DViewer", "좌안 파일: ${fileL.absolutePath} (존재: ${fileL.exists()}), 우안 파일: ${fileR.absolutePath} (존재: ${fileR.exists()})")
@@ -1378,7 +1420,7 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     Toast.makeText(context, "3D 사진 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Log.e("External3DViewer", "3D 사진 감상에는 최소 2장의 경로가 필요합니다. (현재: ${block.paths.size})")
+                Log.e("External3DViewer", "3D 사진 감상에는 최소 1장 이상의 경로가 필요합니다. (현재: ${block.paths.size})")
             }
         }
     } catch (e: Exception) {
