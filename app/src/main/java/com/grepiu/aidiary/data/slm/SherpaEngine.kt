@@ -20,8 +20,8 @@ class SherpaEngine private constructor(val recognizer: OfflineRecognizer) {
 
                 val modelFile = dir.listFiles()?.firstOrNull { it.name.endsWith(".onnx") }
                 val tok = File(dir, "tokens.txt")
-                if (modelFile == null || !tok.exists()) {
-                    Log.w(TAG, "Sherpa model files missing in $modelDir")
+                if (modelFile == null || !tok.exists() || modelFile.length() < 10L * 1024 * 1024) {
+                    Log.w(TAG, "Sherpa model files missing or corrupted in $modelDir")
                     return null
                 }
 

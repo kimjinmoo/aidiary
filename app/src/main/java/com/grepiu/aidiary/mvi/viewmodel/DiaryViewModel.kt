@@ -2263,6 +2263,15 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         try {
             val modelDir = downloader.getSherpaModelDir()
             if (!modelDir.exists()) return
+            
+            // 0) 모델이 온전히 잘 받아졌는지 먼저 밸리데이션 검사!
+            if (!downloader.isSherpaModelDownloaded()) {
+                Log.w("DiaryViewModel", "Sherpa model exists but is incomplete/corrupted. Purging dir.")
+                modelDir.deleteRecursively()
+                _state.update { it.copy(isSherpaModelReady = false) }
+                return
+            }
+
             // 중첩 디렉토리 찾기
             val actualDir = modelDir.listFiles()
                 ?.firstOrNull { it.isDirectory && !it.name.startsWith(".") && File(it, "tokens.txt").exists() }
