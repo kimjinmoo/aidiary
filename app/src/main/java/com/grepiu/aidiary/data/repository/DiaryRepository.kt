@@ -202,6 +202,12 @@ class DiaryRepository(
                 Log.w(TAG, "FTS5 search failed: ${e.message}. Falling back to Room LIKE search.")
                 return@withContext fallbackLikeSearch(tokens, limit)
             }
+
+            if (rows.isEmpty()) {
+                Log.d(TAG, "FTS5 search returned 0 results. Falling back to Room LIKE search.")
+                return@withContext fallbackLikeSearch(tokens, limit)
+            }
+
             val now = System.currentTimeMillis()
             rows.map { row ->
                 val dateWeight = computeDateWeight(row.dateString, now)
@@ -315,7 +321,7 @@ class DiaryRepository(
             .trim()
         if (cleaned.isBlank()) return emptyList()
         return cleaned.split(" ")
-            .filter { it.length >= 3 }
+            .filter { it.isNotEmpty() }
             .distinct()
     }
 

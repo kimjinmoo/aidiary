@@ -132,6 +132,9 @@ fun DiaryListScreen(
     // 기록 필터링을 위한 선택된 타입 상태 (null은 전체)
     var selectedTypeFilter by remember { mutableStateOf<ContentType?>(null) }
 
+    var isSearchFocused by remember { mutableStateOf(false) }
+    val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && state.activeTab == "DIARY"
+
     // AI 가 추천한 플래너 할 일을 입력란에 1회성으로 반영하고, 사용 후엔 상태를 비웁니다.
     LaunchedEffect(state.suggestedPlannerTaskText) {
         val suggested = state.suggestedPlannerTaskText ?: return@LaunchedEffect
@@ -141,7 +144,7 @@ fun DiaryListScreen(
 
     Scaffold(
         bottomBar = {
-            if (state.activeTab == "DIARY") {
+            if (state.activeTab == "DIARY" && !isSearchActive) {
                 WriteActionBar(onWriteDiary = onWriteDiary)
             }
         },
@@ -155,8 +158,9 @@ fun DiaryListScreen(
                 .imePadding()
                 .fillMaxSize()
         ) {
-            // C. 공간 효율적이고 고급스러운 상단 오늘의 날짜/인사말 헤더
-            Row(
+            if (!isSearchActive) {
+                // C. 공간 효율적이고 고급스러운 상단 오늘의 날짜/인사말 헤더
+                Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 16.dp),
@@ -282,6 +286,7 @@ fun DiaryListScreen(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // C. 탭별 메인 컨텐츠 영역 (애니메이션 전환)
             Box(
@@ -299,14 +304,16 @@ fun DiaryListScreen(
                             onTypeFilterChange = { selectedTypeFilter = it },
                             onSelectDiary = onSelectDiary,
                             onLoadMore = { onIntent(DiaryIntent.LoadMoreDiaries) },
-            onWriteDiary = { contentType -> onWriteDiary(contentType) },
+                            onWriteDiary = { contentType -> onWriteDiary(contentType) },
                             onStartDownload = onStartDownload,
                             onCancelDownload = onCancelDownload,
                             onDismissNotice = onDismissNotice,
                             onDismissWifiWarning = onDismissWifiWarning,
                             onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("DIARY")) },
                             onSearch = { onIntent(DiaryIntent.SearchDiaries(it)) },
-                            onClearSearch = { onIntent(DiaryIntent.ClearDiarySearch) }
+                            onClearSearch = { onIntent(DiaryIntent.ClearDiarySearch) },
+                            isSearchFocused = isSearchFocused,
+                            onSearchFocusChange = { isSearchFocused = it }
                         )
                     }
                     "PLANNER" -> {
@@ -684,7 +691,9 @@ fun DiaryTabContent(
     onDismissWifiWarning: () -> Unit,
     onRequestBriefing: () -> Unit,
     onSearch: (String) -> Unit,
-    onClearSearch: () -> Unit
+    onClearSearch: () -> Unit,
+    isSearchFocused: Boolean,
+    onSearchFocusChange: (Boolean) -> Unit
 ) {
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
     val parsedDateText = remember(state.selectedDateString) {
@@ -732,7 +741,9 @@ fun DiaryTabContent(
             query = state.searchQuery,
             isSearching = state.isSearching,
             onSubmit = onSearch,
-            onClear = onClearSearch
+            onClear = onClearSearch,
+            isFocused = isSearchFocused,
+            onFocusChange = onSearchFocusChange
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -992,7 +1003,9 @@ fun DiarySearchBar(
     query: String,
     isSearching: Boolean,
     onSubmit: (String) -> Unit,
-    onClear: () -> Unit
+    onClear: () -> Unit,
+    isFocused: Boolean,
+    onFocusChange: (Boolean) -> Unit
 ) {
     var localText by rememberSaveable(query) { mutableStateOf(query) }
     LaunchedEffect(query) { localText = query }
@@ -1009,6 +1022,7 @@ fun DiarySearchBar(
         },
         modifier = Modifier
             .fillMaxWidth()
+            .onFocusChanged { onFocusChange(it.isFocused) }
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
                 shape = RoundedCornerShape(24.dp)
