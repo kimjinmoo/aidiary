@@ -1499,7 +1499,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         if (originalText.length > DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS) {
             sendEffect(
                 DiaryEffect.ShowToast(
-                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 오타 띄어쓰기를 적용할 수 없어요. 블록을 나눠 주세요."
+                    "본문이 ${DiaryLLMEngine.MAX_BLOCK_AI_INPUT_CHARS}자를 초과해 AI 보정을 적용할 수 없어요. 블록을 나눠 주세요."
                 )
             )
             return
@@ -1527,10 +1527,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 } else if (revised.isNotBlank()) {
                     sendEffect(DiaryEffect.ShowToast("이미 깔끔한 본문이에요."))
                 } else {
-                    sendEffect(DiaryEffect.ShowToast("AI 오타 띄어쓰기에 실패했어요. 다시 시도해 주세요."))
+                    sendEffect(DiaryEffect.ShowToast("AI 보정에 실패했어요. 다시 시도해 주세요."))
                 }
             } catch (e: Exception) {
-                sendEffect(DiaryEffect.ShowToast("AI 오타 띄어쓰기 오류: ${e.message}"))
+                sendEffect(DiaryEffect.ShowToast("AI 보정 오류: ${e.message}"))
             } finally {
                 _state.update { it.copy(isProofreadingBlockId = null) }
             }
