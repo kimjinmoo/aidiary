@@ -46,7 +46,7 @@ app/src/main/java/com/grepiu/aidiary/
 │
 ├── mvi/
 │   ├── state/
-│   │   └── DiaryState.kt            # 모든 UI 상태의 단일 진실 공급원 및 DiaryPhase 정의 (SPLASH / LIST / WRITE / DETAIL)
+│   │   └── DiaryState.kt            # 모든 UI 상태의 단일 진실 공급원 및 DiaryPhase 정의 (SPLASH / WELCOME / LIST / WRITE / DETAIL)
 │   ├── intent/DiaryIntent.kt        # 사용자 의도 (UpdateBlockText 가 text+formatting 동시 갱신)
 │   ├── effect/DiaryEffect.kt        # 1회성 부수 효과 (카메라 권한/촬영 요청)
 │   └── viewmodel/DiaryViewModel.kt  # 비즈니스 로직·엔진·이미지 import 라이프사이클

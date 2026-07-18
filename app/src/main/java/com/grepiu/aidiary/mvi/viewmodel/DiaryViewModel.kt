@@ -88,6 +88,16 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private val _state = MutableStateFlow(DiaryState())
     val state: StateFlow<DiaryState> = _state.asStateFlow()
 
+    private val prefs = application.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+
+    private fun isTermsAccepted(): Boolean {
+        return prefs.getBoolean("terms_accepted", false)
+    }
+
+    private fun acceptTerms() {
+        prefs.edit().putBoolean("terms_accepted", true).apply()
+    }
+
     // MVI 부수 효과 채널
     private val _effect = Channel<DiaryEffect>(Channel.BUFFERED)
     val effect = _effect.receiveAsFlow()
@@ -134,22 +144,31 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 sendEffect(DiaryEffect.ShowToast("다운로드가 취소되었습니다."))
             }
             is DiaryIntent.NavigateTo -> {
+                val targetPhase = if (intent.phase == DiaryPhase.LIST && !isTermsAccepted()) {
+                    DiaryPhase.WELCOME
+                } else {
+                    intent.phase
+                }
                 _state.update { currentState ->
                     currentState.copy(
-                        phase = intent.phase,
+                        phase = targetPhase,
                         selectedDiary = intent.selectedDiary,
                         // 새 일기 작성 화면 진입 시 draft 값 초기화
-                        draftTitle = if (intent.phase == DiaryPhase.WRITE) "" else currentState.draftTitle,
-                        draftBlocks = if (intent.phase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
-                        draftTitleStyle = if (intent.phase == DiaryPhase.WRITE) TitleStyle.Default else currentState.draftTitleStyle,
-                        draftEmotion = if (intent.phase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
+                        draftTitle = if (targetPhase == DiaryPhase.WRITE) "" else currentState.draftTitle,
+                        draftBlocks = if (targetPhase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
+                        draftTitleStyle = if (targetPhase == DiaryPhase.WRITE) TitleStyle.Default else currentState.draftTitleStyle,
+                        draftEmotion = if (targetPhase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
                         // initialContentType이 지정된 경우 해당 타입으로, 아니면 DIARY 기본값
-                        draftContentType = if (intent.phase == DiaryPhase.WRITE) {
+                        draftContentType = if (targetPhase == DiaryPhase.WRITE) {
                             intent.initialContentType ?: com.grepiu.aidiary.data.model.ContentType.DIARY
                         } else currentState.draftContentType,
-                        isGeneratingAnalysis = if (intent.phase == DiaryPhase.WRITE) false else currentState.isGeneratingAnalysis
+                        isGeneratingAnalysis = if (targetPhase == DiaryPhase.WRITE) false else currentState.isGeneratingAnalysis
                     )
                 }
+            }
+            is DiaryIntent.AcceptTermsAndProceed -> {
+                acceptTerms()
+                _state.update { it.copy(phase = DiaryPhase.LIST) }
             }
             is DiaryIntent.UpdateDraft -> {
                 _state.update { currentState ->

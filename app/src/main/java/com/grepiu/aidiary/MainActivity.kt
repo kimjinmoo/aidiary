@@ -55,6 +55,7 @@ import com.grepiu.aidiary.ui.screens.DiaryDetailScreen
 import com.grepiu.aidiary.ui.screens.DiaryListScreen
 import com.grepiu.aidiary.ui.screens.DiaryWriteScreen
 import com.grepiu.aidiary.ui.screens.DiarySplashScreen
+import com.grepiu.aidiary.ui.screens.DiaryWelcomeScreen
 import com.grepiu.aidiary.ui.theme.AIDiaryTheme
 
 /**
@@ -287,6 +288,12 @@ fun DiaryAppNavigationRouter(
                 onTimeout = {
                     viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
                 },
+                modifier = modifier
+            )
+        }
+        DiaryPhase.WELCOME -> {
+            DiaryWelcomeScreen(
+                onIntent = { intent -> viewModel.processIntent(intent) },
                 modifier = modifier
             )
         }

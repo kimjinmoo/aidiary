@@ -12,10 +12,11 @@ import com.grepiu.aidiary.data.repository.PlannerTask
  * 일기 앱의 화면 단계(Phase)를 정의하는 열거형입니다.
  */
 enum class DiaryPhase {
-    SPLASH, // 스플래시 화면 단계
-    LIST,   // 일기 목록 및 대시보드 화면
-    WRITE,  // 새 일기 작성 화면
-    DETAIL  // 일기 상세 보기 및 AI 해석 결과 감상 화면
+    SPLASH,  // 스플래시 화면 단계
+    WELCOME, // 온보딩(약관 및 권한) 단계
+    LIST,    // 일기 목록 및 대시보드 화면
+    WRITE,   // 새 일기 작성 화면
+    DETAIL   // 일기 상세 보기 및 AI 해석 결과 감상 화면
 }
 
 /**

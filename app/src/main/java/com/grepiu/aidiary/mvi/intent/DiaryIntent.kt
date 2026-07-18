@@ -173,4 +173,6 @@ sealed interface DiaryIntent {
     data class ProofreadBlock(val blockId: String) : DiaryIntent
     /** 특정 블록의 AI 꾸미기(색상·굵게·이탤릭·밑줄·크기) 추천 적용. */
     data class DecorateBlock(val blockId: String) : DiaryIntent
+    /** 개인정보 처리방침 동의 완료 후 진행을 처리하는 인텐트입니다. */
+    data object AcceptTermsAndProceed : DiaryIntent
 }
