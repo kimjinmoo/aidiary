@@ -60,27 +60,30 @@ class ModelDownloaderV2(private val context: Context) {
     suspend fun downloadSherpaModel(
         url: String,
         onProgress: (bytesRead: Long, totalBytes: Long) -> Unit,
-        onExtracting: (suspend () -> Unit)? = null
+        onExtracting: (suspend (Long) -> Unit)? = null
     ): Result<File> {
         val archiveFile = File(modelDir, SHERPA_ARCHIVE)
         val extractDir = getSherpaModelDir()
         
         // 1. tar.bz2 다운로드
-        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 1050L * 1024 * 1024, onProgress)
+        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 900L * 1024 * 1024, onProgress)
         if (archiveResult.isFailure) {
             if (archiveFile.exists()) archiveFile.delete()
             return archiveResult
         }
 
-        // 2. 압축 해제 — 시작 시점에 콜백 호출
-        onExtracting?.invoke()
+        // 2. 압축 해제 — 시작 시점에 콜백 호출 (파일 크기 전달)
+        val totalSize = archiveFile.length()
+        onExtracting?.invoke(totalSize)
 
         return withContext(Dispatchers.IO) {
             try {
                 if (extractDir.exists()) extractDir.deleteRecursively()
                 extractDir.mkdirs()
 
-                extractTarBz2(archiveFile, extractDir)
+                extractTarBz2(archiveFile, extractDir, totalSize) { bytesProcessed ->
+                    onProgress(bytesProcessed, totalSize)
+                }
                 if (archiveFile.exists()) archiveFile.delete() // 압축 파일 삭제
                 
                 // 성공 마커 작성
@@ -103,9 +106,11 @@ class ModelDownloaderV2(private val context: Context) {
         }
     }
 
-    private fun extractTarBz2(archiveFile: File, destDir: File) {
-        FileInputStream(archiveFile).use { fis ->
-            BufferedInputStream(fis).use { bis ->
+    private fun extractTarBz2(archiveFile: File, destDir: File, totalSize: Long, onProgress: (bytesProcessed: Long) -> Unit) {
+        ProgressInputStream(FileInputStream(archiveFile)) { bytesRead ->
+            onProgress(bytesRead)
+        }.use { countingStream ->
+            BufferedInputStream(countingStream).use { bis ->
                 BZip2CompressorInputStream(bis).use { bz2 ->
                     TarArchiveInputStream(bz2).use { tar ->
                         var entry = tar.nextEntry
@@ -122,6 +127,43 @@ class ModelDownloaderV2(private val context: Context) {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * 바이트 읽기를 카운팅하는 InputStream 래퍼. [onBytesRead] 로 일정 간격마다 콜백.
+     */
+    private class ProgressInputStream(
+        private val delegate: java.io.InputStream,
+        private val onBytesRead: (Long) -> Unit
+    ) : java.io.InputStream() {
+        private var bytesRead = 0L
+        private var lastReported = 0L
+        private val reportInterval = 512L * 1024L // 512KB 마다 콜백
+
+        override fun read(): Int {
+            val b = delegate.read()
+            if (b != -1) count(1)
+            return b
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            val n = delegate.read(b, off, len)
+            if (n > 0) count(n.toLong())
+            return n
+        }
+
+        private fun count(n: Long) {
+            bytesRead += n
+            if (bytesRead - lastReported >= reportInterval) {
+                lastReported = bytesRead
+                onBytesRead(bytesRead)
+            }
+        }
+
+        override fun close() {
+            onBytesRead(bytesRead) // 마지막 콜백
+            delegate.close()
         }
     }
 
@@ -306,6 +348,7 @@ class ModelDownloaderV2(private val context: Context) {
                 // 2단계: 실제 모델 파일 스트림 다운로드 (이어받기 요청 헤더 추가)
                 val requestBuilder = Request.Builder().url(downloadUrl)
                     .header("User-Agent", "AIDiary/1.0")
+                    .header("Accept", "application/octet-stream, */*")
                 if (existingLength > 0) {
                     requestBuilder.header("Range", "bytes=$existingLength-")
                 }
@@ -338,6 +381,7 @@ class ModelDownloaderV2(private val context: Context) {
                 // isRange가 true이면 append 모드로 스트림 개방
                 val outputStream = FileOutputStream(tempFile, isRange)
 
+                var actualBytesWritten = 0L
                 inputStream.use { input ->
                     outputStream.use { output ->
                         val buffer = ByteArray(8192)
@@ -348,9 +392,17 @@ class ModelDownloaderV2(private val context: Context) {
                             coroutineContext.ensureActive()
                             output.write(buffer, 0, read)
                             bytesRead += read
+                            actualBytesWritten = bytesRead
                             onProgress(bytesRead, totalBytes)
                         }
                     }
+                }
+
+                if (actualBytesWritten == 0L) {
+                    tempFile.delete()
+                    return@withContext Result.failure(
+                        IOException("서버로부터 데이터를 받지 못했습니다. 네트워크 연결을 확인하거나 Wi-Fi 환경에서 다시 시도해 주세요.")
+                    )
                 }
 
                 if (tempFile.length() < minSize) {

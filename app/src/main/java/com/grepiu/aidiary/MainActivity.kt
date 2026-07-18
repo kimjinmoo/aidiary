@@ -82,6 +82,10 @@ class MainActivity : ComponentActivity() {
                 val viewModel: DiaryViewModel = viewModel()
                 val state by viewModel.state.collectAsState()
                 val context = LocalContext.current
+                val view = androidx.compose.ui.platform.LocalView.current
+
+                // 모델 다운로드/압축해제 중 화면 꺼짐 방지 (대용량 작업 중단 방지)
+                view.keepScreenOn = state.isDownloadingModel || state.isExtractingModel
 
                 // 오디오 권한 요청 런처
                 val audioPermissionLauncher = rememberLauncherForActivityResult(

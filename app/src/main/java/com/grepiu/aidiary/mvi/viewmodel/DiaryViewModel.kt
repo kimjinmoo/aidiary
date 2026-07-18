@@ -1480,17 +1480,23 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "음성인식 모델 다운로드 중...", showSherpaDownloadNotice = false, showWifiWarning = false, wifiWarningSource = null) }
 
             try {
+                var extracting = false
                 downloader.downloadSherpaModel(
                     url = SHERPA_DOWNLOAD_URL,
                     onProgress = { bytesRead, totalBytes ->
                         val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                        val label = if (extracting) "압축 해제 중..." else "음성인식 모델 다운로드 중..."
                         val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
-                        _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "음성인식 모델 다운로드 중... $sizeText") }
+                        _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "$label $sizeText") }
                     },
-                    onExtracting = {
-                        _state.update { it.copy(isExtractingModel = true, modelDownloadProgress = 1f, modelDownloadSizeText = "압축 해제 중... 잠시만 기다려 주세요") }
+                    onExtracting = { totalSize ->
+                        extracting = true
+                        _state.update {
+                            it.copy(modelDownloadProgress = 0f, modelDownloadSizeText = "압축 해제 중... 0 / ${downloader.toHumanReadableSize(totalSize)}")
+                        }
                     }
-                )                .onSuccess {
+                )
+                .onSuccess {
                     _state.update { it.copy(isDownloadingModel = false, isExtractingModel = false, modelDownloadSizeText = null) }
                     initSherpa()
                 }.onFailure { e ->
@@ -2298,7 +2304,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         // 자동 다운로드 대신 사용자 선택 후 다운로드하도록 안내 표시
-        _state.update { it.copy(showSherpaDownloadNotice = true, showDownloadNotice = false) }
+        _state.update { it.copy(showSherpaDownloadNotice = true) }
     }
 
     private fun initSherpa() {
