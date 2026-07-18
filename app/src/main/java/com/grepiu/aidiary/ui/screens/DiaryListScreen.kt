@@ -542,7 +542,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else Color(0xFF42A5F5))
+                                        .background(if (isSelected) Color.White else tabAccentColor("DIARY"))
                                 )
                             }
                             if (hasTask) {
@@ -550,7 +550,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else Color(0xFFFFB74D))
+                                        .background(if (isSelected) Color.White else tabAccentColor("PLANNER"))
                                 )
                             }
                             if (hasGoal) {
@@ -558,7 +558,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else Color(0xFF66BB6A))
+                                        .background(if (isSelected) Color.White else tabAccentColor("GOALS"))
                                 )
                             }
                             
@@ -621,6 +621,11 @@ fun TabSelector(
                 ),
                 label = "TabIndicatorOffset"
             )
+            val indicatorColor by animateColorAsState(
+                targetValue = tabAccentColor(activeTab),
+                animationSpec = tween(durationMillis = 250),
+                label = "TabIndicatorColor"
+            )
 
             Box(
                 modifier = Modifier
@@ -631,8 +636,8 @@ fun TabSelector(
                     .background(
                         Brush.horizontalGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                indicatorColor,
+                                indicatorColor.copy(alpha = 0.85f)
                             )
                         )
                     )
@@ -3180,15 +3185,27 @@ fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vec
 }
 
 /**
+ * 상단 탭 인디케이터 / 달력 도트 / 탭 관련 UI 공용 액센트 색상.
+ * DIARY / PLANNER / GOALS 는 WeeklyCalendarStrip 도트 색과 동일하게 통일.
+ * CHAT 은 AI 비서 탭 전용 색.
+ */
+@Composable
+private fun tabAccentColor(tabId: String): Color = when (tabId) {
+    "DIARY"   -> Color(0xFF42A5F5)
+    "PLANNER" -> Color(0xFFFFB74D)
+    "GOALS"   -> Color(0xFF66BB6A)
+    "CHAT"    -> Color(0xFFAB47BC)
+    else      -> MaterialTheme.colorScheme.primary
+}
+
+/**
  * 상업 서비스 수준 하단 글쓰기 허브 바 (재설계 v2).
  *
  * 구조:
- *  1행 — "✍️ 기록하기" 대형 그라디언트 CTA 버튼 (타입 선택 없이 즉시 작성 화면 진입)
- *  2행 — 타입 퀵셀렉 칩 [일기 · 새 글 · 메모] (선택 시 해당 타입으로 바로 진입, 강제 아님)
+ *  "✍️ 기록하기" 대형 그라디언트 CTA 버튼 (타입 선택 없이 즉시 작성 화면 진입)
  *
  * UX 철학:
- *  - 메인 플로우는 "기록하기" → 작성 화면 → 타입은 내부에서 AI 자동 분류 or 수동 변경
- *  - 타입을 미리 알고 있을 때만 퀵셀렉 칩 활용
+ *  - "기록하기" → 작성 화면 → 타입은 내부에서 AI 자동 분류 or 수동 변경
  */
 @Composable
 fun WriteActionBar(
@@ -3205,12 +3222,6 @@ fun WriteActionBar(
             stiffness = Spring.StiffnessHigh
         ),
         label = "MainButtonScale"
-    )
-
-    val typeChips = listOf(
-        Pair(ContentType.DIARY, "일기"),
-        Pair(ContentType.POST, "새 글"),
-        Pair(ContentType.NOTE, "메모")
     )
 
     Surface(
@@ -3277,67 +3288,6 @@ fun WriteActionBar(
                         color = Color.White,
                         letterSpacing = 0.3.sp
                     )
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            // ── 2행: 타입 퀵셀렉 칩 ────────────────────────────────
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                typeChips.forEach { (type, label) ->
-                    val chipInteraction = remember { MutableInteractionSource() }
-                    val isChipPressed by chipInteraction.collectIsPressedAsState()
-                    val chipScale by animateFloatAsState(
-                        targetValue = if (isChipPressed) 0.93f else 1f,
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessHigh
-                        ),
-                        label = "ChipScale_$label"
-                    )
-                    val (chipIcon, _, chipColor) = getContentTypeUI(type)
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                            .scale(chipScale)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(chipColor.copy(alpha = 0.08f))
-                            .border(
-                                width = 1.dp,
-                                color = chipColor.copy(alpha = 0.18f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable(
-                                interactionSource = chipInteraction,
-                                indication = null,
-                                onClick = { onWriteDiary(type) }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = chipIcon,
-                                contentDescription = label,
-                                tint = chipColor,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(5.dp))
-                            Text(
-                                text = label,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = chipColor
-                            )
-                        }
-                    }
                 }
             }
 
