@@ -236,6 +236,21 @@ fun BlockRenderer(
                 modifier = modifier
             )
         }
+        is ContentBlock.HashtagBlock -> {
+            HashtagRenderer(tags = block.tags)
+        }
+    }
+}
+
+@Composable
+private fun HashtagRenderer(tags: List<String>) {
+    if (tags.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        tags.forEach { tag ->
+            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF26A69A).copy(alpha = 0.1f)) {
+                Text("#$tag", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF26A69A), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            }
+        }
     }
 }
 

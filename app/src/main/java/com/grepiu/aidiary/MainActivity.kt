@@ -533,6 +533,12 @@ fun DiaryAppNavigationRouter(
                     onDecorateBlock = { blockId ->
                         viewModel.processIntent(DiaryIntent.DecorateBlock(blockId))
                     },
+                    onStartDownload = {
+                        viewModel.processIntent(DiaryIntent.StartDownload)
+                    },
+                    onStartSherpaDownload = {
+                        viewModel.processIntent(DiaryIntent.StartSherpaDownload)
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             }

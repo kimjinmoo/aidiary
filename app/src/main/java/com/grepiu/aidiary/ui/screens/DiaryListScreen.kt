@@ -1,17 +1,25 @@
 package com.grepiu.aidiary.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,6 +27,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,9 +48,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -61,6 +75,16 @@ import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.DownloadStatusCard
+import com.grepiu.aidiary.ui.theme.DiaryAccent
+import com.grepiu.aidiary.ui.theme.PlannerAccent
+import com.grepiu.aidiary.ui.theme.GoalsAccent
+import com.grepiu.aidiary.ui.theme.ChatAccent
+import com.grepiu.aidiary.ui.theme.EmotionJoy
+import com.grepiu.aidiary.ui.theme.EmotionSadness
+import com.grepiu.aidiary.ui.theme.EmotionAnger
+import com.grepiu.aidiary.ui.theme.EmotionAnxiety
+import com.grepiu.aidiary.ui.theme.EmotionCalm
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -210,6 +234,39 @@ fun DiaryListScreen(
         )
     }
 
+    // 3) Wi-Fi 경고 다이얼로그 (모바일 데이터 다운로드 확인)
+    if (state.showWifiWarning) {
+        val isSherpa = state.wifiWarningSource == "sherpa"
+        val modelName = if (isSherpa) "음성인식 모델 (Sherpa)" else "AI 언어 모델 (Gemma)"
+        val downloadSize = if (isSherpa) "약 1.05GB" else "약 2.3GB"
+        AlertDialog(
+            onDismissRequest = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
+            icon = { Icon(Icons.Default.Warning, null, tint = Color(0xFFE65100)) },
+            title = { Text("Wi-Fi 연결 확인", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "현재 Wi-Fi에 연결되어 있지 않습니다.\n\n" +
+                    "${modelName} 다운로드(${downloadSize})는 대용량이므로 " +
+                    "Wi-Fi 환경에서 다운로드하는 것을 권장합니다.\n\n" +
+                    "모바일 데이터로 진행 시 데이터 요금이 많이 나올 수 있습니다.",
+                    fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isSherpa) onStartSherpaDownload() else onStartDownload()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+                ) { Text("데이터로 다운로드", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { onIntent(DiaryIntent.ShowWifiWarning(false)) }) { Text("취소") }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
     // 캘린더 일주일+ 일자 데이터 생성 (선택된 날짜 기준 앞뒤 7일씩 총 15일 구성)
     val calendarDays = remember(state.selectedDateString) {
         val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -255,7 +312,7 @@ fun DiaryListScreen(
     var isSearchFocused by remember { mutableStateOf(false) }
     var isChatInputFocused by remember { mutableStateOf(false) }
     val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && state.activeTab == "DIARY"
-    // 헤더/캘린더/탭셀렉터를 숨겨야 하는 상태 (검색 활성 또는 AI 비서 입력 포커스)
+    // 헤더/캘린더/탭셀렉터 숨김 (검색 또는 AI 비서 입력 포커스 시). TopAppBar는 항상 표시.
     val isHeaderHidden = isSearchActive || (isChatInputFocused && state.activeTab == "CHAT")
 
     // AI 가 추천한 플래너 할 일을 입력란에 1회성으로 반영하고, 사용 후엔 상태를 비웁니다.
@@ -266,161 +323,84 @@ fun DiaryListScreen(
     }
 
     Scaffold(
+        topBar = {
+            DiaryTopAppBar(
+                state = state,
+                onIntent = onIntent,
+                onShowBackupDialog = { showBackupDialog = it },
+                context = context,
+                isSearchActive = isSearchActive || isSearchFocused,
+                isChatFocused = isChatInputFocused && state.activeTab == "CHAT",
+                isDiaryTab = state.activeTab == "DIARY",
+                onSearchClick = {
+                    isSearchFocused = true
+                },
+                onSearchClose = {
+                    isSearchFocused = false
+                    onIntent(DiaryIntent.ClearDiarySearch)
+                }
+            )
+        },
         bottomBar = {
             if (state.activeTab == "DIARY" && !isHeaderHidden) {
-                WriteActionBar(onWriteDiary = onWriteDiary)
+                FloatingWritePill(onWriteDiary = onWriteDiary)
             }
         },
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .padding(innerPadding)
-                .statusBarsPadding()
                 .imePadding()
                 .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f),
+                        0.6f to MaterialTheme.colorScheme.background,
+                    )
+                )
         ) {
             if (!isHeaderHidden) {
-                // C. 공간 효율적이고 고급스러운 상단 오늘의 날짜/인사말 헤더
-                Row(
+                // ── AI 상태 표시줄 ──
+                AiStatusBar(
+                    state = state,
+                    onStartDownload = onStartDownload,
+                    onCancelDownload = onCancelDownload,
+                    onDismissNotice = onDismissNotice,
+                    onStartSherpaDownload = onStartSherpaDownload,
+                    onDismissSherpaNotice = onDismissSherpaNotice
+                )
+
+                // ── 데일리 스탯 카드 ──
+                DailyOverviewHeader(
+                    state = state,
+                    onIntent = onIntent,
+                    showBackupDialog = showBackupDialog,
+                    onShowBackupDialog = { showBackupDialog = it },
+                    context = context
+                )
+
+            // A. 글래스모피즘 캘린더 스트립 컨테이너
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                tonalElevation = 1.dp,
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
-                val headerTitle = remember(state.selectedDateString) {
-                    val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                    val todayStr = format.format(Date())
-                    if (state.selectedDateString == todayStr) "오늘의 기록" else "기록 탐색"
-                }
-
-                val headerSub = remember(state.selectedDateString) {
-                    try {
-                        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        val date = format.parse(state.selectedDateString) ?: Date()
-                        SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREAN).format(date)
-                    } catch (e: Exception) {
-                        state.selectedDateString
-                    }
-                }
-
-                Column {
-                    Text(
-                        text = headerTitle,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = headerSub,
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    val isSelectedToday = remember(state.selectedDateString) {
-                        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                        val todayStr = format.format(Date())
-                        state.selectedDateString == todayStr
-                    }
-
-                    if (!isSelectedToday) {
-                        Button(
-                            onClick = {
-                                val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                val todayStr = format.format(Date())
-                                onIntent(DiaryIntent.SelectDate(todayStr))
-                            },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.height(32.dp)
-                        ) {
-                            Text("오늘", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-
-                    // 달력 피커 버튼 (과거/미래 무한 탐색)
-                    IconButton(
-                        onClick = {
-                            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                            val cal = Calendar.getInstance()
-                            try {
-                                format.parse(state.selectedDateString)?.let { cal.time = it }
-                            } catch (e: Exception) {}
-                            
-                            val dialog = android.app.DatePickerDialog(
-                                context,
-                                { _, year, month, dayOfMonth ->
-                                    val selectCal = Calendar.getInstance()
-                                    selectCal.set(Calendar.YEAR, year)
-                                    selectCal.set(Calendar.MONTH, month)
-                                    selectCal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                                    onIntent(DiaryIntent.SelectDate(format.format(selectCal.time)))
-                                },
-                                cal.get(Calendar.YEAR),
-                                cal.get(Calendar.MONTH),
-                                cal.get(Calendar.DAY_OF_MONTH)
-                            )
-                            dialog.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "오늘") { _, _ ->
-                                val todayStr = format.format(Date())
-                                onIntent(DiaryIntent.SelectDate(todayStr))
-                            }
-                            dialog.show()
-                        },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                                CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DateRange,
-                            contentDescription = "달력 선택 피커",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    // 백업/설정 버튼
-                    IconButton(
-                        onClick = { showBackupDialog = true },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
-                                CircleShape
-                            )
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "백업 및 설정",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
+                WeeklyCalendarStrip(
+                    days = calendarDays,
+                    selectedDateStr = state.selectedDateString,
+                    diaries = state.diaries,
+                    plannerTasks = state.plannerTasks,
+                    goals = state.goals,
+                    onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
+                )
             }
-
-            // A. 상단 주간 캘린더 스트립
-            WeeklyCalendarStrip(
-                days = calendarDays,
-                selectedDateStr = state.selectedDateString,
-                diaries = state.diaries,
-                plannerTasks = state.plannerTasks,
-                goals = state.goals,
-                onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
-            )
 
             // B. 세그먼티드 탭 셀렉터 (다이어리, 플래너, 나의 목표, AI 비서)
             TabSelector(
@@ -521,10 +501,489 @@ fun DiaryListScreen(
                             state = state,
                             onSendChat = { onIntent(DiaryIntent.SendChatMessage(it)) },
                             onClearHistory = { onIntent(DiaryIntent.ClearChatHistory) },
-                            onInputFocusChange = { isChatInputFocused = it }
+                            onInputFocusChange = { isChatInputFocused = it },
+                            onStartDownload = onStartDownload
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * TopAppBar — 노멀 / 검색 / 채팅 모드 간 부드러운 애니메이션 전환
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@Composable
+private fun DiaryTopAppBar(
+    state: DiaryState,
+    onIntent: (DiaryIntent) -> Unit,
+    onShowBackupDialog: (Boolean) -> Unit,
+    context: android.content.Context,
+    isSearchActive: Boolean,
+    isChatFocused: Boolean,
+    isDiaryTab: Boolean,
+    onSearchClick: () -> Unit,
+    onSearchClose: () -> Unit
+) {
+    // 모드 결정: 검색 > 채팅 > 노멀
+    val barMode = when {
+        isSearchActive && isDiaryTab -> "search"
+        isChatFocused -> "chat"
+        else -> "normal"
+    }
+
+    val transitionSpec: AnimatedContentTransitionScope<String>.() -> ContentTransform = {
+        when {
+            // 노멀 → 검색: 검색창이 오른쪽에서 슬라이드 인
+            initialState == "normal" && targetState == "search" ->
+                (slideInHorizontally(tween(300)) { it / 3 } + fadeIn(tween(250))) togetherWith
+                (slideOutHorizontally(tween(250)) { -it / 4 } + fadeOut(tween(200)))
+            // 검색 → 노멀: 노멀 타이틀이 왼쪽에서 슬라이드 인
+            initialState == "search" && targetState == "normal" ->
+                (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(250))) togetherWith
+                (slideOutHorizontally(tween(250)) { it / 3 } + fadeOut(tween(200)))
+            // 그 외: 크로스페이드
+            else ->
+                (fadeIn(tween(250)) togetherWith fadeOut(tween(200)))
+        }
+    }
+
+    AnimatedContent(
+        targetState = barMode,
+        transitionSpec = transitionSpec,
+        label = "TopAppBarMode",
+    ) { mode ->
+        when (mode) {
+            "search" -> SearchModeTopBar(state, onIntent, onSearchClose)
+            "chat" -> ChatModeTopBar()
+            else -> NormalModeTopBar(state, onIntent, onShowBackupDialog, context, isDiaryTab, onSearchClick)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchModeTopBar(
+    state: DiaryState,
+    onIntent: (DiaryIntent) -> Unit,
+    onSearchClose: () -> Unit
+) {
+    val focusManager = LocalFocusManager.current
+    var searchText by rememberSaveable(state.searchQuery) { mutableStateOf(state.searchQuery) }
+    LaunchedEffect(state.searchQuery) { searchText = state.searchQuery }
+
+    TopAppBar(
+        title = {
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = {
+                    searchText = it
+                    if (it.trim().isNotBlank()) onIntent(DiaryIntent.SearchDiaries(it))
+                    else onIntent(DiaryIntent.ClearDiarySearch)
+                },
+                singleLine = true,
+                placeholder = { Text("다이어리 기록 검색...", fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp)) },
+                trailingIcon = {
+                    if (state.isSearching) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else if (searchText.isNotBlank()) {
+                        IconButton(onClick = {
+                            searchText = ""
+                            onIntent(DiaryIntent.ClearDiarySearch)
+                        }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Close, "지우기", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                ),
+                shape = RoundedCornerShape(16.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        navigationIcon = {
+            IconButton(onClick = {
+                searchText = ""
+                focusManager.clearFocus()
+                onSearchClose()
+            }) {
+                Icon(Icons.Default.ArrowBack, "검색 닫기")
+            }
+        },
+        actions = {},
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatModeTopBar() {
+    TopAppBar(
+        title = {
+            Text("AI 비서", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NormalModeTopBar(
+    state: DiaryState,
+    onIntent: (DiaryIntent) -> Unit,
+    onShowBackupDialog: (Boolean) -> Unit,
+    context: android.content.Context,
+    isDiaryTab: Boolean,
+    onSearchClick: () -> Unit
+) {
+    val isToday = remember(state.selectedDateString) {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) == state.selectedDateString
+    }
+    val title = remember(state.selectedDateString) {
+        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val todayStr = format.format(Date())
+        if (state.selectedDateString == todayStr) "오늘의 기록" else "기록 탐색"
+    }
+
+    TopAppBar(
+        title = {
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (!isToday) {
+                    val sub = remember(state.selectedDateString) {
+                        try {
+                            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                            val date = format.parse(state.selectedDateString) ?: Date()
+                            SimpleDateFormat("yyyy년 M월 d일 (E)", Locale.KOREAN).format(date)
+                        } catch (_: Exception) { state.selectedDateString }
+                    }
+                    Text(sub, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                }
+            }
+        },
+        actions = {
+            if (isDiaryTab) {
+                IconButton(onClick = onSearchClick) {
+                    Icon(Icons.Default.Search, "검색", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (!isToday) {
+                FilledTonalButton(
+                    onClick = {
+                        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        onIntent(DiaryIntent.SelectDate(todayStr))
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.height(32.dp)
+                ) { Text("오늘", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            }
+            IconButton(onClick = {
+                val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val cal = Calendar.getInstance()
+                try { format.parse(state.selectedDateString)?.let { cal.time = it } } catch (_: Exception) {}
+                val dialog = android.app.DatePickerDialog(
+                    context, { _, y, m, d ->
+                        val c = Calendar.getInstance()
+                        c.set(Calendar.YEAR, y); c.set(Calendar.MONTH, m); c.set(Calendar.DAY_OF_MONTH, d)
+                        onIntent(DiaryIntent.SelectDate(format.format(c.time)))
+                    },
+                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
+                )
+                dialog.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "오늘") { _, _ ->
+                    onIntent(DiaryIntent.SelectDate(format.format(Date())))
+                }
+                dialog.show()
+            }) {
+                Icon(Icons.Default.DateRange, "날짜 선택", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = { onShowBackupDialog(true) }) {
+                Icon(Icons.Default.Settings, "설정", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            scrolledContainerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    )
+}
+
+/**
+ * AI 상태 컴팩트 바 — 모델 다운로드/초기화/준비 상태를 AppBar 아래에 표시
+ */
+@Composable
+private fun AiStatusBar(
+    state: DiaryState,
+    onStartDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
+    onDismissNotice: () -> Unit,
+    onStartSherpaDownload: () -> Unit,
+    onDismissSherpaNotice: () -> Unit
+) {
+    val showAiStatus = state.isDownloadingModel ||
+        state.isExtractingModel || state.isModelInitializing ||
+        state.showDownloadNotice || state.showSherpaDownloadNotice ||
+        state.isDeviceUnsupported
+
+    if (!showAiStatus) return
+
+    val visible = remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(200)
+        visible.value = true
+    }
+
+    AnimatedVisibility(
+        visible = visible.value,
+        enter = fadeIn(tween(300)) + expandVertically(tween(300), expandFrom = Alignment.Top),
+        exit = fadeOut(tween(200)) + shrinkVertically(tween(200), shrinkTowards = Alignment.Top),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .heightIn(max = 132.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // ── LLM 다운로드 안내 ──
+            if (state.showDownloadNotice && !state.isDownloadingModel && !state.isExtractingModel) {
+                NoticeRow(
+                    emoji = "\uD83E\uDDE0", label = "AI 언어 모델 설치 (2.3GB)",
+                    buttonLabel = "다운로드", onAction = onStartDownload, onDismiss = onDismissNotice
+                )
+            }
+            // ── STT 다운로드 안내 ──
+            if (state.showSherpaDownloadNotice && !state.isDownloadingModel && !state.isExtractingModel) {
+                NoticeRow(
+                    emoji = "\uD83C\uDF99\uFE0F", label = "음성인식 설치 (1.0GB)",
+                    buttonLabel = "다운로드", onAction = onStartSherpaDownload, onDismiss = onDismissSherpaNotice
+                )
+            }
+            // ── 다운로드 진행 ──
+            if (state.isDownloadingModel || state.isExtractingModel) {
+                ProgressRow(state, onCancelDownload)
+            }
+            // ── 초기화 중 ──
+            if (state.isModelInitializing) {
+                InitRow()
+            }
+            // ── 기기 미지원 ──
+            if (state.isDeviceUnsupported) {
+                UnsupportedRow(state)
+            }
+            // ── 준비 완료 ──
+            if (state.isModelReady && !state.isDownloadingModel && !state.isExtractingModel &&
+                !state.isDeviceUnsupported && !state.showDownloadNotice && !state.showSherpaDownloadNotice) {
+                ReadyRow()
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoticeRow(emoji: String, label: String, buttonLabel: String, onAction: () -> Unit, onDismiss: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(emoji, fontSize = 14.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            TextButton(onClick = onAction, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
+                Text(buttonLabel, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+            }
+            TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
+                Text("닫기", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressRow(state: DiaryState, onCancel: () -> Unit) {
+    Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                if (state.isExtractingModel) "모델 압축 해제 중…" else "AI 다운로드 ${(state.modelDownloadProgress * 100).toInt()}%",
+                fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
+                Text("취소", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InitRow() {
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.secondary)
+            Spacer(Modifier.width(10.dp))
+            Text("AI 메모리 로딩 중…", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.secondary)
+        }
+    }
+}
+
+@Composable
+private fun UnsupportedRow(state: DiaryState) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("기기 사양 부족", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
+private fun ReadyRow() {
+    Surface(color = GoalsAccent.copy(alpha = 0.08f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(GoalsAccent))
+            Spacer(Modifier.width(6.dp))
+            Text("AI 준비됨", fontSize = 11.sp, color = GoalsAccent, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+/**
+ * 데일리 스탯 카드 — 오늘 기록 / 전체 기록 / 상태 한눈에 보기
+ */
+@Composable
+private fun DailyOverviewHeader(
+    state: DiaryState,
+    onIntent: (DiaryIntent) -> Unit,
+    showBackupDialog: Boolean,
+    onShowBackupDialog: (Boolean) -> Unit,
+    context: android.content.Context
+) {
+    val todayEntryCount = remember(state.diaries, state.selectedDateString) {
+        state.diaries.count {
+            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.timestamp)) == state.selectedDateString
+        }
+    }
+    val totalEntries = state.diaryTotalCount
+
+    val isToday = remember(state.selectedDateString) {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) == state.selectedDateString
+    }
+    val isFuture = remember(state.selectedDateString) {
+        try {
+            val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val selected = format.parse(state.selectedDateString) ?: return@remember false
+            selected.after(Date())
+        } catch (_: Exception) { false }
+    }
+
+    val (dateIcon, dateLabel, dateValue) = when {
+        isToday -> Triple(Icons.Default.WbSunny, "오늘", "기록 중")
+        isFuture -> Triple(Icons.Default.Event, "예정", "미래")
+        else -> Triple(Icons.Default.History, "탐색", "과거")
+    }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(16.dp)
+        ) {
+            StatChip(Icons.AutoMirrored.Filled.MenuBook, "오늘 기록", "${todayEntryCount}개", DiaryAccent, Modifier.weight(1f))
+            StatChip(Icons.Default.CollectionsBookmark, "전체 기록", "${totalEntries}개", PlannerAccent, Modifier.weight(1f))
+            StatChip(
+                dateIcon, dateLabel, dateValue,
+                if (isToday || isFuture) GoalsAccent else ChatAccent,
+                Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(shape = RoundedCornerShape(12.dp), color = color.copy(alpha = 0.08f), modifier = modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Column {
+                Text(label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                Text(value, fontSize = 14.sp, color = color, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/**
+ * 플로팅 하단 글쓰기 필 — FAB 스타일의 떠 있는 CTA 버튼
+ */
+@Composable
+fun FloatingWritePill(
+    onWriteDiary: (ContentType) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val isPressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "FloatPillScale"
+    )
+    Box(
+        modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).navigationBarsPadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.primary,
+            shadowElevation = 12.dp,
+            tonalElevation = 4.dp,
+            modifier = Modifier.width(220.dp).height(52.dp).scale(scale)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxSize().clickable(interactionSource = interaction, indication = null) {
+                    onWriteDiary(ContentType.DIARY)
+                },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.EditNote, null, tint = Color.White, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("기록하기", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 0.2.sp)
             }
         }
     }
@@ -591,18 +1050,23 @@ fun WeeklyCalendarStrip(
 
                 // 부드러운 스케일 및 색상 전환 애니메이션
                 val scale by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = if (isSelected) 1.05f else 0.95f,
-                    animationSpec = tween(durationMillis = 200),
+                    targetValue = if (isSelected) 1.04f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
                     label = "CalendarScale"
                 )
 
                 val backgroundColor by animateColorAsState(
                     targetValue = if (isSelected) {
                         MaterialTheme.colorScheme.primary
+                    } else if (day.isToday) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                     } else {
                         MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                     },
-                    animationSpec = tween(durationMillis = 200),
+                    animationSpec = tween(durationMillis = 250),
                     label = "CalendarBgColor"
                 )
 
@@ -618,25 +1082,15 @@ fun WeeklyCalendarStrip(
 
                 val subTextColor by animateColorAsState(
                     targetValue = if (isSelected) {
-                        Color.White.copy(alpha = 0.8f)
+                        Color.White.copy(alpha = 0.85f)
+                    } else if (day.isToday) {
+                        MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                     animationSpec = tween(durationMillis = 200),
                     label = "CalendarSubTextColor"
                 )
-
-                val cellBorder = if (isSelected) {
-                    BorderStroke(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.2f)
-                    )
-                } else {
-                    BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f)
-                    )
-                }
 
                 Box(
                     modifier = Modifier
@@ -645,7 +1099,20 @@ fun WeeklyCalendarStrip(
                         .height(74.dp)
                         .clip(RoundedCornerShape(18.dp))
                         .background(backgroundColor)
-                        .border(cellBorder, RoundedCornerShape(18.dp))
+                        .then(
+                            if (isSelected) Modifier.shadow(
+                                elevation = 4.dp,
+                                shape = RoundedCornerShape(18.dp),
+                                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                            ) else Modifier
+                        )
+                        .then(
+                            if (day.isToday && !isSelected) Modifier.border(
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                                RoundedCornerShape(18.dp)
+                            ) else Modifier
+                        )
                         .clickable { onDateSelect(day.dateString) }
                         .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
@@ -679,7 +1146,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else tabAccentColor("DIARY"))
+                                        .background(if (isSelected) Color.White else DiaryAccent)
                                 )
                             }
                             if (hasTask) {
@@ -687,7 +1154,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else tabAccentColor("PLANNER"))
+                                        .background(if (isSelected) Color.White else PlannerAccent)
                                 )
                             }
                             if (hasGoal) {
@@ -695,7 +1162,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else tabAccentColor("GOALS"))
+                                        .background(if (isSelected) Color.White else GoalsAccent)
                                 )
                             }
                             
@@ -722,7 +1189,7 @@ fun TabSelector(
     val tabs = remember {
         listOf(
             Triple("DIARY", "기록", Icons.AutoMirrored.Filled.MenuBook),
-            Triple("PLANNER", "플래너", Icons.Default.DateRange),
+            Triple("PLANNER", "계획", Icons.Default.DateRange),
             Triple("GOALS", "목표", Icons.Default.TaskAlt),
             Triple("CHAT", "AI 비서", Icons.Default.Star)
         )
@@ -732,7 +1199,7 @@ fun TabSelector(
     }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         ),
@@ -744,7 +1211,7 @@ fun TabSelector(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(4.dp)
-                .height(40.dp)
+                .height(42.dp)
         ) {
             val maxWidth = this.maxWidth
             val tabWidth = maxWidth / 4
@@ -753,14 +1220,14 @@ fun TabSelector(
             val indicatorOffset by androidx.compose.animation.core.animateDpAsState(
                 targetValue = tabWidth * selectedIndex,
                 animationSpec = androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
                     stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
                 ),
                 label = "TabIndicatorOffset"
             )
             val indicatorColor by animateColorAsState(
                 targetValue = tabAccentColor(activeTab),
-                animationSpec = tween(durationMillis = 250),
+                animationSpec = tween(durationMillis = 300),
                 label = "TabIndicatorColor"
             )
 
@@ -769,14 +1236,18 @@ fun TabSelector(
                     .offset(x = indicatorOffset)
                     .width(tabWidth)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(16.dp))
+                    .padding(horizontal = 3.dp, vertical = 2.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(
                         Brush.horizontalGradient(
-                            colors = listOf(
-                                indicatorColor,
-                                indicatorColor.copy(alpha = 0.85f)
-                            )
+                            colors = listOf(indicatorColor, indicatorColor.copy(alpha = 0.85f))
                         )
+                    )
+                    .shadow(
+                        elevation = 2.dp,
+                        shape = RoundedCornerShape(12.dp),
+                        ambientColor = indicatorColor.copy(alpha = 0.25f),
+                        spotColor = indicatorColor.copy(alpha = 0.2f)
                     )
             )
 
@@ -892,181 +1363,96 @@ fun DiaryTabContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // ===== 검색바 (v4) - 상단 고정, 취소 버튼 포함 =====
-        DiarySearchBar(
-            query = state.searchQuery,
-            isSearching = state.isSearching,
-            onSubmit = onSearch,
-            onClear = onClearSearch,
-            isFocused = isSearchFocused,
-            onFocusChange = onSearchFocusChange,
-            onCancel = {
-                focusManager.clearFocus()
-                onClearSearch()
-                onCancelSearch()
-            }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         LazyColumn(
             state = lazyListState,
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // AI 모델 다운로드 카드 (LLM / Sherpa 각각 독립 카드로 표시)
-            val showDownloadCard = !state.isModelReady || state.isModelInitializing ||
-                state.showWifiWarning || state.isDownloadingModel || state.isExtractingModel ||
-                state.showDownloadNotice || state.showSherpaDownloadNotice ||
-                state.isDeviceUnsupported
-            if (showDownloadCard) {
-                item {
-                    DownloadStatusCard(
-                        state = state,
-                        onStartDownload = onStartDownload,
-                        onCancelDownload = onCancelDownload,
-                        onDismissNotice = onDismissNotice,
-                        onDismissWifiWarning = onDismissWifiWarning,
-                        onStartSherpaDownload = onStartSherpaDownload,
-                        onDismissSherpaNotice = onDismissSherpaNotice
-                    )
-                }
-            }
-
-            // 리스트 필터링 옵션 바 및 책갈피 인덱스 탭 디자인의 타입 필터
+            // 타입 필터 칩 — 심플하고 프로페셔널한 FilterChip 기반
             item {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-
+                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                     Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                ) {
-                    val typeName = when {
-                        isSearchMode -> "'${state.searchQuery}' 검색 결과"
-                        selectedTypeFilter == ContentType.DIARY -> "일기"
-                        selectedTypeFilter == ContentType.POST -> "새 글"
-                        selectedTypeFilter == ContentType.NOTE -> "메모"
-                        else -> "전체 기록"
-                    }
-                    Text(
-                        text = if (isSearchMode) "$typeName (${filteredDiaries.size}개)"
-                               else "$parsedDateText $typeName (${filteredDiaries.size}개)",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // 다이어리 감성의 책갈피 인덱스 탭 디자인 필터 바
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    val filterItems = listOf(
-                        Triple(null as ContentType?, "전체", Icons.AutoMirrored.Filled.MenuBook to Color(0xFF90A4AE)),
-                        Triple(ContentType.DIARY, "일기", Icons.AutoMirrored.Filled.MenuBook to Color(0xFF42A5F5)),
-                        Triple(ContentType.POST, "새 글", Icons.Default.EditNote to Color(0xFF66BB6A)),
-                        Triple(ContentType.NOTE, "메모", Icons.Default.NoteAlt to Color(0xFFFFA726))
-                    )
-
-                    filterItems.forEach { (type, label, iconPair) ->
-                        val isSelected = selectedTypeFilter == type
-                        val offsetByState by animateDpAsState(
-                            targetValue = if (isSelected) (-6).dp else 0.dp,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
-                            ),
-                            label = "BookmarkOffset"
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val typeName = when {
+                            isSearchMode -> "'${state.searchQuery}' 검색 결과"
+                            selectedTypeFilter == ContentType.DIARY -> "일기"
+                            selectedTypeFilter == ContentType.POST -> "새 글"
+                            selectedTypeFilter == ContentType.NOTE -> "메모"
+                            else -> "전체 기록"
+                        }
+                        Text(
+                            text = if (isSearchMode) typeName
+                                   else parsedDateText,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        
-                        val alphaByState by animateFloatAsState(
-                            targetValue = if (isSelected) 1f else 0.65f,
-                            label = "BookmarkAlpha"
-                        )
-
-                        val itemColor = iconPair.second
-                        val itemIcon = iconPair.first
-
-                        // 선택 시 Solid 파스텔배경 + 흰색(White) 텍스트/아이콘으로 시각적 퀄리티 대폭 상승
-                        val bgColor = if (isSelected) itemColor else itemColor.copy(alpha = 0.05f)
-                        val borderColor = if (isSelected) Color.Transparent else itemColor.copy(alpha = 0.2f)
-                        val textColor = if (isSelected) Color.White else itemColor.copy(alpha = 0.8f)
-
+                        Spacer(Modifier.width(8.dp))
                         Surface(
-                            onClick = { onTypeFilterChange(type) },
-                            shape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp),
-                            color = bgColor,
-                            border = BorderStroke(1.dp, borderColor),
-                            modifier = Modifier
-                                .weight(1f)
-                                .offset(y = offsetByState)
-                                .alpha(alphaByState),
-                            shadowElevation = if (isSelected) 4.dp else 0.dp
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = itemIcon,
-                                    contentDescription = label,
-                                    tint = textColor,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = label,
-                                    fontSize = 11.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = textColor,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            Text(
+                                text = "${filteredDiaries.size}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // FilterChip row
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val chips = listOf(
+                            Triple(null as ContentType?, "전체", Icons.AutoMirrored.Filled.MenuBook),
+                            Triple(ContentType.DIARY, "일기", Icons.AutoMirrored.Filled.MenuBook),
+                            Triple(ContentType.POST, "새 글", Icons.Default.EditNote),
+                            Triple(ContentType.NOTE, "메모", Icons.Default.NoteAlt),
+                        )
+                        chips.forEach { (type, label, icon) ->
+                            val selected = selectedTypeFilter == type
+                            FilterChip(
+                                selected = selected,
+                                onClick = { onTypeFilterChange(type) },
+                                label = { Text(label, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
+                                leadingIcon = {
+                                    Icon(icon, label, modifier = Modifier.size(if (selected) 16.dp else 14.dp))
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                                ),
+                            )
                         }
                     }
                 }
-                
-                // 책갈피 탭 하단의 구분선
-                HorizontalDivider(
-                    thickness = 1.dp,
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
-                )
             }
-        }
 
         // 일기 항목들
         if (filteredDiaries.isEmpty()) {
             item {
                 Card(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp, horizontal = 24.dp)
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 56.dp, horizontal = 24.dp)
                     ) {
                         val typeName = when (selectedTypeFilter) {
                             ContentType.DIARY -> "일기"
@@ -1081,40 +1467,56 @@ fun DiaryTabContent(
                             null -> Icons.AutoMirrored.Filled.MenuBook
                         }
 
-                        Icon(
-                            imageVector = emptyIcon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "$parsedDateText 에 작성된 ${typeName}가 없습니다.\n오늘 있었던 일이나 생각을 기록해보세요!",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 14.sp,
-                            lineHeight = 22.sp,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Button(
-                            onClick = { onWriteDiary(ContentType.DIARY) },
-                            shape = RoundedCornerShape(14.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                            modifier = Modifier.size(72.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.DateRange, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(text = "오늘의 ${typeName} 남기기", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = emptyIcon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(34.dp)
+                                )
+                            }
                         }
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "$parsedDateText 에 작성된 ${typeName}가 없습니다",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp,
+                            textAlign = TextAlign.Center,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "오늘 있었던 일이나 생각을 기록해보세요",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(22.dp))
                     }
                 }
             }
         } else {
-            items(filteredDiaries, key = { it.id }) { diary ->
-                DiaryListItemCard(diary = diary, onClick = { onSelectDiary(diary) })
+            items(filteredDiaries.size, key = { filteredDiaries[it].id }) { index ->
+                val diary = filteredDiaries[index]
+                val itemVisible = remember { mutableStateOf(false) }
+                LaunchedEffect(Unit) {
+                    delay(index * 60L)
+                    itemVisible.value = true
+                }
+                AnimatedVisibility(
+                    visible = itemVisible.value,
+                    enter = fadeIn(tween(400, delayMillis = 0)) + 
+                            slideInVertically(tween(400, easing = FastOutSlowInEasing)) { it / 4 }
+                ) {
+                    DiaryListItemCard(diary = diary, onClick = { onSelectDiary(diary) })
+                }
             }
             // 페이지네이션: 검색 모드가 아니고, 더 보기 가능할 때만 끝에 도달하면 추가 로드
             if (!isSearchMode && state.diaryHasMore) {
@@ -1299,7 +1701,7 @@ fun DiarySearchBar(
 
 
 /**
- * 4. [플래너 할 일] 탭 본문 영역
+ * 4. [계획] 탭 본문 영역 — 프로페셔널 태스크 플래너 UI
  */
 @Composable
 fun PlannerTabContent(
@@ -1314,8 +1716,8 @@ fun PlannerTabContent(
     onRequestBriefing: () -> Unit
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
 
-    // 선택된 날짜에 필터링된 할 일 목록
     val tasksForDate = remember(state.plannerTasks, state.selectedDateString) {
         state.plannerTasks.filter { it.dateString == state.selectedDateString }
     }
@@ -1324,443 +1726,299 @@ fun PlannerTabContent(
         try {
             val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(state.selectedDateString) ?: Date()
             SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(date)
-        } catch (e: Exception) {
-            state.selectedDateString
-        }
+        } catch (e: Exception) { state.selectedDateString }
     }
 
-    var isInputFocused by remember { mutableStateOf(false) }
-    
-    // 시간 및 장소 로컬 입력 상태
     var startTime by remember { mutableStateOf<String?>(null) }
     var endTime by remember { mutableStateOf<String?>(null) }
     var locationText by remember { mutableStateOf("") }
     var isExpanded by remember { mutableStateOf(false) }
-
-    // 반복 등록 상태
+    var expandedSection by remember { mutableStateOf<String?>(null) } // "time", "location", "repeat" — 한 번에 하나만
     var isRepeat by remember { mutableStateOf(false) }
-    val selectedDays = remember { mutableStateListOf<Int>() } // 1(월) .. 7(일)
+    val selectedDays = remember { mutableStateListOf<Int>() }
     var repeatEndDateStr by remember { mutableStateOf<String?>(null) }
-
-    // 반복 계획 삭제 확인 다이얼로그 대상 (null 이면 다이얼로그 미표시)
     var taskPendingDelete by remember { mutableStateOf<PlannerTask?>(null) }
 
     val showTimePicker = { isStart: Boolean ->
         val cal = Calendar.getInstance()
         val currentStr = if (isStart) startTime else endTime
         if (!currentStr.isNullOrBlank()) {
-            val parts = currentStr.split(":")
-            if (parts.size == 2) {
-                cal.set(Calendar.HOUR_OF_DAY, parts[0].toIntOrNull() ?: 12)
-                cal.set(Calendar.MINUTE, parts[1].toIntOrNull() ?: 0)
+            currentStr.split(":").takeIf { it.size == 2 }?.let {
+                cal.set(Calendar.HOUR_OF_DAY, it[0].toIntOrNull() ?: 12)
+                cal.set(Calendar.MINUTE, it[1].toIntOrNull() ?: 0)
             }
         }
-        android.app.TimePickerDialog(
-            context,
-            { _, hour, minute ->
-                val formatted = String.format(Locale.getDefault(), "%02d:%02d", hour, minute)
-                if (isStart) {
-                    startTime = formatted
-                } else {
-                    endTime = formatted
-                }
-            },
-            cal.get(Calendar.HOUR_OF_DAY),
-            cal.get(Calendar.MINUTE),
-            true
-        ).show()
+        android.app.TimePickerDialog(context, { _, h, m ->
+            val fmt = String.format(Locale.getDefault(), "%02d:%02d", h, m)
+            if (isStart) startTime = fmt else endTime = fmt
+        }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
     }
 
     val showEndDatePicker = {
         val cal = Calendar.getInstance()
         if (!repeatEndDateStr.isNullOrBlank()) {
-            try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                sdf.parse(repeatEndDateStr)?.let { cal.time = it }
-            } catch (e: Exception) {}
+            try { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(repeatEndDateStr)?.let { cal.time = it } } catch (_: Exception) {}
         }
-        android.app.DatePickerDialog(
-            context,
-            { _, y, m, d ->
-                val formatted = String.format(Locale.getDefault(), "%04d-%02d-%02d", y, m + 1, d)
-                repeatEndDateStr = formatted
-            },
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH),
-            cal.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        android.app.DatePickerDialog(context, { _, y, m, d ->
+            repeatEndDateStr = String.format(Locale.getDefault(), "%04d-%02d-%02d", y, m + 1, d)
+        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+    }
+
+    val resetForm = {
+        startTime = null; endTime = null; locationText = ""
+        isRepeat = false; selectedDays.clear(); repeatEndDateStr = null
+        isExpanded = false; expandedSection = null
     }
 
     val handleAddTask = {
         if (newTaskText.isNotBlank()) {
-            onAddTask(
-                newTaskText,
-                startTime,
-                endTime,
-                locationText.takeIf { it.isNotBlank() },
-                isRepeat,
-                selectedDays.toList(),
-                repeatEndDateStr
-            )
-            // 리셋
-            startTime = null
-            endTime = null
-            locationText = ""
-            isRepeat = false
-            selectedDays.clear()
-            repeatEndDateStr = null
-            isExpanded = false
+            onAddTask(newTaskText, startTime, endTime, locationText.takeIf { it.isNotBlank() }, isRepeat, selectedDays.toList(), repeatEndDateStr)
+            resetForm()
+            focusManager.clearFocus()
         } else {
-            android.widget.Toast.makeText(
-                context,
-                "할 일을 입력해주세요.",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+            android.widget.Toast.makeText(context, "할 일을 입력해주세요.", android.widget.Toast.LENGTH_SHORT).show()
         }
     }
 
-    // LazyColumn 내부로 입력 폼을 편입시켜 키보드가 활성화되었을 때 자동으로 포커스 영역이 밀려 올라오도록 처리
+    val hasDetail = startTime != null || endTime != null || locationText.isNotBlank() || isRepeat
+
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        // 0. AI 브리핑 카드 (탭 상단)
-        item {
-            AiBriefingCard(
-                title = "플래너 AI 브리핑",
-                briefing = state.plannerBriefing,
-                isLoading = state.isBriefingPlanner,
-                isModelReady = state.isModelReady,
-                onRequest = onRequestBriefing
-            )
-        }
-
-        // 1. 입력 폼 아이템
+        // ── 입력 폼 ──
         item {
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isInputFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) 
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                ),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // 메인 입력행: 텍스트 필드 + 추가 버튼
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(
                             value = newTaskText,
                             onValueChange = onTextChange,
-                            placeholder = { Text(text = "$parsedDateText 계획 추가...", fontSize = 14.sp) },
+                            placeholder = { Text("$parsedDateText 계획 추가...", fontSize = 14.sp) },
                             singleLine = true,
-                            suffix = {
+                            trailingIcon = {
                                 Text(
-                                    text = "${newTaskText.length}/50",
+                                    "${newTaskText.length}/50",
                                     fontSize = 11.sp,
-                                    color = if (newTaskText.length >= 50) MaterialTheme.colorScheme.error 
-                                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                    color = if (newTaskText.length >= 50) MaterialTheme.colorScheme.error
+                                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                 )
                             },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
-                                disabledBorderColor = Color.Transparent,
-                                errorBorderColor = Color.Transparent
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
                             ),
+                            shape = RoundedCornerShape(12.dp),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { handleAddTask() }),
-                            modifier = Modifier
-                                .weight(1f)
-                                .onFocusChanged { isInputFocused = it.isFocused }
+                            modifier = Modifier.weight(1f)
                         )
-
-                        Spacer(modifier = Modifier.width(2.dp))
-
-                        // AI 자동 플래너명 추천 버튼
-                        AiSuggestPlannerTaskButton(
-                            isModelReady = state.isModelReady,
-                            isSuggesting = state.isSuggestingPlannerTask,
-                            onClick = {
-                                onSuggestTask(
-                                    DiaryIntent.SuggestPlannerTask(
-                                        startTime = startTime,
-                                        endTime = endTime,
-                                        location = locationText.takeIf { it.isNotBlank() },
-                                        isRepeat = isRepeat,
-                                        repeatDays = selectedDays.toList(),
-                                        repeatEndDateString = repeatEndDateStr
-                                    )
-                                )
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.width(2.dp))
-
-                        // 상세 정보 확장 토글 버튼
-                        IconButton(
-                            onClick = { isExpanded = !isExpanded },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isExpanded) Icons.Default.Close else Icons.Default.EditNote,
-                                contentDescription = "시간/장소 설정",
-                                tint = if (isExpanded || startTime != null || endTime != null || locationText.isNotEmpty() || isRepeat) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(6.dp))
-
-                        IconButton(
+                        Spacer(Modifier.width(8.dp))
+                        FilledIconButton(
                             onClick = { handleAddTask() },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.size(44.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "추가",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                            Icon(Icons.Default.Add, "추가", tint = Color.White, modifier = Modifier.size(22.dp))
+                        }
+                    }
+
+                    // 퀵 옵션 칩 행
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 시간 칩
+                        FilterChip(
+                            selected = startTime != null || endTime != null,
+                            onClick = {
+                                val next = if (expandedSection == "time") null else "time"
+                                expandedSection = next
+                                isExpanded = next != null
+                            },
+                            label = {
+                                Text(
+                                    if (startTime != null || endTime != null) {
+                                        listOfNotNull(startTime, endTime).joinToString("~")
+                                    } else "시간",
+                                    fontSize = 12.sp
+                                )
+                            },
+                            leadingIcon = { Icon(Icons.Default.Schedule, null, modifier = Modifier.size(14.dp)) },
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        // 장소 칩
+                        FilterChip(
+                            selected = locationText.isNotBlank(),
+                            onClick = {
+                                val next = if (expandedSection == "location") null else "location"
+                                expandedSection = next
+                                isExpanded = next != null
+                            },
+                            label = { Text(if (locationText.isNotBlank()) locationText.take(8) else "장소", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(14.dp)) },
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        // 반복 칩
+                        FilterChip(
+                            selected = isRepeat,
+                            onClick = {
+                                val next = if (expandedSection == "repeat") null else "repeat"
+                                expandedSection = next
+                                isExpanded = next != null
+                            },
+                            label = { Text(if (isRepeat && selectedDays.isNotEmpty()) "매주" else "반복", fontSize = 12.sp) },
+                            leadingIcon = { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp)) },
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        // AI 추천 칩
+                        if (state.isModelReady) {
+                            Spacer(Modifier.weight(1f))
+                            AssistChip(
+                                onClick = {
+                                    onSuggestTask(DiaryIntent.SuggestPlannerTask(
+                                        startTime = startTime, endTime = endTime,
+                                        location = locationText.takeIf { it.isNotBlank() },
+                                        isRepeat = isRepeat, repeatDays = selectedDays.toList(), repeatEndDateString = repeatEndDateStr
+                                    ))
+                                },
+                                label = {
+                                    Text(
+                                        if (state.isSuggestingPlannerTask) "생성 중..." else "AI 추천",
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    if (state.isSuggestingPlannerTask) {
+                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp))
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
                             )
                         }
                     }
 
-                    // 시작/종료시간 & 장소 입력 확장 폼
+                    // 상세 옵션 확장 — expandedSection 에 따라 한 섹션만 표시
                     AnimatedVisibility(visible = isExpanded) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-                        ) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(bottom = 12.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                            )
+                        Column(modifier = Modifier.padding(top = 12.dp)) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f))
+                            Spacer(Modifier.height(10.dp))
 
-                            // 시간 선택 칩셋 Row
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // 시작 시간
-                                SuggestionChip(
-                                    onClick = { showTimePicker(true) },
-                                    label = {
-                                        Text(
-                                            text = startTime?.let { "시작: $it" } ?: "⏰ 시작 시간",
-                                            fontSize = 12.sp
+                            // ── 시간 섹션 ──
+                            AnimatedVisibility(visible = expandedSection == "time") {
+                                Column {
+                                    Text("시간 설정", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedTextField(
+                                            value = startTime ?: "",
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            placeholder = { Text("시작", fontSize = 13.sp) },
+                                            trailingIcon = { Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(16.dp)) },
+                                            singleLine = true,
+                                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, textAlign = TextAlign.Center),
+                                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f).clickable { showTimePicker(true) }
                                         )
-                                    },
-                                    colors = SuggestionChipDefaults.suggestionChipColors(
-                                        containerColor = if (startTime != null) {
-                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                        } else {
-                                            Color.Transparent
-                                        }
-                                    )
-                                )
-
-                                // 종료 시간
-                                SuggestionChip(
-                                    onClick = { showTimePicker(false) },
-                                    label = {
-                                        Text(
-                                            text = endTime?.let { "종료: $it" } ?: "⏰ 종료 시간",
-                                            fontSize = 12.sp
+                                        OutlinedTextField(
+                                            value = endTime ?: "",
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            placeholder = { Text("종료", fontSize = 13.sp) },
+                                            trailingIcon = { Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(16.dp)) },
+                                            singleLine = true,
+                                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, textAlign = TextAlign.Center),
+                                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.weight(1f).clickable { showTimePicker(false) }
                                         )
-                                    },
-                                    colors = SuggestionChipDefaults.suggestionChipColors(
-                                        containerColor = if (endTime != null) {
-                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                        } else {
-                                            Color.Transparent
-                                        }
-                                    )
-                                )
-
-                                // 지우기 버튼 (시간 리셋)
-                                if (startTime != null || endTime != null) {
-                                    TextButton(
-                                        onClick = {
-                                            startTime = null
-                                            endTime = null
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(28.dp)
-                                    ) {
-                                        Text("시간 리셋", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // 장소 입력 텍스트 필드 (텍스트 가독성 고도화)
-                            OutlinedTextField(
-                                value = locationText,
-                                onValueChange = { locationText = it },
-                                placeholder = { Text(text = "📍 장소 입력 (예: 강남역 카페, 집 등)", fontSize = 12.5.sp) },
-                                singleLine = true,
-                                textStyle = LocalTextStyle.current.copy(
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            HorizontalDivider(
-                                modifier = Modifier.padding(bottom = 12.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                            )
-
-                            // 1. 반복 설정 토글 스위치 형태의 칩셋 Row
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.DateRange,
-                                        contentDescription = null,
-                                        tint = if (isRepeat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "반복 계획으로 등록",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Switch(
-                                    checked = isRepeat,
-                                    onCheckedChange = { isRepeat = it },
-                                    colors = SwitchDefaults.colors(
-                                        checkedThumbColor = MaterialTheme.colorScheme.primary,
-                                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
-                                    )
-                                )
-                            }
-
-                            // 2. 반복 설정이 켜졌을 때 요일 선택 및 종료일 피커 노출
-                            AnimatedVisibility(visible = isRepeat) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Text(
-                                        text = "반복 요일 (다중 선택)",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-
-                                    // 월~일 요일 토글 버튼 그룹
-                                    val daysList = listOf("월" to 1, "화" to 2, "수" to 3, "목" to 4, "금" to 5, "토" to 6, "일" to 7)
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        daysList.forEach { (name, value) ->
-                                            val isSelected = selectedDays.contains(value)
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .background(
-                                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                                        else Color.Transparent
-                                                    )
-                                                    .border(
-                                                        1.dp,
-                                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                                                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
-                                                        RoundedCornerShape(10.dp)
-                                                    )
-                                                    .clickable {
-                                                        if (isSelected) selectedDays.remove(value) else selectedDays.add(value)
-                                                    }
-                                                    .padding(vertical = 8.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = name,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                        if (startTime != null || endTime != null) {
+                                            IconButton(onClick = { startTime = null; endTime = null }, modifier = Modifier.size(36.dp)) {
+                                                Icon(Icons.Default.Close, "리셋", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
                                             }
                                         }
                                     }
+                                }
+                            }
 
-                                    // 반복 종료일 선택 영역
+                            // ── 장소 섹션 ──
+                            AnimatedVisibility(visible = expandedSection == "location") {
+                                OutlinedTextField(
+                                    value = locationText,
+                                    onValueChange = { locationText = it },
+                                    placeholder = { Text("📍 장소 (예: 강남역 카페)", fontSize = 13.sp) },
+                                    singleLine = true,
+                                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            // ── 반복 섹션 ──
+                            AnimatedVisibility(visible = expandedSection == "repeat") {
+                                Column {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 4.dp)
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text(
-                                            text = "반복 종료일",
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Refresh, null, tint = if (isRepeat) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("반복 계획", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                        Switch(
+                                            checked = isRepeat,
+                                            onCheckedChange = { isRepeat = it },
+                                            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary, checkedTrackColor = MaterialTheme.colorScheme.primaryContainer)
                                         )
-
-                                        SuggestionChip(
-                                            onClick = { showEndDatePicker() },
-                                            label = {
-                                                Text(
-                                                    text = repeatEndDateStr?.let { "종료: $it" } ?: "📅 종료일 선택",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (repeatEndDateStr != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            },
-                                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                                containerColor = if (repeatEndDateStr != null) {
-                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                                } else {
-                                                    Color.Transparent
+                                    }
+                                    AnimatedVisibility(visible = isRepeat) {
+                                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                                            Text("반복 요일", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Spacer(Modifier.height(6.dp))
+                                            val daysList = listOf("월" to 1, "화" to 2, "수" to 3, "목" to 4, "금" to 5, "토" to 6, "일" to 7)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                daysList.forEach { (name, value) ->
+                                                    val sel = selectedDays.contains(value)
+                                                    FilterChip(
+                                                        selected = sel,
+                                                        onClick = { if (sel) selectedDays.remove(value) else selectedDays.add(value) },
+                                                        label = { Text(name, fontSize = 12.sp) },
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        modifier = Modifier.weight(1f)
+                                                    )
                                                 }
-                                            )
-                                        )
+                                            }
+                                            Spacer(Modifier.height(8.dp))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("종료일", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                TextButton(
+                                                    onClick = { showEndDatePicker() },
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text(repeatEndDateStr ?: "선택", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1770,34 +2028,40 @@ fun PlannerTabContent(
             }
         }
 
-        // 2. 리스트 타이틀 아이템
+        // ── 리스트 헤더 ──
         item {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "이날의 플래너 계획 (${tasksForDate.size}개)",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+                Text("이날의 계획", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(8.dp))
+                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)) {
+                    Text("${tasksForDate.size}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp))
+                }
+            }
         }
 
-        // 3. 할 일 목록 아이템들 분기
+        // ── 할 일 목록 ──
         if (tasksForDate.isEmpty()) {
             item {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "오늘 세운 계획이 없습니다.\n할 일을 기록하고 똑똑하게 실천해 보세요!",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.5.sp,
-                        lineHeight = 20.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 40.dp, horizontal = 24.dp)
+                    ) {
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f), modifier = Modifier.size(56.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.PlaylistAddCheck, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(28.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        Text("오늘 세운 계획이 없습니다", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(Modifier.height(4.dp))
+                        Text("할 일을 기록하고 똑똑하게 실천해 보세요", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         } else {
@@ -1806,34 +2070,21 @@ fun PlannerTabContent(
                     task = task,
                     onToggle = { onToggleTask(task.id) },
                     onDelete = {
-                        if (task.seriesId != null) {
-                            taskPendingDelete = task
-                        } else {
-                            onDeleteTask(task)
-                        }
+                        if (task.seriesId != null) taskPendingDelete = task
+                        else onDeleteTask(task)
                     }
                 )
             }
         }
 
-        // 4. 여백 확보용 하단 간격 아이템
-        item {
-            Spacer(modifier = Modifier.height(60.dp))
-        }
+        item { Spacer(Modifier.height(60.dp)) }
     }
 
-    // 반복 계획 일괄 등록된 할 일의 삭제 옵션 선택 다이얼로그
     taskPendingDelete?.let { pending ->
         PlannerSeriesDeleteDialog(
             task = pending,
-            onDeleteAll = {
-                onDeleteTaskSeries(pending)
-                taskPendingDelete = null
-            },
-            onDeleteThisOnly = {
-                onDeleteTask(pending)
-                taskPendingDelete = null
-            },
+            onDeleteAll = { onDeleteTaskSeries(pending); taskPendingDelete = null },
+            onDeleteThisOnly = { onDeleteTask(pending); taskPendingDelete = null },
             onCancel = { taskPendingDelete = null }
         )
     }
@@ -2082,7 +2333,7 @@ private fun AiSuggestPlannerTaskButton(
     val description = when {
         isSuggesting -> "AI 추천 생성 중"
         !isModelReady -> "AI 모델 미준비"
-        else -> "AI 자동 플래너명"
+        else -> "AI 자동 계획 추천"
     }
     Box(
         modifier = Modifier
@@ -2254,54 +2505,33 @@ fun GoalsTabContent(
 
     // 카테고리 태그 선택 상태
     val categories = listOf(
-        "일반" to Color(0xFF78909C),
+        "전체" to GoalsAccent,
         "건강" to Color(0xFF66BB6A),
         "공부" to Color(0xFF42A5F5),
         "커리어" to Color(0xFFAB47BC),
         "자산" to Color(0xFFFFA726),
-        "취미" to Color(0xFFEC407A)
+        "취미" to Color(0xFFEC407A),
     )
-    var selectedCategory by remember { mutableStateOf("일반") }
-    var isInputFocused by remember { mutableStateOf(false) }
+    var selectedCategory by remember { mutableStateOf("전체") }
     var isFinishedExpanded by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     // 진행 중인 목표와 완료된 목표 분리
-    val activeGoals = remember(state.goals) { state.goals.filter { !it.isCompleted } }
+    val activeGoals = remember(state.goals, selectedCategory) {
+        state.goals.filter { !it.isCompleted && (selectedCategory == "전체" || it.category == selectedCategory) }
+    }
     val completedGoalsList = remember(state.goals) { state.goals.filter { it.isCompleted } }
 
-    // 입력 필드 포커스 시 LazyColumn 이 입력 카드를 키보드 위로 스크롤하도록 요청
-    val inputBringIntoView = remember { BringIntoViewRequester() }
-    val inputFocusScope = rememberCoroutineScope()
-
-    // 단일 LazyColumn 으로 통합: 대시보드 + 입력 + 목록 모두 스크롤 대상.
-    // 키보드(ime) 가 올라와도 부모 Column 의 imePadding 으로 LazyColumn 높이가 줄어들고,
-    // 입력 필드의 BringIntoViewRequester 가 키보드에 가려지지 않도록 자동 스크롤한다.
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // AI 브리핑 카드 (탭 상단, 사용자가 명시적으로 요청)
-        item {
-            AiBriefingCard(
-                title = "목표 AI 브리핑",
-                briefing = state.goalsBriefing,
-                isLoading = state.isBriefingGoals,
-                isModelReady = state.isModelReady,
-                onRequest = onRequestBriefing
-            )
-        }
-
         // A. 목표 진행률 대시보드 (원형 게이지 및 동적 응원 메시지 도입)
         item {
             Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                ),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -2316,41 +2546,34 @@ fun GoalsTabContent(
                     ) {
                         CircularProgressIndicator(
                             progress = { animatedProgress },
-                            color = MaterialTheme.colorScheme.primary,
-                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                            strokeWidth = 7.dp,
+                            color = GoalsAccent,
+                            trackColor = GoalsAccent.copy(alpha = 0.12f),
+                            strokeWidth = 6.dp,
                             modifier = Modifier.fillMaxSize()
                         )
                         Text(
                             text = "${(progressRatio * 100).toInt()}%",
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = GoalsAccent
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(18.dp))
-
+                    Spacer(modifier = Modifier.width(16.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        val welcomeMsg = when {
-                            progressRatio >= 1.0f -> "와! 모든 목표를 달성하셨어요! 🎉"
-                            progressRatio >= 0.7f -> "정말 멋진 성취입니다! 목표 달성이 코앞이에요. 👏"
-                            progressRatio >= 0.3f -> "좋은 속도로 나아가고 있습니다. 힘내세요! 💪"
-                            progressRatio > 0f -> "시작이 반이에요! 매일 다짐을 이뤄보세요. ✨"
-                            else -> "나만의 성장 목표를 세우고 채워 나가볼까요? 🎯"
-                        }
                         Text(
-                            text = welcomeMsg,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            lineHeight = 19.sp
+                            text = if (totalGoals > 0) "${totalGoals}개 중 ${completedGoals}개 달성" else "아직 등록된 목표가 없습니다",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.height(3.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (totalGoals > 0) "${totalGoals}개 중 ${completedGoals}개 완료" else "등록된 다짐이 없습니다.",
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            text = if (totalGoals > 0 && progressRatio < 1f) "조금씩 꾸준히 나아가고 있어요"
+                                   else if (progressRatio >= 1f) "모든 목표를 달성했어요!"
+                                   else "첫 목표를 세워볼까요?",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -2360,137 +2583,91 @@ fun GoalsTabContent(
         // B. 목표 작성 카드 (카테고리 선택 + 입력)
         item {
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-                ),
-                border = BorderStroke(
-                    width = 1.dp,
-                    color = if (isInputFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .bringIntoViewRequester(inputBringIntoView)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(10.dp)) {
+                Column(modifier = Modifier.padding(12.dp)) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
                     ) {
                         categories.forEach { (catName, catColor) ->
-                            val isCatSelected = selectedCategory == catName
-                            val catBg = if (isCatSelected) catColor.copy(alpha = 0.18f) else Color.Transparent
-                            val catBorder = if (isCatSelected) catColor.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(catBg)
-                                    .border(1.dp, catBorder, RoundedCornerShape(8.dp))
-                                    .clickable { selectedCategory = catName }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = catName,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isCatSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isCatSelected) catColor else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            FilterChip(
+                                selected = selectedCategory == catName,
+                                onClick = { selectedCategory = catName },
+                                label = { Text(catName, fontSize = 12.sp) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = catColor,
+                                    selectedLabelColor = Color.White,
+                                ),
+                            )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        val currentThemeColor = categories.find { it.first == selectedCategory }?.second ?: MaterialTheme.colorScheme.primary
+                    Spacer(Modifier.height(10.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val currentColor = categories.find { it.first == selectedCategory }?.second ?: GoalsAccent
                         OutlinedTextField(
                             value = newGoalText,
                             onValueChange = onTextChange,
-                            placeholder = { Text(text = "새로운 장기 다짐 설정하기...", fontSize = 13.5.sp) },
+                            placeholder = { Text("새로운 목표 설정...", fontSize = 14.sp) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
                                 unfocusedBorderColor = Color.Transparent,
-                                disabledBorderColor = Color.Transparent,
-                                errorBorderColor = Color.Transparent
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
                             ),
+                            shape = RoundedCornerShape(12.dp),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = {
-                                if (newGoalText.isNotBlank()) {
-                                    onAddGoal(newGoalText, selectedCategory)
-                                }
+                                if (newGoalText.isNotBlank()) { onAddGoal(newGoalText, selectedCategory); focusManager.clearFocus() }
                             }),
-                            textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .onFocusChanged { focusState ->
-                                    isInputFocused = focusState.isFocused
-                                    if (focusState.isFocused) {
-                                        inputFocusScope.launch {
-                                            inputBringIntoView.bringIntoView()
-                                        }
-                                    }
-                                }
+                            modifier = Modifier.weight(1f)
                         )
-
-                        IconButton(
+                        Spacer(Modifier.width(8.dp))
+                        FilledIconButton(
                             onClick = {
-                                if (newGoalText.isNotBlank()) {
-                                    onAddGoal(newGoalText, selectedCategory)
-                                }
+                                if (newGoalText.isNotBlank()) { onAddGoal(newGoalText, selectedCategory); focusManager.clearFocus() }
                             },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = currentThemeColor
-                            ),
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
+                            colors = IconButtonDefaults.filledIconButtonColors(containerColor = currentColor),
+                            modifier = Modifier.size(44.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "추가",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.Default.Add, "추가", tint = Color.White, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
             }
         }
 
-        // C-1. 진행 중인 다짐 섹션
+        // C-1. 진행 중인 목표
         item {
-            Text(
-                text = "나의 활성 다짐 (${activeGoals.size}개)",
-                fontSize = 14.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)) {
+                Text("진행 중", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.width(8.dp))
+                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)) {
+                    Text("${activeGoals.size}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp))
+                }
+            }
         }
 
         if (activeGoals.isEmpty()) {
             item {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp)
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "현재 진행 중인 다짐이 없습니다.\n상단에서 나를 빛내줄 새로운 목표를 세워보세요!",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 36.dp)) {
+                        Surface(shape = CircleShape, color = GoalsAccent.copy(alpha = 0.1f), modifier = Modifier.size(48.dp)) {
+                            Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.TaskAlt, null, tint = GoalsAccent.copy(alpha = 0.5f), modifier = Modifier.size(24.dp)) }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text("진행 중인 목표가 없습니다", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         } else {
@@ -2503,15 +2680,13 @@ fun GoalsTabContent(
             }
         }
 
-        // C-2. 명예의 전당 (달성 완료 섹션)
+        // C-2. 완료된 목표
         if (completedGoalsList.isNotEmpty()) {
             item {
-                Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     onClick = { isFinishedExpanded = !isFinishedExpanded },
                     shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    color = GoalsAccent.copy(alpha = 0.06f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
@@ -2519,20 +2694,8 @@ fun GoalsTabContent(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "🏆 명예의 전당 (달성 완료 ${completedGoalsList.size}개)",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Icon(
-                            imageVector = if (isFinishedExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Text("달성 완료 ${completedGoalsList.size}개", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = GoalsAccent)
+                        Icon(if (isFinishedExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = GoalsAccent, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -2595,17 +2758,11 @@ fun GoalItemRow(
     }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = cardBgColor),
-        border = BorderStroke(
-            width = 1.dp,
-            color = if (goal.isCompleted) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.08f)
-                    else catColor.copy(alpha = 0.25f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (goal.isCompleted) 0.dp else 2.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .scale(if (goal.isCompleted) 0.98f else 1.0f)
+        border = BorderStroke(1.dp, if (goal.isCompleted) Color.Transparent else catColor.copy(alpha = 0.2f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (goal.isCompleted) 0.dp else 1.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
         Column(
             modifier = Modifier
@@ -2721,225 +2878,240 @@ fun ChatTabContent(
     state: DiaryState,
     onSendChat: (String) -> Unit,
     onClearHistory: () -> Unit,
-    onInputFocusChange: (Boolean) -> Unit = {}
+    onInputFocusChange: (Boolean) -> Unit = {},
+    onStartDownload: () -> Unit = {}
 ) {
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    var isInputFocused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    // 키보드가 시스템 백버튼 등으로 닫혀도 포커스 해제가 안 되는 문제 해결:
-    // WindowInsets.isImeVisible 로 IME 상태를 감지하여 키보드가 사라지면 강제로 clearFocus()
+
     val isImeVisible = WindowInsets.isImeVisible
     LaunchedEffect(isImeVisible) {
-        if (!isImeVisible && isInputFocused) {
-            focusManager.clearFocus()
-        }
+        if (!isImeVisible) focusManager.clearFocus()
     }
 
-    // 대화가 누적될 때마다 자동으로 스크롤 하단 이동
     LaunchedEffect(state.chatMessages.size) {
         if (state.chatMessages.isNotEmpty()) {
             listState.animateScrollToItem(state.chatMessages.size - 1)
         }
     }
 
-    // 채팅 목록 스크롤 시 키보드 자동 닫기 (포커스 해제)
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress && isInputFocused) {
-            focusManager.clearFocus()
+    val sendMessage = {
+        if (inputText.isNotBlank() && !state.isGeneratingChat) {
+            onSendChat(inputText.trim())
+            inputText = ""
         }
     }
 
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .imePadding()
-    ) {
-        // 상단 타이틀 및 초기화/접기 버튼
+    // ── 모델 미설치 시 가이드 화면 ──
+    if (!state.isModelReady && !state.isDownloadingModel && !state.isExtractingModel && !state.isModelInitializing) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(32.dp)
+        ) {
+            Spacer(Modifier.height(24.dp))
+            Surface(shape = CircleShape, color = ChatAccent.copy(alpha = 0.08f), modifier = Modifier.size(88.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Psychology, null, tint = ChatAccent.copy(alpha = 0.5f), modifier = Modifier.size(40.dp))
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "AI 비서를 사용하려면\nAI 모델 설치가 필요합니다",
+                fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center, lineHeight = 26.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "기기에 AI 언어 모델(Gemma, 약 2.3GB)을 설치하면\n네트워크 없이도 대화가 가능합니다",
+                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, lineHeight = 21.sp
+            )
+            Spacer(Modifier.height(28.dp))
+            Button(
+                onClick = onStartDownload,
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = ChatAccent),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(Icons.Default.Download, null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("AI 모델 설치하기 (약 2.3GB)", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Shield, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("100% 온디바이스 · 오프라인 · 개인정보 보호", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            }
+        }
+        return
+    }
+
+    // ── 모델 다운로드/초기화 중 ──
+    if (!state.isModelReady) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(32.dp)
+        ) {
+            Spacer(Modifier.height(48.dp))
+            CircularProgressIndicator(color = ChatAccent, modifier = Modifier.size(48.dp), strokeWidth = 4.dp)
+            Spacer(Modifier.height(20.dp))
+            Text(
+                if (state.isDownloadingModel) "AI 모델 다운로드 중...\n${(state.modelDownloadProgress * 100).toInt()}%"
+                else if (state.isExtractingModel) "모델 압축 해제 중..."
+                else "AI 모델 초기화 중...",
+                fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "잠시만 기다려주세요",
+                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
+    // ── 정상 채팅 UI ──
+
+    Column(modifier = Modifier.fillMaxSize().imePadding()) {
+        // ── 헤더: AI 비서 + 대화 비우기 ──
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp)
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 6.dp)
         ) {
-            Text(
-                text = "온디바이스 RAG AI 비서",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // 입력 포커스 중일 때만 '접기' 버튼 노출
-                AnimatedVisibility(
-                    visible = isInputFocused,
-                    enter = fadeIn() + slideInHorizontally(initialOffsetX = { it }),
-                    exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it })
-                ) {
-                    IconButton(
-                        onClick = { focusManager.clearFocus() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "키보드 닫기",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
+                Surface(shape = CircleShape, color = ChatAccent.copy(alpha = 0.1f), modifier = Modifier.size(32.dp)) {
+                    Box(contentAlignment = Alignment.Center) { Text("✨", fontSize = 14.sp) }
                 }
-                if (state.chatMessages.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("AI 비서", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        text = "대화 비우기",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .clickable { onClearHistory() }
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                        if (state.isModelReady) "무엇이든 물어보세요" else "AI 모델 준비 중...",
+                        fontSize = 11.sp, color = if (state.isModelReady) ChatAccent else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+            if (state.chatMessages.isNotEmpty()) {
+                TextButton(
+                    onClick = onClearHistory,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("대화 비우기", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
 
-        // 메시지 표시 영역
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
+        // ── 메시지 영역 ──
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (state.chatMessages.isEmpty()) {
-                // 첫 진입 시 웰컴 메세지 & RAG 추천 질문 가이드 출력
+                // 웰컴 화면
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 24.dp)
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.TaskAlt,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(48.dp)
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Surface(shape = CircleShape, color = ChatAccent.copy(alpha = 0.08f), modifier = Modifier.size(80.dp)) {
+                        Box(contentAlignment = Alignment.Center) { Text("✨", fontSize = 32.sp) }
+                    }
+                    Spacer(Modifier.height(20.dp))
                     Text(
-                        text = "작성된 기록과 일정을 기억하는 AI 비서입니다.\n오프라인 보안 상태에서 안전하게 답변합니다.",
-                        fontSize = 14.sp,
-                        lineHeight = 22.sp,
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "안녕하세요! 당신의 다이어리 AI 비서입니다",
+                        fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center
                     )
-                    
-                    Spacer(modifier = Modifier.height(32.dp))
-                    
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "💡 이런 것들을 물어보세요",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 10.dp)
+                        "작성하신 기록과 일정을 기억하고\n궁금한 점에 답변해 드릴게요",
+                        fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, lineHeight = 21.sp
                     )
+                    Spacer(Modifier.height(28.dp))
 
                     val suggestions = listOf(
-                        "내가 최근에 파스타 맛있게 먹었다고 한 맛집 어디야?",
-                        "오늘 계획한 할 일 목록 다 말해줘",
-                        "내 다이어리에 기록된 주요 장기 목표가 뭐야?"
+                        "최근에 맛있게 먹은 음식이 뭐였지?" to Icons.Default.Restaurant,
+                        "오늘 계획된 할 일 알려줘" to Icons.Default.Checklist,
+                        "내가 세운 목표들 정리해줘" to Icons.Default.TrackChanges,
                     )
 
-                    suggestions.forEach { suggestion ->
+                    suggestions.forEach { (text, icon) ->
                         Surface(
+                            onClick = { onSendChat(text) },
                             shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                            border = BorderStroke(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable { onSendChat(suggestion) }
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                         ) {
-                            Text(
-                                text = "“ $suggestion ”",
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                                Icon(icon, null, tint = ChatAccent, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Text(text, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.ArrowForward, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
             } else {
+                // 채팅 메시지 리스트
                 LazyColumn(
                     state = listState,
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(state.chatMessages) { msg ->
+                    items(state.chatMessages.size, key = { it }) { index ->
+                        val msg = state.chatMessages[index]
                         val isUser = msg.sender == "USER"
-                        
+
                         Row(
                             horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = if (isUser) 0.dp else 0.dp)
                         ) {
                             if (!isUser) {
-                                // AI 아이콘
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                                    contentAlignment = Alignment.Center
+                                Surface(
+                                    shape = CircleShape,
+                                    color = ChatAccent.copy(alpha = 0.1f),
+                                    modifier = Modifier.size(34.dp)
                                 ) {
-                                    Text(text = "🤖", fontSize = 16.sp)
+                                    Box(contentAlignment = Alignment.Center) { Text("✨", fontSize = 14.sp) }
                                 }
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Spacer(Modifier.width(8.dp))
                             }
 
-                            val bubbleBg = if (isUser) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                            }
-                            
-                            val bubbleTextColor = if (isUser) {
-                                Color.White
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            }
-
-                            // 모던 비대칭 라운딩 처리
-                            val bubbleShape = if (isUser) {
-                                RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 4.dp, bottomEnd = 20.dp)
-                            } else {
-                                RoundedCornerShape(topEnd = 20.dp, bottomStart = 20.dp, topStart = 4.dp, bottomEnd = 20.dp)
-                            }
-
-                            val cellBorder = if (isUser) {
-                                null
-                            } else {
-                                BorderStroke(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-                                )
-                            }
-
-                            Card(
-                                shape = bubbleShape,
-                                colors = CardDefaults.cardColors(containerColor = bubbleBg),
-                                border = cellBorder,
-                                modifier = Modifier.widthIn(max = 270.dp)
+                            Column(
+                                horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+                                modifier = Modifier.widthIn(max = 280.dp)
                             ) {
-                                Text(
-                                    text = msg.text,
-                                    fontSize = 14.sp,
-                                    lineHeight = 20.sp,
-                                    color = bubbleTextColor,
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                                )
+                                Card(
+                                    shape = if (isUser) RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)
+                                            else RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isUser) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    border = if (!isUser) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)) else null,
+                                ) {
+                                    Text(
+                                        msg.text,
+                                        fontSize = 14.sp, lineHeight = 20.sp,
+                                        color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // AI 응답 생성 중 표시
+                        if (!isUser && index == state.chatMessages.lastIndex && state.isGeneratingChat) {
+                            Row(modifier = Modifier.padding(start = 42.dp, top = 4.dp)) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ChatAccent)
+                                Spacer(Modifier.width(8.dp))
+                                Text("답변 생성 중...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -2947,87 +3119,50 @@ fun ChatTabContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // 하단 텍스트 전송 바
-        Card(
+        // ── 입력 바 ──
+        Surface(
             shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-            ),
-            border = BorderStroke(
-                width = 1.dp,
-                color = if (isInputFocused) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) 
-                        else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)
             ) {
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    placeholder = { Text(text = "기록된 과거 정보 물어보기...", fontSize = 13.5.sp) },
+                    placeholder = { Text("AI 비서에게 물어보세요...", fontSize = 14.sp) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent,
-                        disabledBorderColor = Color.Transparent,
-                        errorBorderColor = Color.Transparent
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (inputText.isNotBlank() && !state.isGeneratingChat) {
-                            onSendChat(inputText)
-                            inputText = ""
-                        }
-                    }),
-                    modifier = Modifier
-                        .weight(1f)
-                        .onFocusChanged {
-                            isInputFocused = it.isFocused
-                            onInputFocusChange(it.isFocused)
-                        }
+                    keyboardActions = KeyboardActions(onSend = { sendMessage() }),
+                    modifier = Modifier.weight(1f).onFocusChanged { onInputFocusChange(it.isFocused) }
                 )
 
                 if (state.isGeneratingChat) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .padding(end = 6.dp)
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp), strokeWidth = 2.dp, color = ChatAccent)
                 } else {
                     IconButton(
-                        onClick = {
-                            if (inputText.isNotBlank()) {
-                                onSendChat(inputText)
-                                inputText = ""
-                            }
-                        },
+                        onClick = { sendMessage() },
+                        enabled = inputText.isNotBlank(),
                         colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
+                            containerColor = if (inputText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (inputText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = "보내기",
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.AutoMirrored.Filled.Send, "보내기", modifier = Modifier.size(18.dp))
                     }
                 }
             }
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
+
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -3041,57 +3176,97 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
     val dateText = SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(Date(diary.timestamp))
     val previewText = diary.contentPreview.replace("\n", " ").trim()
         .ifBlank { "(본문 없음)" }
+    val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
-                Icon(
-                    imageVector = typeIcon,
-                    contentDescription = typeLabel,
-                    tint = typeColor,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = dateText,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                )
-                if (diary.emotion.isNotBlank() && diary.emotion != "Neutral") {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    EmotionChipSmall(diary.emotion)
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = diary.title.ifBlank { "(제목 없음)" },
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurface
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(typeColor, typeColor.copy(alpha = 0.5f))
+                        )
+                    )
             )
-            if (previewText.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = typeColor.copy(alpha = 0.1f),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = typeIcon,
+                                contentDescription = typeLabel,
+                                tint = typeColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = typeLabel,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = typeColor
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = dateText,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (diary.emotion.isNotBlank() && diary.emotion != "Neutral") {
+                        Spacer(modifier = Modifier.weight(1f))
+                        EmotionChipSmall(diary.emotion)
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = previewText,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
+                    text = diary.title.ifBlank { "(제목 없음)" },
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 22.sp
                 )
+                if (previewText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = previewText,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 19.sp
+                    )
+                }
             }
         }
     }
@@ -3103,20 +3278,24 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
 @Composable
 private fun EmotionChipSmall(emotion: String) {
     val color = when (emotion) {
-        "Joy" -> Color(0xFFFFB300)
-        "Sadness" -> Color(0xFF1976D2)
-        "Anger" -> Color(0xFFD32F2F)
-        "Anxiety" -> Color(0xFF7B1FA2)
-        "Calm" -> Color(0xFF388E3C)
+        "Joy" -> EmotionJoy
+        "Sadness" -> EmotionSadness
+        "Anger" -> EmotionAnger
+        "Anxiety" -> EmotionAnxiety
+        "Calm" -> EmotionCalm
         else -> Color.Gray
     }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(color.copy(alpha = 0.18f))
-            .padding(horizontal = 8.dp, vertical = 2.dp)
+    Surface(
+        shape = RoundedCornerShape(6.dp),
+        color = color.copy(alpha = 0.12f),
     ) {
-        Text(text = emotion, fontSize = 11.sp, color = color, fontWeight = FontWeight.Medium)
+        Text(
+            text = emotion,
+            fontSize = 10.sp,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+        )
     }
 }
 
@@ -3336,10 +3515,10 @@ fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vec
  */
 @Composable
 private fun tabAccentColor(tabId: String): Color = when (tabId) {
-    "DIARY"   -> Color(0xFF42A5F5)
-    "PLANNER" -> Color(0xFFFFB74D)
-    "GOALS"   -> Color(0xFF66BB6A)
-    "CHAT"    -> Color(0xFFAB47BC)
+    "DIARY"   -> DiaryAccent
+    "PLANNER" -> PlannerAccent
+    "GOALS"   -> GoalsAccent
+    "CHAT"    -> ChatAccent
     else      -> MaterialTheme.colorScheme.primary
 }
 
@@ -3372,9 +3551,9 @@ fun WriteActionBar(
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 24.dp,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        tonalElevation = 3.dp
+        shadowElevation = 16.dp,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        tonalElevation = 2.dp
     ) {
         Column(
             modifier = Modifier
@@ -3385,11 +3564,11 @@ fun WriteActionBar(
             // 상단 핸들
             Box(
                 modifier = Modifier
-                    .padding(top = 12.dp, bottom = 16.dp)
-                    .width(32.dp)
-                    .height(3.dp)
+                    .padding(top = 10.dp, bottom = 14.dp)
+                    .width(36.dp)
+                    .height(4.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f))
             )
 
             // ── 1행: 메인 CTA 버튼 ──────────────────────────────────
@@ -3398,20 +3577,26 @@ fun WriteActionBar(
                     .fillMaxWidth()
                     .height(56.dp)
                     .scale(mainScale)
-                    .clip(RoundedCornerShape(18.dp))
+                    .clip(RoundedCornerShape(16.dp))
                     .background(
                         Brush.horizontalGradient(
                             colors = listOf(
                                 MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.80f)
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
                             )
                         )
+                    )
+                    .shadow(
+                        elevation = 6.dp,
+                        shape = RoundedCornerShape(16.dp),
+                        ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                     )
                     .clickable(
                         interactionSource = mainInteraction,
                         indication = null,
-                        onClick = { onWriteDiary(ContentType.DIARY)
-                        }
+                        onClick = { onWriteDiary(ContentType.DIARY) }
                     ),
                 contentAlignment = Alignment.Center
             ) {

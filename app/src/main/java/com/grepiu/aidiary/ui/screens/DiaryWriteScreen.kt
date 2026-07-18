@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -29,17 +30,22 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Translate
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
@@ -80,6 +86,7 @@ import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.mvi.state.PendingContentTypeChange
 import com.grepiu.aidiary.ui.components.AddBlockBar
 import com.grepiu.aidiary.ui.components.BlockEditor
+import com.grepiu.aidiary.ui.theme.ChatAccent
 
 /**
  * 일기/포스트/메모 작성 화면. 기업용 SaaS 톤의 정제된 레이아웃을 제공합니다.
@@ -120,13 +127,16 @@ fun DiaryWriteScreen(
     onClassifyType: () -> Unit = {},
     onProofreadBlock: (String) -> Unit = {},
     onDecorateBlock: (String) -> Unit = {},
+    onStartDownload: () -> Unit = {},
+    onStartSherpaDownload: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
     val view = LocalView.current
-    view.keepScreenOn = state.isRecording
+    view.keepScreenOn = state.isRecording || state.isDownloadingModel || state.isExtractingModel
 
     var showAiGuide by remember { mutableStateOf(true) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
 
     val canSave = state.sessionTitle.isNotBlank() &&
         state.draftBlocks.any { block ->
@@ -142,6 +152,66 @@ fun DiaryWriteScreen(
     } else 0f
 
     val (typeIcon, typeLabel, typeColor) = getContentTypeUI(state.draftContentType)
+
+    // AI 모델 미설치 시 다운로드 안내 다이얼로그
+    if (showDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            icon = { Icon(Icons.Default.Psychology, null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("AI 글쓰기 도우미", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("AI 언어 모델(Gemma, 약 2.3GB)을 설치하면 아래 기능을 사용할 수 있습니다.", fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 4.dp)) {
+                        FeatureItem("🔤", "AI 자동 분류", "글 내용을 분석해 일기/글/메모로 자동 분류")
+                        FeatureItem("✨", "AI 제목 추천", "본문 기반으로 어울리는 제목 자동 생성")
+                        FeatureItem("🌐", "AI 번역", "외국어 본문을 한국어로 자연스럽게 번역")
+                        FeatureItem("✏️", "AI 보정", "맞춤법·띄어쓰기 오류 자동 교정")
+                        FeatureItem("🎨", "AI 꾸미기", "색상·굵기·밑줄 등 스타일 추천")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showDownloadDialog = false; onStartDownload() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                    Text("AI 모델 설치하기 (약 2.3GB)")
+                }
+            },
+            dismissButton = { TextButton(onClick = { showDownloadDialog = false }) { Text("닫기") } },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Wi-Fi 경고 다이얼로그 (모바일 데이터 다운로드 시)
+    if (state.showWifiWarning) {
+        val isSherpa = state.wifiWarningSource == "sherpa"
+        val modelName = if (isSherpa) "음성인식 모델" else "AI 언어 모델"
+        val downloadSize = if (isSherpa) "약 1.0GB" else "약 2.3GB"
+        AlertDialog(
+            onDismissRequest = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
+            icon = { Icon(Icons.Filled.Warning, null, tint = Color(0xFFE65100)) },
+            title = { Text("Wi-Fi 연결 확인", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "현재 Wi-Fi에 연결되어 있지 않습니다.\n\n" +
+                    "${modelName} 다운로드(${downloadSize})는 대용량이므로 Wi-Fi 환경에서 다운로드하는 것을 권장합니다.\n\n" +
+                    "모바일 데이터로 진행 시 데이터 요금이 많이 나올 수 있습니다.",
+                    fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (isSherpa) onStartSherpaDownload() else onStartDownload()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+                ) { Text("데이터로 다운로드", color = Color.White) }
+            },
+            dismissButton = {
+                TextButton(onClick = { onIntent(DiaryIntent.ShowWifiWarning(false)) }) { Text("취소") }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -172,10 +242,12 @@ fun DiaryWriteScreen(
                 label = "글 타입",
                 trailing = {
                     InlineAiAction(
-                        label = if (state.isClassifyingType) "분류 중…" else "AI 자동 분류",
+                        label = if (state.isClassifyingType) "분류 중…"
+                               else if (!state.isModelReady) "AI 설치 필요"
+                               else "AI 자동 분류",
                         loading = state.isClassifyingType,
-                        enabled = !state.isClassifyingType,
-                        onClick = onClassifyType
+                        enabled = state.isModelReady && !state.isClassifyingType,
+                        onClick = { if (state.isModelReady) onClassifyType() else showDownloadDialog = true }
                     )
                 }
             )
@@ -187,7 +259,11 @@ fun DiaryWriteScreen(
 
             if (showAiGuide) {
                 Spacer(Modifier.height(16.dp))
-                AiWritingGuideCard(onDismiss = { showAiGuide = false })
+                AiWritingGuideCard(
+                    isModelReady = state.isModelReady,
+                    onDismiss = { showAiGuide = false },
+                    onShowDownloadDialog = { showDownloadDialog = true }
+                )
             }
 
             // 2) 히어로 제목 입력
@@ -266,7 +342,8 @@ fun DiaryWriteScreen(
                 state = state,
                 onStartRecording = onStartRecording,
                 onStopRecording = onStopRecording,
-                onLanguageChange = { lang -> onIntent(DiaryIntent.UpdateVoiceLanguage(lang)) }
+                onLanguageChange = { lang -> onIntent(DiaryIntent.UpdateVoiceLanguage(lang)) },
+                onStartSherpaDownload = onStartSherpaDownload
             )
 
             // 7) 저장 안내 알림
@@ -771,7 +848,8 @@ private fun BodySection(
                     onTableAddRow = { onTableAddRow(block.id) },
                     onTableRemoveRow = { r -> onTableRemoveRow(block.id, r) },
                     onTableAddColumn = { onTableAddColumn(block.id) },
-                    onTableRemoveColumn = { c -> onTableRemoveColumn(block.id, c) }
+                    onTableRemoveColumn = { c -> onTableRemoveColumn(block.id, c) },
+                    onSuggestHashtags = { onIntent(DiaryIntent.SuggestHashtags(block.id)) },
                 )
             }
         }
@@ -814,7 +892,8 @@ private fun VoiceCard(
     state: DiaryState,
     onStartRecording: () -> Unit,
     onStopRecording: () -> Unit,
-    onLanguageChange: (String) -> Unit
+    onLanguageChange: (String) -> Unit,
+    onStartSherpaDownload: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -844,7 +923,15 @@ private fun VoiceCard(
                         onStart = onStartRecording,
                         modifier = Modifier.weight(1f)
                     )
-                    state.isDownloadingModel -> DownloadingModelBody(modifier = Modifier.weight(1f))
+                    state.isDownloadingModel || state.isExtractingModel -> DownloadProgressBody(
+                        isExtracting = state.isExtractingModel,
+                        progress = state.modelDownloadProgress,
+                        modifier = Modifier.weight(1f)
+                    )
+                    else -> SherpaNotReadyBody(
+                        onStartDownload = onStartSherpaDownload,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
             // 다국어 음성 인식 선택 (모델 준비 완료 시)
@@ -1074,14 +1161,50 @@ private fun RecordIdleBody(
 }
 
 @Composable
-private fun DownloadingModelBody(modifier: Modifier = Modifier) {
+private fun DownloadProgressBody(
+    isExtracting: Boolean,
+    progress: Float,
+    modifier: Modifier = Modifier
+) {
     CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-    Text(
-        text = "음성 인식 모델을 다운로드하고 있어요…",
-        fontSize = 12.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier
+    Column(modifier = modifier) {
+        Text(
+            if (isExtracting) "모델 압축 해제 중…" else "음성인식 다운로드 ${(progress * 100).toInt()}%",
+            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            if (isExtracting) "잠시만 기다려주세요" else "Wi-Fi 연결을 권장합니다",
+            fontSize = 11.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun SherpaNotReadyBody(
+    onStartDownload: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Icon(
+        Icons.Filled.Mic, null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+        modifier = Modifier.size(20.dp)
     )
+    Column(modifier = modifier) {
+        Text("음성 인식 모델 설치 필요", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.height(2.dp))
+        Text("음성 입력을 위해 STT 모델(약 1.0GB)을 설치해주세요", fontSize = 11.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        TextButton(
+            onClick = onStartDownload,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.height(28.dp)
+        ) {
+            Icon(Icons.Default.Download, null, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("음성인식 설치 (1.0GB)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
 }
 
 @Composable
@@ -1169,22 +1292,33 @@ private fun SaveHintCard(
 }
 
 @Composable
-private fun AiWritingGuideCard(onDismiss: () -> Unit) {
-    val accent = MaterialTheme.colorScheme.primary
+private fun FeatureItem(emoji: String, title: String, desc: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(emoji, fontSize = 13.sp)
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 17.sp)
+        }
+    }
+}
+
+@Composable
+private fun AiWritingGuideCard(
+    isModelReady: Boolean,
+    onDismiss: () -> Unit,
+    onShowDownloadDialog: () -> Unit
+) {
+    val accent = if (isModelReady) MaterialTheme.colorScheme.primary else ChatAccent
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = accent.copy(alpha = 0.08f),
         border = BorderStroke(1.dp, accent.copy(alpha = 0.2f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
-        ) {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Icon(
-                imageVector = Icons.Default.AutoAwesome,
+                imageVector = if (isModelReady) Icons.Default.AutoAwesome else Icons.Default.Psychology,
                 contentDescription = null,
                 tint = accent,
                 modifier = Modifier.size(16.dp)
@@ -1192,26 +1326,33 @@ private fun AiWritingGuideCard(onDismiss: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "AI 글쓰기 도우미",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = accent
+                    text = if (isModelReady) "AI 글쓰기 도우미" else "AI 모델 설치 필요",
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent
                 )
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "글 타입은 'AI 자동 분류', 제목은 ✨ 버튼으로 AI 자동 생성, 본문은 각 블록의 ✦ 메뉴에서 번역·보정·꾸미기를 이용할 수 있어요.",
-                    fontSize = 12.sp,
-                    lineHeight = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (isModelReady) {
+                    Text(
+                        text = "글 타입은 'AI 자동 분류', 제목은 ✨ 버튼으로 AI 자동 생성, 본문은 각 블록의 ✦ 메뉴에서 번역·보정·꾸미기를 이용할 수 있어요.",
+                        fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        text = "AI 모델(Gemma, 약 2.3GB)을 설치하면 글 분류, 제목 추천, 번역, 보정, 꾸미기 등 다양한 AI 기능을 무료로 이용할 수 있습니다.",
+                        fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onShowDownloadDialog,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Download, null, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("AI 모델 설치하기", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(20.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "닫기",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-                    modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Default.Close, "닫기", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f), modifier = Modifier.size(14.dp))
             }
         }
     }

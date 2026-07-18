@@ -101,6 +101,15 @@ sealed class ContentBlock {
         val caption: String = ""
     ) : ContentBlock()
 
+    /**
+     * 해시태그 블록. 사용자가 직접 입력하거나 AI 가 자동 생성한 태그 목록.
+     * 각 태그는 # 없는 순수 텍스트로 저장되며, 표시/검색 시 # 이 붙는다.
+     */
+    data class HashtagBlock(
+        override val id: String = UUID.randomUUID().toString(),
+        val tags: List<String> = emptyList()
+    ) : ContentBlock()
+
     companion object {
         const val TYPE_HEADING = "heading"
         const val TYPE_TEXT = "text"
@@ -111,6 +120,7 @@ sealed class ContentBlock {
         const val TYPE_TABLE = "table"
         const val TYPE_LOCATION = "location"
         const val TYPE_SPATIAL_MEDIA = "spatialMedia"
+        const val TYPE_HASHTAG = "hashtag"
 
         /**
          * JSON 객체로부터 [ContentBlock] 인스턴스를 복원합니다.
@@ -175,6 +185,13 @@ sealed class ContentBlock {
                         captureMode = mode,
                         caption = obj.optString("caption", "")
                     )
+                }
+                TYPE_HASHTAG -> {
+                    val tagsArr = obj.optJSONArray("tags")
+                    val tags = if (tagsArr != null) (0 until tagsArr.length())
+                        .mapNotNull { tagsArr.optString(it, null)?.takeIf { t -> t.isNotBlank() } }
+                    else emptyList()
+                    HashtagBlock(id = id, tags = tags)
                 }
                 else -> TextBlock(id = id, text = obj.optString("text", ""))
             }
@@ -248,6 +265,13 @@ fun ContentBlock.toJson(): JSONObject = when (this) {
         put("paths", arr)
         put("captureMode", captureMode.key)
         put("caption", caption)
+    }
+    is ContentBlock.HashtagBlock -> JSONObject().apply {
+        put("type", ContentBlock.TYPE_HASHTAG)
+        put("id", id)
+        val tagsArr = org.json.JSONArray()
+        tags.forEach { tagsArr.put(it) }
+        put("tags", tagsArr)
     }
 }
 
@@ -329,6 +353,7 @@ fun List<ContentBlock>.extractPlainText(): String =
                 val text = block.caption.ifBlank { null }
                 if (text != null) "$tag $text" else tag
             }
+            is ContentBlock.HashtagBlock -> "#" + block.tags.joinToString(" #")
             else -> null
         }
     }.joinToString(separator = "\n")

@@ -1,6 +1,7 @@
 package com.grepiu.aidiary.data.slm
 
 import com.grepiu.aidiary.data.model.ContentBlock
+import com.grepiu.aidiary.data.model.extractPlainText
 
 /**
  * 온디바이스 2B 모델의 상하 문맥 추적 한계를 보완하기 위한
@@ -199,6 +200,20 @@ object LLMContextBuilder {
     }
 
     /**
+     * 본문 기반 해시태그 추천. 주제, 감정, 장소, 활동 등을 반영한 3~5개 태그를 생성.
+     */
+    fun suggestHashtags(contextBlock: String): Pair<String, String> {
+        val system = "$DOMAIN_HEADER " +
+                "당신은 다이어리 본문에서 핵심 키워드를 추출해 해시태그를 생성하는 AI입니다. " +
+                "주제, 감정, 장소, 활동, 사람, 음식, 계절 등을 종합해 가장 적절한 한국어 해시태그 3~5개를 제안하세요. " +
+                "각 태그는 공백 없는 한글/영문, 2~8자 이내로 짧고 직관적이어야 합니다. " +
+                "쉼표(,)로 구분하여 나열하세요. # 기호는 붙이지 마세요. " +
+                "예: 일상,맛집탐방,운동,여름휴가,자기계발"
+        val user = "$contextBlock\n\n이 글에 어울리는 해시태그(쉼표로 구분, 3~5개):"
+        return system to user
+    }
+
+    /**
      * 탭별 브리핑. 추세 vs 현재 비교를 명시적으로 요청.
      */
     fun briefing(tabKey: String, contextBlock: String): Pair<String, String> {
@@ -335,6 +350,16 @@ object LLMContextBuilder {
     }
 
     // ===== 헬퍼 =====
+
+    fun buildHashtagContext(draftBlocks: List<ContentBlock>, draftTitle: String): String = buildString {
+        if (draftTitle.isNotBlank()) {
+            append("[제목] $draftTitle\n\n")
+        }
+        val bodyText = draftBlocks.extractPlainText()
+        if (bodyText.isNotBlank()) {
+            append("[본문]\n${truncateChars(bodyText, 800)}\n")
+        }
+    }
 
     private fun StringBuilder.appendAdjacentContext(previousTail: String?, nextHead: String?) {
         val prev = previousTail?.trim().orEmpty()

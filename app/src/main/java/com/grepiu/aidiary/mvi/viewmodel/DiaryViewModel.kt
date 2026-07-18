@@ -314,7 +314,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             is DiaryIntent.DecorateBlock -> {
                 decorateBlock(intent.blockId)
             }
+            is DiaryIntent.SuggestHashtags -> {
+                suggestHashtags(intent.targetBlockId)
+            }
             is DiaryIntent.ShowDownloadNotice -> {
+                if (!intent.show && _state.value.wifiWarningSource == null) {
+                    prefs.edit().putBoolean("llm_notice_dismissed", true).apply()
+                    sendEffect(DiaryEffect.ShowToast("설정 메뉴에서 언제든지 AI 모델을 다운로드할 수 있습니다"))
+                }
                 _state.update { it.copy(showDownloadNotice = intent.show) }
             }
             is DiaryIntent.ShowWifiWarning -> {
@@ -332,6 +339,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(showSherpaDownloadNotice = true) }
             }
             is DiaryIntent.DismissSherpaDownloadNotice -> {
+                prefs.edit().putBoolean("stt_notice_dismissed", true).apply()
+                sendEffect(DiaryEffect.ShowToast("설정 메뉴에서 언제든지 음성인식 모델을 다운로드할 수 있습니다"))
                 _state.update { it.copy(showSherpaDownloadNotice = false) }
             }
             is DiaryIntent.StartSherpaDownload -> {
@@ -427,6 +436,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                                 is ContentBlock.HeadingBlock -> block.copy(text = intent.text, formatting = intent.formatting)
                                 is ContentBlock.TextBlock -> block.copy(text = intent.text, formatting = intent.formatting)
                                 is ContentBlock.QuoteBlock -> block.copy(text = intent.text, formatting = intent.formatting)
+                                is ContentBlock.HashtagBlock -> block.copy(tags = intent.text.split(",").map { it.trim() }.filter { it.isNotBlank() })
                                 else -> block
                             }
                         }
@@ -1404,12 +1414,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 다운로드 유도를 위한 팝업 표시 설정
+        // 다운로드 유도를 위한 팝업 표시 설정 (영구 닫기 했으면 표시 안 함)
+        if (!prefs.getBoolean("llm_notice_dismissed", false)) {
         _state.update {
             it.copy(
                 showDownloadNotice = true,
                 isLowRamDevice = downloader.isLowRamDevice()
             )
+        }
         }
     }
 
@@ -2303,8 +2315,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             initSherpa()
             return
         }
-        // 자동 다운로드 대신 사용자 선택 후 다운로드하도록 안내 표시
+        // 자동 다운로드 대신 사용자 선택 후 다운로드하도록 안내 표시 (영구 닫기 했으면 표시 안 함)
+        if (!prefs.getBoolean("stt_notice_dismissed", false)) {
         _state.update { it.copy(showSherpaDownloadNotice = true) }
+        }
     }
 
     private fun initSherpa() {
@@ -2632,6 +2646,56 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             } finally { wavFile.delete() }
         }
     }
+
+    private fun suggestHashtags(targetBlockId: String? = null) {
+        if (!requireReadyModel()) return
+        val state = _state.value
+        val plainText = state.draftPlainText
+        if (plainText.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("본문이 비어 있어 해시태그를 생성할 수 없어요."))
+            return
+        }
+        val context = com.grepiu.aidiary.data.slm.LLMContextBuilder.buildHashtagContext(
+            draftBlocks = state.draftBlocks,
+            draftTitle = state.draftTitle
+        )
+        if (context.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("해시태그를 생성할 내용이 부족해요."))
+            return
+        }
+        _state.update { it.copy(isDecoratingBlockId = "hashtag") }
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val raw = engine.suggestHashtags(context)
+                val tags = raw.split(",").map { it.trim().replace("#", "").replace(Regex("[^\\w가-힣]"), "") }
+                    .filter { it.length in 2..8 }.take(5)
+                if (tags.isNotEmpty()) {
+                    if (targetBlockId != null) {
+                        // 기존 블록에 태그 병합
+                        _state.update { current ->
+                            current.copy(draftBlocks = current.draftBlocks.map { block ->
+                                if (block.id != targetBlockId || block !is ContentBlock.HashtagBlock) return@map block
+                                val merged = (block.tags + tags).distinct()
+                                block.copy(tags = merged)
+                            })
+                        }
+                    } else {
+                        val block = ContentBlock.HashtagBlock(tags = tags)
+                        _state.update { it.copy(draftBlocks = it.draftBlocks + block) }
+                    }
+                    sendEffect(DiaryEffect.ShowToast("AI가 해시태그 ${tags.size}개를 생성했어요."))
+                } else {
+                    sendEffect(DiaryEffect.ShowToast("해시태그를 생성하지 못했어요."))
+                }
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("해시태그 생성 오류: ${e.message}"))
+            } finally {
+                _state.update { it.copy(isDecoratingBlockId = null) }
+            }
+        }
+    }
+
     /**
      * 작성 완료한 일기를 영구 보관합니다.
      *

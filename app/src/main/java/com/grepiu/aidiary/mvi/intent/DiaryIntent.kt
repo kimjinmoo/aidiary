@@ -198,6 +198,8 @@ sealed interface DiaryIntent {
     data class ProofreadBlock(val blockId: String) : DiaryIntent
     /** 특정 블록의 AI 꾸미기(색상·굵게·이탤릭·밑줄·크기) 추천 적용. */
     data class DecorateBlock(val blockId: String) : DiaryIntent
+    /** 본문 기반 AI 해시태그 추천 생성. targetBlockId 가 있으면 해당 블록을 갱신, 없으면 새 블록 생성. */
+    data class SuggestHashtags(val targetBlockId: String? = null) : DiaryIntent
     /** 개인정보 처리방침 동의 완료 후 진행을 처리하는 인텐트입니다. */
     data object AcceptTermsAndProceed : DiaryIntent
     /** 온보딩 권한 요청이 모두 완료된 후 목록 화면으로 전환합니다. */

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Notes
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Palette
@@ -45,13 +47,16 @@ import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
@@ -109,6 +114,7 @@ fun BlockEditor(
     onTableRemoveRow: (Int) -> Unit = {},
     onTableAddColumn: () -> Unit = {},
     onTableRemoveColumn: (Int) -> Unit = {},
+    onSuggestHashtags: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val (typeLabel, typeIcon, accent) = blockTypeMeta(block)
@@ -298,6 +304,97 @@ fun BlockEditor(
             is ContentBlock.SpatialMediaBlock -> {
                 // 작성 화면에서는 입체 미디어 블록의 본문을 직접 편집하지 않음. read-only 안내.
                 SpatialMediaEditorView(block = block)
+            }
+            is ContentBlock.HashtagBlock -> {
+                HashtagBlockEditor(
+                    block = block,
+                    onTagsChange = { newTags -> onUpdateText(newTags.joinToString(","), com.grepiu.aidiary.data.model.TextFormatting()) },
+                    onSuggestHashtags = { onSuggestHashtags(block.id) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HashtagBlockEditor(
+    block: ContentBlock.HashtagBlock,
+    onTagsChange: (List<String>) -> Unit,
+    onSuggestHashtags: () -> Unit,
+) {
+    var inputText by remember(block.id) { mutableStateOf("") }
+    val tags = block.tags
+
+    Column {
+        if (tags.isNotEmpty()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                tags.forEach { tag ->
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF26A69A).copy(alpha = 0.1f),
+                        onClick = { onTagsChange(tags - tag) }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp)
+                        ) {
+                            Text("#$tag", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF26A69A))
+                            IconButton(onClick = { onTagsChange(tags - tag) }, modifier = Modifier.size(18.dp)) {
+                                Icon(Icons.Default.Close, "삭제", modifier = Modifier.size(12.dp), tint = Color(0xFF26A69A).copy(alpha = 0.6f))
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                placeholder = { Text("태그 입력 (쉼표로 구분)", fontSize = 13.sp) },
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f),
+                ),
+                shape = RoundedCornerShape(10.dp),
+                keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    val newTags = inputText.split(",", " ").map { it.trim().replace("#", "") }.filter { it.isNotBlank() }
+                    if (newTags.isNotEmpty()) {
+                        onTagsChange(tags + newTags)
+                        inputText = ""
+                    }
+                }),
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(6.dp))
+            FilledIconButton(
+                onClick = {
+                    val newTags = inputText.split(",", " ").map { it.trim().replace("#", "") }.filter { it.isNotBlank() }
+                    if (newTags.isNotEmpty()) {
+                        onTagsChange(tags + newTags)
+                        inputText = ""
+                    }
+                },
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFF26A69A)),
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(Icons.Default.Add, "추가", tint = Color.White, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(4.dp))
+            IconButton(
+                onClick = onSuggestHashtags,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(Icons.Default.AutoAwesome, "AI 생성", tint = Color(0xFF26A69A), modifier = Modifier.size(18.dp))
             }
         }
     }
@@ -1049,7 +1146,7 @@ fun AddBlockBar(
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
-        BlockCategoryRow(caption = "미디어·기타") {
+        BlockCategoryRow(caption = "미디어") {
             AddChip(
                 icon = Icons.Default.Image,
                 label = "갤러리",
@@ -1082,11 +1179,20 @@ fun AddBlockBar(
                     enabled = canAddImage
                 )
             }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        BlockCategoryRow(caption = "도구") {
             AddChip(
                 icon = Icons.Default.HorizontalRule,
                 label = "구분선",
                 accent = MaterialTheme.colorScheme.outline,
                 onClick = { onAdd(ContentBlock.DividerBlock()) }
+            )
+            AddChip(
+                icon = Icons.Default.Label,
+                label = "해시태그",
+                accent = Color(0xFF26A69A),
+                onClick = { onAdd(ContentBlock.HashtagBlock()) }
             )
             AddChip(
                 icon = Icons.Default.Place,
@@ -1186,6 +1292,7 @@ private fun blockTypeMeta(block: ContentBlock): Triple<String, ImageVector, Colo
         val label = if (block.mediaType == com.grepiu.aidiary.data.model.SpatialMediaType.PHOTO) "사진" else "영상"
         Triple(label, Icons.Default.Movie, if (is3D) Color(0xFF7C4DFF) else MaterialTheme.colorScheme.outline)
     }
+    is ContentBlock.HashtagBlock -> Triple("해시태그", Icons.Default.Label, Color(0xFF26A69A))
 }
 
 /**

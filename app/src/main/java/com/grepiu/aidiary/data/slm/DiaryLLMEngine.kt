@@ -284,6 +284,17 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
             .let { if (it.length > 50) it.substring(0, 50) else it }
     }
 
+    suspend fun suggestHashtags(
+        context: String
+    ): String = withContext(Dispatchers.Default) {
+        if (context.isBlank()) return@withContext ""
+        val (system, user) = LLMContextBuilder.suggestHashtags(context)
+        runSinglePrompt(system, user, SamplerPresets.GENERATE_SHORT, maxTokens = 64)
+            .trim()
+            .trim('#')
+            .let { stripPrefixes(it) }
+    }
+
     suspend fun generateBriefing(
         tabKey: String,
         context: String

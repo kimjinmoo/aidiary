@@ -237,8 +237,15 @@ class DiaryRepository(
      * 토큰 3개까지 OR 매칭하며, 각 결과의 dateWeight 만으로 relevance 를 계산한다.
      */
     private suspend fun fallbackLikeSearch(tokens: List<String>, limit: Int): List<DiarySearchHit> = try {
-        val padded = (tokens + List(3) { "" }).take(3).map { "%$it%" }
-        val rows = dao.searchByLikeMulti(padded[0], padded[1], padded[2], limit)
+        // 패딩 대신 실제 토큰만 LIKE 패턴으로 변환. 빈 슬롯은 절대 매칭되지 않는 sentinel 사용.
+        val patterns = tokens.map { "%$it%" }
+        val sentinel = "%__FALLBACK_NO_MATCH__%"
+        val rows = dao.searchByLikeMulti(
+            patterns.getOrElse(0) { sentinel },
+            patterns.getOrElse(1) { sentinel },
+            patterns.getOrElse(2) { sentinel },
+            limit
+        )
         val now = System.currentTimeMillis()
         rows.map { row ->
             val dateWeight = computeDateWeight(
@@ -505,6 +512,14 @@ private fun DiaryEntry.toBlockEntities(): List<BlockEntity> = blocks.mapIndexed 
             spatialPathsJson = b.paths.toJsonStringArray(),
             spatialCaptureMode = b.captureMode.key
         )
+        is ContentBlock.HashtagBlock -> BlockEntity(
+            id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_HASHTAG,
+            text = b.tags.joinToString(","), formattingJson = null,
+            path = null, caption = null, emotion = null,
+            rows = null, cols = null, cellsJson = null,
+            latitude = null, longitude = null, address = null,
+            spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
+        )
     }
 }
 
@@ -538,6 +553,9 @@ private fun BlockEntity.toContentBlock(): ContentBlock? {
                 caption = caption ?: ""
             )
         }
+        ContentBlock.TYPE_HASHTAG -> ContentBlock.HashtagBlock(
+            id = id, tags = text?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+        )
         else -> null
     }
 }

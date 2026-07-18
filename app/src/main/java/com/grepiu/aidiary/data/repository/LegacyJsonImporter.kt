@@ -254,6 +254,14 @@ class LegacyJsonImporter(
                 spatialPathsJson = b.paths.toJsonStringArray(),
                 spatialCaptureMode = b.captureMode.key
             )
+            is ContentBlock.HashtagBlock -> BlockEntity(
+                id = b.id, diaryId = id, orderIndex = idx, type = ContentBlock.TYPE_HASHTAG,
+                text = b.tags.joinToString(","), formattingJson = null,
+                path = null, caption = null, emotion = null,
+                rows = null, cols = null, cellsJson = null,
+                latitude = null, longitude = null, address = null,
+                spatialType = null, spatialPathsJson = null, spatialCaptureMode = null
+            )
         }
     }
 
