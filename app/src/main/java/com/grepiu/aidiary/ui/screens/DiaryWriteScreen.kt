@@ -27,10 +27,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Spellcheck
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.outlined.Add
@@ -53,6 +56,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -116,6 +123,8 @@ fun DiaryWriteScreen(
     val view = LocalView.current
     view.keepScreenOn = state.isRecording
 
+    var showAiGuide by remember { mutableStateOf(true) }
+
     val canSave = state.sessionTitle.isNotBlank() &&
         state.draftBlocks.any { block ->
             when (block) {
@@ -172,6 +181,11 @@ fun DiaryWriteScreen(
                 selected = state.draftContentType,
                 onSelect = onContentTypeChange
             )
+
+            if (showAiGuide) {
+                Spacer(Modifier.height(16.dp))
+                AiWritingGuideCard(onDismiss = { showAiGuide = false })
+            }
 
             // 2) 히어로 제목 입력
             Spacer(Modifier.height(24.dp))
@@ -776,7 +790,7 @@ private fun EmptyBodyHint() {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "아래 '블록 추가'에서 본문·인용·이미지·구분선을 선택해 쌓거나, '음성 입력'으로 말하며 작성할 수 있어요. 본문 안에서 '섹션 제목' 블록은 소제목으로 활용해 보세요.",
+                text = "아래 '블록 추가'에서 본문·인용·이미지·구분선을 선택해 쌓거나, '음성 입력'으로 말하며 작성할 수 있어요. 각 블록의 ✦ 메뉴에서 AI 번역·보정·꾸미기도 이용할 수 있어요.",
                 fontSize = 12.sp,
                 lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1140,6 +1154,55 @@ private fun SaveHintCard(
                 lineHeight = 18.sp,
                 color = content
             )
+        }
+    }
+}
+
+@Composable
+private fun AiWritingGuideCard(onDismiss: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = accent.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.2f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "AI 글쓰기 도우미",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accent
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "글 타입은 'AI 자동 분류', 제목은 ✨ 버튼으로 AI 자동 생성, 본문은 각 블록의 ✦ 메뉴에서 번역·보정·꾸미기를 이용할 수 있어요.",
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = onDismiss, modifier = Modifier.size(20.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "닫기",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
     }
 }
