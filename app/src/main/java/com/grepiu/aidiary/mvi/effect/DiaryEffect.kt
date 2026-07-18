@@ -9,6 +9,8 @@ sealed interface DiaryEffect {
     data object RequestAudioPermission : DiaryEffect
     data object RequestCameraPermission : DiaryEffect
     data object RequestLocationPermission : DiaryEffect
+    /** 온보딩(환영) 화면에서 약관 동의 후 마이크·위치·카메라 권한을 일괄 요청합니다. */
+    data object RequestAllWelcomePermissions : DiaryEffect
     /** 카메라 촬영을 위한 임시 출력 URI 를 UI 측에 요청합니다. */
     data class LaunchCamera(val targetUri: android.net.Uri) : DiaryEffect
 }

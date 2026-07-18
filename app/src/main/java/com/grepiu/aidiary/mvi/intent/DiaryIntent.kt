@@ -175,6 +175,8 @@ sealed interface DiaryIntent {
     data class DecorateBlock(val blockId: String) : DiaryIntent
     /** 개인정보 처리방침 동의 완료 후 진행을 처리하는 인텐트입니다. */
     data object AcceptTermsAndProceed : DiaryIntent
+    /** 온보딩 권한 요청이 모두 완료된 후 목록 화면으로 전환합니다. */
+    data object AllPermissionsResolved : DiaryIntent
 
     // ===== 일기 검색 (FTS5) =====
     /**

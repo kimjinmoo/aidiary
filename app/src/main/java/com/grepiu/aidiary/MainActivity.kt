@@ -118,6 +118,13 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // 온보딩 화면에서 마이크·카메라·위치 권한을 일괄 요청하는 런처
+                val allPermissionsLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestMultiplePermissions()
+                ) { _ ->
+                    viewModel.processIntent(DiaryIntent.AllPermissionsResolved)
+                }
+
                 // 갤러리 픽업 런처 (PhotoPicker - 다중 선택)
                 val pickImageLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.PickMultipleVisualMedia(maxItems = 20)
@@ -161,6 +168,16 @@ class MainActivity : ComponentActivity() {
                             is DiaryEffect.RequestLocationPermission -> {
                                 locationPermissionLauncher.launch(
                                     arrayOf(
+                                        Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION
+                                    )
+                                )
+                            }
+                            is DiaryEffect.RequestAllWelcomePermissions -> {
+                                allPermissionsLauncher.launch(
+                                    arrayOf(
+                                        Manifest.permission.RECORD_AUDIO,
+                                        Manifest.permission.CAMERA,
                                         Manifest.permission.ACCESS_FINE_LOCATION,
                                         Manifest.permission.ACCESS_COARSE_LOCATION
                                     )

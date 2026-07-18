@@ -229,6 +229,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.AcceptTermsAndProceed -> {
                 acceptTerms()
+                sendEffect(DiaryEffect.RequestAllWelcomePermissions)
+            }
+            is DiaryIntent.AllPermissionsResolved -> {
                 _state.update { it.copy(phase = DiaryPhase.LIST) }
             }
             is DiaryIntent.UpdateDraft -> {
