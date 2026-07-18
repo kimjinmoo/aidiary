@@ -277,11 +277,11 @@ class DiaryLLMEngine private constructor(private val engine: Engine) {
     ): String = withContext(Dispatchers.Default) {
         if (context.isBlank()) return@withContext ""
         val (system, user) = LLMContextBuilder.suggestPlannerTask(context)
-        runSinglePrompt(system, user, SamplerPresets.GENERATE_SHORT, maxTokens = 48)
+        runSinglePrompt(system, user, SamplerPresets.GENERATE_SHORT, maxTokens = 64)
             .trim()
             .trim('"', '\'', '“', '”', '‘', '’', '《', '》')
             .let { stripPrefixes(it) }
-            .let { if (it.length > 30) it.substring(0, 30) else it }
+            .let { if (it.length > 50) it.substring(0, 50) else it }
     }
 
     suspend fun generateBriefing(

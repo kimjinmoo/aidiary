@@ -133,7 +133,7 @@ fun DiaryListScreen(
     // AI 가 추천한 플래너 할 일을 입력란에 1회성으로 반영하고, 사용 후엔 상태를 비웁니다.
     LaunchedEffect(state.suggestedPlannerTaskText) {
         val suggested = state.suggestedPlannerTaskText ?: return@LaunchedEffect
-        newTaskText = suggested
+        newTaskText = if (suggested.length > 50) suggested.substring(0, 50) else suggested
         onIntent(DiaryIntent.ClearSuggestedPlannerTask)
     }
 
@@ -309,7 +309,7 @@ fun DiaryListScreen(
                         PlannerTabContent(
                             state = state,
                             newTaskText = newTaskText,
-                            onTextChange = { newTaskText = it },
+                            onTextChange = { if (it.length <= 50) newTaskText = it },
                             onAddTask = { text, start, end, loc, repeat, days, endDate ->
                                 if (text.isNotBlank()) {
                                     onIntent(
@@ -1082,6 +1082,14 @@ fun PlannerTabContent(
                             onValueChange = onTextChange,
                             placeholder = { Text(text = "$parsedDateText 계획 추가...", fontSize = 14.sp) },
                             singleLine = true,
+                            suffix = {
+                                Text(
+                                    text = "${newTaskText.length}/50",
+                                    fontSize = 11.sp,
+                                    color = if (newTaskText.length >= 50) MaterialTheme.colorScheme.error 
+                                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                )
+                            },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = MaterialTheme.colorScheme.onSurface,
                                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
