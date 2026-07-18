@@ -1,5 +1,6 @@
 package com.grepiu.aidiary.ui.components
 
+import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -1234,6 +1235,7 @@ private fun SbsControllerOverlay(
 }
 
 private fun launchExternal3DViewer(context: Context, block: ContentBlock.SpatialMediaBlock) {
+    Log.d("External3DViewer", "launchExternal3DViewer 시작 - mediaType: ${block.mediaType}, paths: ${block.paths}")
     try {
         val intent = Intent(Intent.ACTION_VIEW)
         
@@ -1252,28 +1254,35 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
             try {
                 pm.getPackageInfo(pkg, 0)
                 matchedPackage = pkg
+                Log.d("External3DViewer", "감지된 HMD 3D 플레이어 패키지: $pkg")
                 break
             } catch (_: Exception) {}
         }
         if (matchedPackage != null) {
             intent.setPackage(matchedPackage)
+            Log.d("External3DViewer", "인텐트 패키지 지정 완료: $matchedPackage")
+        } else {
+            Log.d("External3DViewer", "감지된 HMD 전용 3D 플레이어 패키지가 없어 기본 선택기/플레이어로 전송합니다.")
         }
 
         if (block.mediaType == SpatialMediaType.VIDEO) {
             if (block.paths.isNotEmpty()) {
                 val rawFile = File(context.filesDir, block.paths[0])
+                Log.d("External3DViewer", "비디오 원본 파일 경로: ${rawFile.absolutePath}, 존재여부: ${rawFile.exists()}, 크기: ${rawFile.length()} bytes")
                 if (rawFile.exists()) {
                     // 기기 플레이어가 파일명 접미사(_3D_SBS)를 보고 3D 모드를 자동 활성화하도록
                     // 캐시 폴더에 '_3D_SBS.mp4' 형식의 파일명으로 임시 복사하여 전달합니다.
                     val baseName = rawFile.nameWithoutExtension
                     val tempVideoFile = File(context.cacheDir, "${baseName}_3D_SBS.mp4")
                     
+                    Log.d("External3DViewer", "임시 복사 비디오 경로: ${tempVideoFile.absolutePath}")
                     // 파일 복사 실행
                     rawFile.inputStream().use { input ->
                         tempVideoFile.outputStream().use { output ->
                             input.copyTo(output)
                         }
                     }
+                    Log.d("External3DViewer", "비디오 임시 복사 완료 - 크기: ${tempVideoFile.length()} bytes")
                     
                     val uri = FileProvider.getUriForFile(
                         context,
@@ -1297,16 +1306,24 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                     intent.addCategory("com.google.intent.category.CARDBOARD")
                     
                     intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    
+                    Log.d("External3DViewer", "비디오 ACTION_VIEW 인텐트 실행 시도")
                     context.startActivity(intent)
+                    Log.d("External3DViewer", "비디오 ACTION_VIEW 인텐트 실행 성공")
                 } else {
+                    Log.e("External3DViewer", "비디오 파일이 존재하지 않아 인텐트를 발송하지 못했습니다.")
                     Toast.makeText(context, "비디오 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
                 }
+            } else {
+                Log.e("External3DViewer", "비디오 block.paths 가 비어 있습니다.")
             }
         } else {
+            Log.d("External3DViewer", "사진 입체 렌더링 모드 준비 - paths size: ${block.paths.size}")
             // PHOTO의 경우, 좌/우 이미지를 임시 SBS(Side-by-Side) 이미지로 합쳐서 캐시 폴더에 저장 후 뷰어로 보냄
             if (block.paths.size >= 2) {
                 val fileL = File(context.filesDir, block.paths[0])
                 val fileR = File(context.filesDir, block.paths[1])
+                Log.d("External3DViewer", "좌안 파일: ${fileL.absolutePath} (존재: ${fileL.exists()}), 우안 파일: ${fileR.absolutePath} (존재: ${fileR.exists()})")
                 if (fileL.exists() && fileR.exists()) {
                     val bmpLeft = BitmapFactory.decodeFile(fileL.absolutePath)
                     val bmpRight = BitmapFactory.decodeFile(fileR.absolutePath)
@@ -1328,6 +1345,8 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         bmpRight.recycle()
                         sbsBitmap.recycle()
 
+                        Log.d("External3DViewer", "사진 SBS 합성 완료 - 경로: ${tempFile.absolutePath}, 크기: ${tempFile.length()} bytes")
+
                         val uri = FileProvider.getUriForFile(
                             context,
                             "${context.packageName}.fileprovider",
@@ -1346,16 +1365,24 @@ private fun launchExternal3DViewer(context: Context, block: ContentBlock.Spatial
                         intent.addCategory("com.google.intent.category.CARDBOARD")
                         
                         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        
+                        Log.d("External3DViewer", "사진 ACTION_VIEW 인텐트 실행 시도")
                         context.startActivity(intent)
+                        Log.d("External3DViewer", "사진 ACTION_VIEW 인텐트 실행 성공")
                     } else {
+                        Log.e("External3DViewer", "비트맵 디코딩 실패 (좌: ${bmpLeft != null}, 우: ${bmpRight != null})")
                         Toast.makeText(context, "사진 데이터 변환에 실패했습니다.", Toast.LENGTH_SHORT).show()
                     }
                 } else {
+                    Log.e("External3DViewer", "3D 사진 파일 일부 또는 전체가 존재하지 않습니다.")
                     Toast.makeText(context, "3D 사진 파일을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show()
                 }
+            } else {
+                Log.e("External3DViewer", "3D 사진 감상에는 최소 2장의 경로가 필요합니다. (현재: ${block.paths.size})")
             }
         }
     } catch (e: Exception) {
+        Log.e("External3DViewer", "내장 뷰어 실행 중 예외 발생", e)
         Toast.makeText(context, "내장 뷰어 실행 실패: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
     }
 }
