@@ -460,6 +460,12 @@ fun DiaryAppNavigationRouter(
                     onDismissWifiWarning = {
                         viewModel.processIntent(DiaryIntent.ShowWifiWarning(false))
                     },
+                    onStartSherpaDownload = {
+                        viewModel.processIntent(DiaryIntent.StartSherpaDownload)
+                    },
+                    onDismissSherpaNotice = {
+                        viewModel.processIntent(DiaryIntent.DismissSherpaDownloadNotice)
+                    },
                     onIntent = { intent -> viewModel.processIntent(intent) },
                     modifier = Modifier.fillMaxSize()
                 )

@@ -27,6 +27,8 @@ fun DownloadStatusCard(
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
     onDismissWifiWarning: () -> Unit,
+    onStartSherpaDownload: () -> Unit = {},
+    onDismissSherpaNotice: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -211,8 +213,44 @@ fun DownloadStatusCard(
                     }
                 }
 
+                // 5.5. Sherpa 음성인식 모델 다운로드 안내
+                state.showSherpaDownloadNotice -> {
+                    Text(
+                        text = "🎙️ 음성인식 모델 활성화",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = "음성으로 기록할 수 있는 'Sherpa 온디바이스 음성인식' 모델을 사용할 수 있어요. " +
+                                "네트워크 없이 기기 내부에서 음성을 텍스트로 변환하므로 녹음 내용이 외부로 유출되지 않아요.\n\n" +
+                                "최초 1회 음성인식 모델 파일(~90MB) 다운로드가 필요합니다.",
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        TextButton(onClick = onDismissSherpaNotice) {
+                            Text(text = "나중에")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = onStartSherpaDownload) {
+                            Text(text = "모델 다운로드 (~90MB)")
+                        }
+                    }
+                }
+
                 // 6. LTE/5G 경고 상태
                 state.showWifiWarning -> {
+                    val isSherpa = state.wifiWarningSource == "sherpa"
+                    val downloadSize = if (isSherpa) "~90MB" else "2.3GB"
                     Text(
                         text = "📡 모바일 데이터 다운로드 경고",
                         fontSize = 18.sp,
@@ -221,7 +259,7 @@ fun DownloadStatusCard(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                     Text(
-                        text = "현재 Wi-Fi에 연결되어 있지 않습니다. 모바일 데이터(LTE/5G)로 대용량 모델 파일(2.3GB)을 다운로드할 경우 데이터 요금이 많이 발생할 수 있습니다.\n\n" +
+                        text = "현재 Wi-Fi에 연결되어 있지 않습니다. 모바일 데이터(LTE/5G)로 모델 파일($downloadSize)을 다운로드할 경우 데이터 요금이 많이 발생할 수 있습니다.\n\n" +
                                 "다운로드를 계속 진행하시겠습니까?",
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
@@ -237,7 +275,7 @@ fun DownloadStatusCard(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
-                            onClick = onStartDownload, // 경고 후 강제 시작
+                            onClick = if (isSherpa) onStartSherpaDownload else onStartDownload,
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
                         ) {
                             Text(text = "데이터로 다운로드", color = Color.White)

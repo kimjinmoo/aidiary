@@ -318,7 +318,24 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(showDownloadNotice = intent.show) }
             }
             is DiaryIntent.ShowWifiWarning -> {
-                _state.update { it.copy(showWifiWarning = intent.show) }
+                val source = _state.value.wifiWarningSource
+                _state.update {
+                    it.copy(
+                        showWifiWarning = intent.show,
+                        wifiWarningSource = null,
+                        showDownloadNotice = if (!intent.show && source == "llm") true else it.showDownloadNotice,
+                        showSherpaDownloadNotice = if (!intent.show && source == "sherpa") true else it.showSherpaDownloadNotice
+                    )
+                }
+            }
+            is DiaryIntent.ShowSherpaDownloadNotice -> {
+        _state.update { it.copy(showSherpaDownloadNotice = true) }
+            }
+            is DiaryIntent.DismissSherpaDownloadNotice -> {
+                _state.update { it.copy(showSherpaDownloadNotice = false) }
+            }
+            is DiaryIntent.StartSherpaDownload -> {
+                startSherpaDownload()
             }
             is DiaryIntent.StartRecording -> {
                 startRecording()
@@ -1404,11 +1421,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         downloadJob = viewModelScope.launch {
             // Wi-Fi 상태가 아닌데 경고창을 통과 안했다면 경고 먼저 띄움
             if (!downloader.isWifiConnected() && !_state.value.showWifiWarning && !_state.value.isDownloadingModel) {
-                _state.update { it.copy(showWifiWarning = true, showDownloadNotice = false) }
+                _state.update { it.copy(showWifiWarning = true, showDownloadNotice = false, wifiWarningSource = "llm") }
                 return@launch
             }
 
-            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "연결 중...", showDownloadNotice = false, showWifiWarning = false) }
+            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "연결 중...", showDownloadNotice = false, showWifiWarning = false, wifiWarningSource = null) }
 
             try {
                 val result = downloader.downloadModel(MODEL_DOWNLOAD_URL) { bytesRead, totalBytes ->
@@ -1445,6 +1462,42 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update {
                     it.copy(isDownloadingModel = false, modelDownloadSizeText = null, showDownloadNotice = true)
                 }
+            }
+        }
+    }
+
+    /**
+     * Sherpa 음성인식 모델 다운로드 시작. Wi-Fi 체크 후 사용자 확인 거쳐 실행.
+     */
+    private fun startSherpaDownload() {
+        downloadJob?.cancel()
+        downloadJob = viewModelScope.launch {
+            if (!downloader.isWifiConnected() && !_state.value.showWifiWarning && !_state.value.isDownloadingModel) {
+                _state.update { it.copy(showWifiWarning = true, showSherpaDownloadNotice = false, wifiWarningSource = "sherpa") }
+                return@launch
+            }
+
+            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "음성인식 모델 다운로드 중...", showSherpaDownloadNotice = false, showWifiWarning = false, wifiWarningSource = null) }
+
+            try {
+                downloader.downloadSherpaModel(SHERPA_DOWNLOAD_URL) { bytesRead, totalBytes ->
+                    val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
+                    val label = if (progress >= 0.99f) "압축 해제 중..." else "음성인식 모델 다운로드 중..."
+                    val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
+                    _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "$label $sizeText") }
+                }.onSuccess {
+                    _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
+                    initSherpa()
+                }.onFailure { e ->
+                    _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null, showSherpaDownloadNotice = true) }
+                    Log.e("DiaryViewModel", "Sherpa download failed: ${e.message}", e)
+                    sendEffect(DiaryEffect.ShowToast("음성인식 모델 다운로드 실패: ${e.message}"))
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) return@launch
+                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null, showSherpaDownloadNotice = true) }
+                Log.e("DiaryViewModel", "Sherpa download error", e)
+                sendEffect(DiaryEffect.ShowToast("음성인식 모델 다운로드 에러: ${e.message}"))
             }
         }
     }
@@ -2239,24 +2292,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             initSherpa()
             return
         }
-        try {
-            _state.update { it.copy(isDownloadingModel = true, modelDownloadProgress = 0f, modelDownloadSizeText = "음성인식 모델 다운로드 중...") }
-            downloader.downloadSherpaModel(SHERPA_DOWNLOAD_URL) { bytesRead, totalBytes ->
-                val progress = if (totalBytes > 0) bytesRead.toFloat() / totalBytes else 0f
-                val label = if (progress >= 0.99f) "압축 해제 중..." else "음성인식 모델 다운로드 중..."
-                val sizeText = "${downloader.toHumanReadableSize(bytesRead)} / ${if (totalBytes > 0) downloader.toHumanReadableSize(totalBytes) else "???"}"
-                _state.update { it.copy(modelDownloadProgress = progress, modelDownloadSizeText = "$label $sizeText") }
-            }.onSuccess {
-                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
-                initSherpa()
-            }.onFailure { e ->
-                _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
-                Log.e("DiaryViewModel", "Sherpa download failed: ${e.message}", e)
-                sendEffect(DiaryEffect.ShowToast("Sherpa download failed: ${e.message}"))
-            }
-        } catch (e: Exception) {
-            Log.e("DiaryViewModel", "ensure error", e)
-        }
+        // 자동 다운로드 대신 사용자 선택 후 다운로드하도록 안내 표시
+        _state.update { it.copy(showSherpaDownloadNotice = true, showDownloadNotice = false) }
     }
 
     private fun initSherpa() {

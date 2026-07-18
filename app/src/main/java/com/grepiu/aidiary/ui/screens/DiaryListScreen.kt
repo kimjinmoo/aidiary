@@ -89,6 +89,8 @@ fun DiaryListScreen(
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
     onDismissWifiWarning: () -> Unit,
+    onStartSherpaDownload: () -> Unit = {},
+    onDismissSherpaNotice: () -> Unit = {},
     onIntent: (DiaryIntent) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -450,6 +452,8 @@ fun DiaryListScreen(
                             onCancelDownload = onCancelDownload,
                             onDismissNotice = onDismissNotice,
                             onDismissWifiWarning = onDismissWifiWarning,
+                            onStartSherpaDownload = onStartSherpaDownload,
+                            onDismissSherpaNotice = onDismissSherpaNotice,
                             onSearch = { onIntent(DiaryIntent.SearchDiaries(it)) },
                             onClearSearch = { onIntent(DiaryIntent.ClearDiarySearch) },
                             isSearchFocused = isSearchFocused,
@@ -839,6 +843,8 @@ fun DiaryTabContent(
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
     onDismissWifiWarning: () -> Unit,
+    onStartSherpaDownload: () -> Unit = {},
+    onDismissSherpaNotice: () -> Unit = {},
     onSearch: (String) -> Unit,
     onClearSearch: () -> Unit,
     isSearchFocused: Boolean,
@@ -908,15 +914,20 @@ fun DiaryTabContent(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // AI 모델 다운로드 카드
-            if (!state.isModelReady) {
+            // AI 모델 다운로드 카드 (LLM 또는 Sherpa 상태에 따라 표시)
+            val showDownloadCard = !state.isModelReady || state.isModelInitializing ||
+                state.showWifiWarning || state.isDownloadingModel ||
+                (!state.isSherpaModelReady && state.showSherpaDownloadNotice)
+            if (showDownloadCard) {
                 item {
                     DownloadStatusCard(
                         state = state,
                         onStartDownload = onStartDownload,
                         onCancelDownload = onCancelDownload,
                         onDismissNotice = onDismissNotice,
-                        onDismissWifiWarning = onDismissWifiWarning
+                        onDismissWifiWarning = onDismissWifiWarning,
+                        onStartSherpaDownload = onStartSherpaDownload,
+                        onDismissSherpaNotice = onDismissSherpaNotice
                     )
                 }
             }
