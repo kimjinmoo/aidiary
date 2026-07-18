@@ -504,9 +504,12 @@ private fun TitleHeroField(
     } ?: MaterialTheme.colorScheme.onSurface
     val titleSize = (titleStyle.sizeSp ?: 24).coerceIn(18, 34)
 
+    val maxChars = 50
+    val charCount = title.length
+
     OutlinedTextField(
         value = title,
-        onValueChange = onValueChange,
+        onValueChange = { if (it.length <= maxChars) onValueChange(it) },
         placeholder = {
             Text(
                 text = "오늘의 제목을 입력하세요",
@@ -535,6 +538,14 @@ private fun TitleHeroField(
                 isSuggesting = isSuggesting,
                 hasBody = hasBody,
                 onClick = onSuggestClick
+            )
+        },
+        supportingText = {
+            Text(
+                text = "$charCount / $maxChars",
+                fontSize = 11.sp,
+                color = if (charCount >= maxChars) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         },
         modifier = Modifier

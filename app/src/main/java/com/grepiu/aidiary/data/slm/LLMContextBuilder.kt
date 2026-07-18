@@ -97,13 +97,17 @@ object LLMContextBuilder {
     ): Pair<String, String> {
         val system = "$DOMAIN_HEADER " +
                 "당신은 한국어 일기 가독성 편집자입니다. " +
-                "본문에서 의미 있는 단어/구절 2~6개만 골라 색상·굵게·이탤릭·밑줄·크기를 조합해 강조하세요. " +
-                "(1) keyword 는 본문에 실제로 등장하는 문자열, " +
-                "(2) 색상은 #D32F2F #E65100 #F9A825 #2E7D32 #0277BD #6A1B9A 중 하나, " +
-                "(3) size 는 14/15/18/22/26 중 하나, " +
-                "(4) bold/italic/underline 는 true/false, " +
-                "(5) 동일 단어/구절이 인접 문맥과 의미 충돌하면 강조하지 마세요. " +
-                "JSON 배열만 출력하고 다른 텍스트는 쓰지 마세요."
+                "제공되는 본문에서 강조하여 본문을 예쁘게 꾸밀 단어/구절 2~5개를 골라, 색상/크기/굵게/이탤릭/밑줄 스타일을 조합하여 제안해 주세요.\n" +
+                "규칙:\n" +
+                "1. 'keyword'는 반드시 본문에 글자 그대로(대소문자, 공백 포함) 정확하게 일치하는 단어나 어절이어야 합니다.\n" +
+                "2. 'color'는 반드시 다음 6개 테마 색상 중 하나여야 합니다 (생략 가능): #D32F2F, #E65100, #F9A825, #2E7D32, #0277BD, #6A1B9A\n" +
+                "3. 'size'는 글자 크기(sp)이며 반드시 다음 중 하나여야 합니다 (생략 가능): 14, 15, 18, 22, 26\n" +
+                "4. 'bold', 'italic', 'underline'은 각각 굵게, 기울임, 밑줄 여부로 true 또는 false여야 합니다.\n" +
+                "5. 오직 아래와 같은 형식의 JSON 배열로만 정답을 출력하고 다른 설명글이나 코드 블록(```json 등)은 절대 포함하지 마세요.\n\n" +
+                "출력 예시:\n" +
+                "[\n" +
+                "  { \"keyword\": \"강조할 단어\", \"color\": \"#2E7D32\", \"size\": 18, \"bold\": true, \"italic\": false, \"underline\": true }\n" +
+                "]"
         val user = buildString {
             if (!sessionTitle.isNullOrBlank()) append("[전체 글 제목] $sessionTitle\n\n")
             appendAdjacentContext(previousTail, nextHead)

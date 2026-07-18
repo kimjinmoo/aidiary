@@ -99,17 +99,24 @@ object DecorateResultParser {
         originalText: String
     ): Pair<Int, Int>? {
         val len = originalText.length
-        // 1) 모델이 준 범위 검증
+        // 1) 모델이 준 범위 검증 (대소문자 구분 없이)
         if (start in 0..len && end in start..len) {
             if (end - start == keyword.length) {
-                if (originalText.regionMatches(start, keyword, 0, keyword.length, ignoreCase = false)) {
+                if (originalText.regionMatches(start, keyword, 0, keyword.length, ignoreCase = true)) {
                     return start to end
                 }
             }
         }
-        // 2) 본문에서 키워드 검색
-        val found = originalText.indexOf(keyword)
+        // 2) 본문에서 키워드 검색 (대소문자 구분 없이 매칭)
+        val found = originalText.indexOf(keyword, ignoreCase = true)
         if (found >= 0) return found to (found + keyword.length)
+
+        // 3) 혹시 공백이나 문장부호가 다르게 들어가 실패한 경우 트림 처리 후 검색
+        val cleanedKeyword = keyword.trim()
+        if (cleanedKeyword.isNotEmpty()) {
+            val foundCleaned = originalText.indexOf(cleanedKeyword, ignoreCase = true)
+            if (foundCleaned >= 0) return foundCleaned to (foundCleaned + cleanedKeyword.length)
+        }
         return null
     }
 }
