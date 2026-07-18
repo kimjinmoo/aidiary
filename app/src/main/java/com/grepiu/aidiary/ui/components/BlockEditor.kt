@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.GridOn
 import androidx.compose.material.icons.filled.Image
@@ -91,9 +93,12 @@ fun BlockEditor(
     onMoveDown: () -> Unit,
     isProofreading: Boolean = false,
     isDecorating: Boolean = false,
+    isTranslating: Boolean = false,
     aiAssistEnabled: Boolean = true,
     onProofread: () -> Unit = {},
     onDecorate: () -> Unit = {},
+    onCopy: () -> Unit = {},
+    onTranslate: () -> Unit = {},
     onTableCellChange: (Int, Int, String) -> Unit = { _, _, _ -> },
     onTableAddRow: () -> Unit = {},
     onTableRemoveRow: (Int) -> Unit = {},
@@ -151,11 +156,14 @@ fun BlockEditor(
                         enabled = aiAssistEnabled,
                         isProofreading = isProofreading,
                         isDecorating = isDecorating,
+                        isTranslating = isTranslating,
                         hasText = (block as? ContentBlock.TextBlock)?.text?.isNotBlank() == true ||
                             (block as? ContentBlock.HeadingBlock)?.text?.isNotBlank() == true ||
                             (block as? ContentBlock.QuoteBlock)?.text?.isNotBlank() == true,
                         onProofread = onProofread,
-                        onDecorate = onDecorate
+                        onDecorate = onDecorate,
+                        onCopy = onCopy,
+                        onTranslate = onTranslate
                     )
                 }
                 IconButton(
@@ -909,12 +917,15 @@ private fun BlockAiMenu(
     enabled: Boolean,
     isProofreading: Boolean,
     isDecorating: Boolean,
+    isTranslating: Boolean,
     hasText: Boolean,
     onProofread: () -> Unit,
-    onDecorate: () -> Unit
+    onDecorate: () -> Unit,
+    onCopy: () -> Unit,
+    onTranslate: () -> Unit
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val isBusy = isProofreading || isDecorating
+    val isBusy = isProofreading || isDecorating || isTranslating
 
     Box {
         IconButton(
@@ -941,6 +952,36 @@ private fun BlockAiMenu(
             expanded = menuOpen,
             onDismissRequest = { menuOpen = false }
         ) {
+            DropdownMenuItem(
+                text = { Text("복사하기", fontSize = 13.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                enabled = hasText,
+                onClick = {
+                    menuOpen = false
+                    onCopy()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("AI 한국어로 번역", fontSize = 13.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Translate,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                },
+                enabled = hasText,
+                onClick = {
+                    menuOpen = false
+                    onTranslate()
+                }
+            )
             DropdownMenuItem(
                 text = { Text("AI 보정(오타·띄어쓰기)", fontSize = 13.sp) },
                 leadingIcon = {

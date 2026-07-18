@@ -358,6 +358,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     current.copy(draftBlocks = list)
                 }
             }
+            is DiaryIntent.CopyBlockToClipboard -> {
+                copyBlockToClipboard(intent.blockId)
+            }
+            is DiaryIntent.TranslateBlock -> {
+                translateBlockToKorean(intent.blockId)
+            }
 
             // ===== 표 =====
             is DiaryIntent.UpdateTableCell -> {
@@ -1862,7 +1868,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
                     val elapsed = ((System.currentTimeMillis() - start) / 1000).toInt()
                     launch(Dispatchers.Main) { _state.update { it.copy(recordingSeconds = elapsed, recordingVolume = vol) } }
-                    if (elapsed >= 3600) { launch(Dispatchers.Main) { stopRecording() }; break }
+                    if (elapsed >= 180) { launch(Dispatchers.Main) { stopRecording() }; break }
                 }
 
                 rec.stop(); rec.release(); fos.close()
@@ -1974,6 +1980,84 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             sendEffect(DiaryEffect.ShowToast("본문을 클립보드에 복사했어요."))
         } catch (e: Exception) {
             sendEffect(DiaryEffect.ShowToast("클립보드 복사 실패: ${e.message}"))
+        }
+    }
+
+    /**
+     * 특정 블록의 텍스트를 시스템 클립보드에 복사합니다.
+     */
+    private fun copyBlockToClipboard(blockId: String) {
+        val block = _state.value.draftBlocks.firstOrNull { it.id == blockId }
+        val textToCopy = when (block) {
+            is ContentBlock.TextBlock -> block.text
+            is ContentBlock.HeadingBlock -> block.text
+            is ContentBlock.QuoteBlock -> block.text
+            else -> ""
+        }
+        if (textToCopy.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("복사할 텍스트가 없습니다."))
+            return
+        }
+        try {
+            val clipboard = getApplication<Application>()
+                .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("diary_block", textToCopy)
+            clipboard.setPrimaryClip(clip)
+            sendEffect(DiaryEffect.ShowToast("선택한 블록을 복사했습니다."))
+        } catch (e: Exception) {
+            sendEffect(DiaryEffect.ShowToast("클립보드 복사 실패: ${e.message}"))
+        }
+    }
+
+    /**
+     * 특정 블록의 텍스트를 AI로 한국어로 번역하여 해당 블록의 내용에 즉각 반영합니다.
+     */
+    private fun translateBlockToKorean(blockId: String) {
+        if (!requireReadyModel()) return
+        val block = _state.value.draftBlocks.firstOrNull { it.id == blockId }
+        val textToTranslate = when (block) {
+            is ContentBlock.TextBlock -> block.text
+            is ContentBlock.HeadingBlock -> block.text
+            is ContentBlock.QuoteBlock -> block.text
+            else -> ""
+        }
+        if (textToTranslate.isBlank()) {
+            sendEffect(DiaryEffect.ShowToast("번역할 텍스트가 비어 있습니다."))
+            return
+        }
+
+        if (_state.value.translatingBlockIds.contains(blockId)) return
+
+        _state.update { it.copy(translatingBlockIds = it.translatingBlockIds + blockId) }
+
+        viewModelScope.launch {
+            try {
+                val engine = llmEngine ?: return@launch
+                val translated = engine.translateToKorean(textToTranslate)
+                if (translated.isBlank()) {
+                    sendEffect(DiaryEffect.ShowToast("번역을 실패했습니다."))
+                } else {
+                    _state.update { current ->
+                        current.copy(
+                            draftBlocks = current.draftBlocks.map { b ->
+                                if (b.id == blockId) {
+                                    when (b) {
+                                        is ContentBlock.TextBlock -> b.copy(text = translated)
+                                        is ContentBlock.HeadingBlock -> b.copy(text = translated)
+                                        is ContentBlock.QuoteBlock -> b.copy(text = translated)
+                                        else -> b
+                                    }
+                                } else b
+                            }
+                        )
+                    }
+                    sendEffect(DiaryEffect.ShowToast("번역 완료"))
+                }
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("AI 번역 실패: ${e.message}"))
+            } finally {
+                _state.update { it.copy(translatingBlockIds = it.translatingBlockIds - blockId) }
+            }
         }
     }
 

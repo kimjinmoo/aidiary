@@ -105,6 +105,8 @@ data class DiaryState(
     val isTranslatingDraft: Boolean = false,
     /** LLM 이 생성한 한글 번역 결과. UI 에서 다이얼로그로 노출 후 ClearTranslatedDraft 로 소비 */
     val translatedDraft: String? = null,
+    /** 개별 블록 번역 진행 상태 (블록 ID 셋) */
+    val translatingBlockIds: Set<String> = emptySet(),
 
     // 온디바이스 AI 챗봇 대화 데이터 추가
     val chatMessages: List<ChatMessage> = emptyList(),       // 챗봇 대화 기록

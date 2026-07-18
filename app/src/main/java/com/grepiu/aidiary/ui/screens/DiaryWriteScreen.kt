@@ -200,18 +200,12 @@ fun DiaryWriteScreen(
             Spacer(Modifier.height(24.dp))
             SectionLabel(
                 icon = Icons.Filled.EditNote,
-                label = "본문",
-                trailing = {
-                    BodyTrailingActions(
-                        state = state,
-                        onCopy = { onIntent(DiaryIntent.CopyDraftToClipboard) },
-                        onTranslate = { onIntent(DiaryIntent.TranslateDraftToKorean) }
-                    )
-                }
+                label = "본문"
             )
             Spacer(Modifier.height(8.dp))
             BodySection(
                 state = state,
+                onIntent = onIntent,
                 onUpdateBlockText = onUpdateBlockText,
                 onUpdateBlockCaption = onUpdateBlockCaption,
                 onRemoveBlock = onRemoveBlock,
@@ -274,17 +268,6 @@ fun DiaryWriteScreen(
                 onConfirm = { onIntent(DiaryIntent.ConfirmContentTypeChange(pending.suggestedType)) },
                 onKeep = { onIntent(DiaryIntent.KeepCurrentContentTypeAndSave) },
                 onCancel = { onIntent(DiaryIntent.CancelContentTypeChange) }
-            )
-        }
-
-        // 9) 본문 AI 한글 번역 결과 다이얼로그
-        state.translatedDraft?.let { translated ->
-            TranslationResultDialog(
-                original = state.draftPlainText,
-                translated = translated,
-                isTranslating = state.isTranslatingDraft,
-                onApply = { onIntent(DiaryIntent.ApplyTranslatedDraft) },
-                onClose = { onIntent(DiaryIntent.ClearTranslatedDraft) }
             )
         }
     }
@@ -709,6 +692,7 @@ private fun TitleStyleInline(
 @Composable
 private fun BodySection(
     state: DiaryState,
+    onIntent: (DiaryIntent) -> Unit,
     onUpdateBlockText: (String, String, com.grepiu.aidiary.data.model.TextFormatting) -> Unit,
     onUpdateBlockCaption: (String, String) -> Unit,
     onRemoveBlock: (String) -> Unit,
@@ -737,6 +721,7 @@ private fun BodySection(
                     totalCount = state.draftBlocks.size,
                     isProofreading = state.isProofreadingBlockId == block.id,
                     isDecorating = state.isDecoratingBlockId == block.id,
+                    isTranslating = state.translatingBlockIds.contains(block.id),
                     aiAssistEnabled = state.isModelReady,
                     onUpdateText = { newText, newFmt -> onUpdateBlockText(block.id, newText, newFmt) },
                     onUpdateCaption = { newCap -> onUpdateBlockCaption(block.id, newCap) },
@@ -745,6 +730,8 @@ private fun BodySection(
                     onMoveDown = { onMoveBlock(block.id, +1) },
                     onProofread = { onProofreadBlock(block.id) },
                     onDecorate = { onDecorateBlock(block.id) },
+                    onCopy = { onIntent(DiaryIntent.CopyBlockToClipboard(block.id)) },
+                    onTranslate = { onIntent(DiaryIntent.TranslateBlock(block.id)) },
                     onTableCellChange = { r, c, t -> onTableCellChange(block.id, r, c, t) },
                     onTableAddRow = { onTableAddRow(block.id) },
                     onTableRemoveRow = { r -> onTableRemoveRow(block.id, r) },
@@ -916,6 +903,12 @@ private fun RecordingActiveBody(
     modifier: Modifier = Modifier
 ) {
     val recColor = Color(0xFFE53935)
+    val maxSeconds = 180
+    val progress = (seconds / maxSeconds.toFloat()).coerceIn(0f, 1f)
+    val remainingSeconds = (maxSeconds - seconds).coerceAtLeast(0)
+    val minutesStr = String.format(java.util.Locale.US, "%02d:%02d", seconds / 60, seconds % 60)
+    val remainingStr = String.format(java.util.Locale.US, "%02d:%02d", remainingSeconds / 60, remainingSeconds % 60)
+
     Box(
         modifier = Modifier
             .size(44.dp)
@@ -933,34 +926,63 @@ private fun RecordingActiveBody(
         }
     }
     Column(modifier = modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(recColor)
-            )
-            Spacer(Modifier.width(6.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(recColor)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "녹음 중 · $minutesStr",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = recColor
+                )
+            }
             Text(
-                text = "녹음 중 · ${seconds}초",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = recColor
+                text = "남은 시간: $remainingStr",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Spacer(Modifier.height(6.dp))
+        // 3분 한도 게이지 바
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color(0xFF333333))
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        // 볼륨 미터 바 (얇게)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .clip(RoundedCornerShape(1.5.dp))
+                .background(Color(0xFF333333).copy(alpha = 0.2f))
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(volume)
-                    .clip(RoundedCornerShape(3.dp))
+                    .clip(RoundedCornerShape(1.5.dp))
                     .background(
                         when {
                             volume < 0.3f -> Color(0xFF4CAF50)
@@ -1268,172 +1290,6 @@ private fun ContentTypeChangeDialog(
                 }
                 TextButton(onClick = onCancel) {
                     Text("취소")
-                }
-            }
-        }
-    )
-}
-
-/**
- * 본문 섹션 헤더 우측에 붙는 작은 아이콘 액션 행.
- *  - 복사 : 본문 평문을 시스템 클립보드에 복사
- *  - 번역 : AI 로 본문을 한국어로 번역
- */
-@Composable
-private fun BodyTrailingActions(
-    state: DiaryState,
-    onCopy: () -> Unit,
-    onTranslate: () -> Unit
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        val hasBody = state.draftPlainText.isNotBlank()
-        IconButton(
-            onClick = onCopy,
-            enabled = hasBody,
-            modifier = Modifier.size(28.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.ContentCopy,
-                contentDescription = "본문 복사",
-                tint = if (hasBody) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier.size(16.dp)
-            )
-        }
-        val isTranslating = state.isTranslatingDraft
-        IconButton(
-            onClick = onTranslate,
-            enabled = hasBody && state.isModelReady && !isTranslating,
-            modifier = Modifier.size(28.dp)
-        ) {
-            if (isTranslating) {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(14.dp),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Filled.Translate,
-                    contentDescription = "AI 한글 번역",
-                    tint = if (hasBody && state.isModelReady) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    }
-}
-
-/**
- * 본문 AI 한글 번역 결과 다이얼로그.
- *  - 번역 중이면 로딩 인디케이터만 노출
- *  - 완료 시: 원문/번역문 미리보기 + [본문에 적용] [클립보드 복사] [닫기] 3 버튼
- */
-@Composable
-private fun TranslationResultDialog(
-    original: String,
-    translated: String,
-    isTranslating: Boolean,
-    onApply: () -> Unit,
-    onClose: () -> Unit
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val copyTranslation = {
-        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        cm.setPrimaryClip(android.content.ClipData.newPlainText("diary_translation", translated))
-        android.widget.Toast.makeText(context, "번역문을 클립보드에 복사했어요.", android.widget.Toast.LENGTH_SHORT).show()
-    }
-    AlertDialog(
-        onDismissRequest = onClose,
-        shape = RoundedCornerShape(20.dp),
-        icon = {
-            Icon(
-                imageVector = Icons.Filled.Translate,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        },
-        title = {
-            Text(
-                text = "AI 한글 번역",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-        },
-        text = {
-            if (isTranslating) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("AI 가 본문을 한국어로 번역하고 있어요…", fontSize = 13.sp)
-                }
-            } else {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "원문",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = original.take(400) + if (original.length > 400) "…" else "",
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "한국어 번역",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = translated,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (!isTranslating) {
-                TextButton(onClick = onApply) {
-                    Text("본문에 적용", fontWeight = FontWeight.Bold)
-                }
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (!isTranslating) {
-                    TextButton(onClick = copyTranslation) {
-                        Text("복사")
-                    }
-                }
-                TextButton(onClick = onClose) {
-                    Text(if (isTranslating) "닫기" else "취소")
                 }
             }
         }

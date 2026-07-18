@@ -78,6 +78,10 @@ sealed interface DiaryIntent {
     data class RemoveBlock(val blockId: String) : DiaryIntent
     /** 블록을 위/아래로 이동합니다. direction = -1 (위) / +1 (아래) */
     data class MoveBlock(val blockId: String, val direction: Int) : DiaryIntent
+    /** 개별 블록의 텍스트를 클립보드에 복사합니다. */
+    data class CopyBlockToClipboard(val blockId: String) : DiaryIntent
+    /** 개별 블록의 텍스트를 AI로 한국어 번역합니다. */
+    data class TranslateBlock(val blockId: String) : DiaryIntent
 
     // ===== 이미지 픽업/촬영 =====
     /** PhotoPicker 등 외부에서 받은 이미지 URI 목록(1개 이상) 을 내부 저장소로 가져와 각각 ImageBlock 으로 추가합니다. */
