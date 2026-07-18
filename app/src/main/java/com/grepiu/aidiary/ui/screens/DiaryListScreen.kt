@@ -138,7 +138,10 @@ fun DiaryListScreen(
     var selectedTypeFilter by remember { mutableStateOf<ContentType?>(null) }
 
     var isSearchFocused by remember { mutableStateOf(false) }
+    var isChatInputFocused by remember { mutableStateOf(false) }
     val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && state.activeTab == "DIARY"
+    // 헤더/캘린더/탭셀렉터를 숨겨야 하는 상태 (검색 활성 또는 AI 비서 입력 포커스)
+    val isHeaderHidden = isSearchActive || (isChatInputFocused && state.activeTab == "CHAT")
 
     // AI 가 추천한 플래너 할 일을 입력란에 1회성으로 반영하고, 사용 후엔 상태를 비웁니다.
     LaunchedEffect(state.suggestedPlannerTaskText) {
@@ -149,7 +152,7 @@ fun DiaryListScreen(
 
     Scaffold(
         bottomBar = {
-            if (state.activeTab == "DIARY" && !isSearchActive) {
+            if (state.activeTab == "DIARY" && !isHeaderHidden) {
                 WriteActionBar(onWriteDiary = onWriteDiary)
             }
         },
@@ -163,7 +166,7 @@ fun DiaryListScreen(
                 .imePadding()
                 .fillMaxSize()
         ) {
-            if (!isSearchActive) {
+            if (!isHeaderHidden) {
                 // C. 공간 효율적이고 고급스러운 상단 오늘의 날짜/인사말 헤더
                 Row(
                 modifier = Modifier
@@ -381,7 +384,8 @@ fun DiaryListScreen(
                         ChatTabContent(
                             state = state,
                             onSendChat = { onIntent(DiaryIntent.SendChatMessage(it)) },
-                            onClearHistory = { onIntent(DiaryIntent.ClearChatHistory) }
+                            onClearHistory = { onIntent(DiaryIntent.ClearChatHistory) },
+                            onInputFocusChange = { isChatInputFocused = it }
                         )
                     }
                 }
@@ -2570,11 +2574,13 @@ fun GoalItemRow(
 fun ChatTabContent(
     state: DiaryState,
     onSendChat: (String) -> Unit,
-    onClearHistory: () -> Unit
+    onClearHistory: () -> Unit,
+    onInputFocusChange: (Boolean) -> Unit = {}
 ) {
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     var isInputFocused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
 
     // 대화가 누적될 때마다 자동으로 스크롤 하단 이동
     LaunchedEffect(state.chatMessages.size) {
@@ -2583,7 +2589,10 @@ fun ChatTabContent(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier
+        .fillMaxSize()
+        .imePadding()
+    ) {
         // 상단 타이틀 및 초기화 버튼
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -2800,7 +2809,10 @@ fun ChatTabContent(
                     }),
                     modifier = Modifier
                         .weight(1f)
-                        .onFocusChanged { isInputFocused = it.isFocused }
+                        .onFocusChanged {
+                            isInputFocused = it.isFocused
+                            onInputFocusChange(it.isFocused)
+                        }
                 )
 
                 if (state.isGeneratingChat) {
@@ -2834,7 +2846,7 @@ fun ChatTabContent(
             }
         }
         
-        Spacer(modifier = Modifier.height(40.dp))
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
