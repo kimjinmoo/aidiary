@@ -715,6 +715,15 @@ fun DiaryTabContent(
         }
     }
 
+    val focusManager = LocalFocusManager.current
+    val lazyListState = rememberLazyListState()
+
+    LaunchedEffect(lazyListState.isScrollInProgress) {
+        if (lazyListState.isScrollInProgress) {
+            focusManager.clearFocus()
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -729,6 +738,7 @@ fun DiaryTabContent(
         Spacer(modifier = Modifier.height(12.dp))
 
         LazyColumn(
+            state = lazyListState,
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
