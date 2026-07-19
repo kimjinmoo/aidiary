@@ -116,6 +116,7 @@ app/src/main/java/com/grepiu/aidiary/
     ├── components/
     │   ├── DownloadStatusCard.kt    # 목록 상단 AI 모델 안내 카드
     │   ├── DeviceUnsupportedModal.kt # [NEW] 2030 타깃 세련된 AI 사양 안내 감성 모달
+    │   ├── OpenSourceLicenseModalDialog.kt # [NEW] 2030 타깃 오픈소스 라이선스 고지 모달
     │   ├── BlockRenderer.kt         # 읽기 전용 블록 렌더러 (SpatialMediaBlockView 포함)
     │   ├── BlockEditor.kt           # 작성 화면용 블록 입력/편집 + AddBlockBar
     │   ├── RichTextField.kt         # 인라인 서식 프리뷰 텍스트 에디터
@@ -124,6 +125,7 @@ app/src/main/java/com/grepiu/aidiary/
     ├── screens/
     │   ├── DiarySplashScreen.kt     # 애니메이션 스플래시
     │   ├── DiaryListScreen.kt       # [v3.1] DiaryMeta 만 렌더, 검색바 + 페이지네이션
+    │   ├── DiarySettingsScreen.kt   # [NEW] 백업/복원, 버전 및 라이선스를 제공하는 전문가 수준 설정 화면
     │   ├── DiaryWriteScreen.kt      # 제목 + 글 타입 + 블록 작성 + AddBlockBar
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트
     └── theme/                       # Material3 (Pretendard)

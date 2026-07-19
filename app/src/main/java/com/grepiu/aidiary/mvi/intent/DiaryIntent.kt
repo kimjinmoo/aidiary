@@ -47,6 +47,10 @@ sealed interface DiaryIntent {
     data object DismissSherpaDownloadNotice : DiaryIntent
     data object UnsupportedDeviceClose : DiaryIntent
     data object UnsupportedDeviceConfirm : DiaryIntent
+    data class ToggleSettingsScreen(val isOpen: Boolean) : DiaryIntent
+    data class ShowLicenseDialog(val show: Boolean) : DiaryIntent
+    data object ExportBackupData : DiaryIntent
+    data class ImportBackupData(val jsonContent: String) : DiaryIntent
     data object StartSherpaDownload : DiaryIntent
     data object StartRecording : DiaryIntent
     data object StopRecording : DiaryIntent

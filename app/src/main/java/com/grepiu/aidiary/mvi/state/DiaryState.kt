@@ -58,6 +58,9 @@ data class DiaryState(
     val wifiWarningSource: String? = null,
     val isLowRamDevice: Boolean = false,                     // 저사양 기기(RAM 6GB 이하) 여부
     val showWifiWarning: Boolean = false,                    // Wi-Fi 경고 창 표시 여부
+    val isSettingsOpen: Boolean = false,                     // 설정 페이지 화면 표시 여부
+    val lastBackupDate: String? = null,                      // 마지막 성공 백업 일시
+    val showLicenseDialog: Boolean = false,                  // 오픈소스 라이선스 고지 모달 표시 여부
     val isModelInitializing: Boolean = false,                // 모델 메모리 로드 진행 여부
     val isDeviceUnsupported: Boolean = false,                // 디바이스 온디바이스 AI 구동 지원 불가 여부
     val deviceUnsupportedReason: String? = null,             // 지원 불가 사유 텍스트

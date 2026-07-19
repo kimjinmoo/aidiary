@@ -275,6 +275,16 @@ fun DiaryListScreen(
         )
     }
 
+    // 5) 전문가 수준의 설정(Settings) 페이지
+    if (state.isSettingsOpen) {
+        DiarySettingsScreen(
+            state = state,
+            onIntent = onIntent,
+            onBack = { onIntent(DiaryIntent.ToggleSettingsScreen(false)) }
+        )
+        return
+    }
+
     // 캘린더 일주일+ 일자 데이터 생성 (선택된 날짜 기준 앞뒤 7일씩 총 15일 구성)
     val calendarDays = remember(state.selectedDateString) {
         val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -720,7 +730,7 @@ private fun NormalModeTopBar(
             }) {
                 Icon(Icons.Default.DateRange, "날짜 선택", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = { onShowBackupDialog(true) }) {
+            IconButton(onClick = { onIntent(DiaryIntent.ToggleSettingsScreen(true)) }) {
                 Icon(Icons.Default.Settings, "설정", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },

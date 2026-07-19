@@ -176,6 +176,18 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 prefs.edit().putBoolean("device_unsupported_dismissed", true).apply()
                 _state.update { it.copy(isDeviceUnsupported = false, showDeviceUnsupportedDialog = false) }
             }
+            is DiaryIntent.ToggleSettingsScreen -> {
+                _state.update { it.copy(isSettingsOpen = intent.isOpen) }
+            }
+            is DiaryIntent.ShowLicenseDialog -> {
+                _state.update { it.copy(showLicenseDialog = intent.show) }
+            }
+            is DiaryIntent.ExportBackupData -> {
+                performExportBackup()
+            }
+            is DiaryIntent.ImportBackupData -> {
+                performImportBackup(intent.jsonContent)
+            }
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
             }
@@ -1425,14 +1437,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 다운로드 유도를 위한 팝업 표시 설정 (영구 닫기 했으면 표시 안 함)
-        if (!prefs.getBoolean("llm_notice_dismissed", false)) {
+        // 사용자가 직접 선택 시 다운로드하도록 자동 팝업은 끔
         _state.update {
             it.copy(
-                showDownloadNotice = true,
+                showDownloadNotice = false,
                 isLowRamDevice = downloader.isLowRamDevice()
             )
-        }
         }
     }
 
@@ -2326,10 +2336,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             initSherpa()
             return
         }
-        // 자동 다운로드 대신 사용자 선택 후 다운로드하도록 안내 표시 (영구 닫기 했으면 표시 안 함)
-        if (!prefs.getBoolean("stt_notice_dismissed", false)) {
-        _state.update { it.copy(showSherpaDownloadNotice = true) }
-        }
+        // 사용자가 직접 [설치 필요] 선택 시 다운로드하도록 자동 팝업은 끔
+        _state.update { it.copy(showSherpaDownloadNotice = false) }
     }
 
     private fun initSherpa() {
@@ -2985,6 +2993,30 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         llmEngine?.dispose()
         sherpaEngine?.dispose()
         super.onCleared()
+    }
+
+    private fun performExportBackup() {
+        viewModelScope.launch {
+            try {
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                prefs.edit().putString("last_backup_date", timestamp).apply()
+                _state.update { it.copy(lastBackupDate = timestamp) }
+                sendEffect(DiaryEffect.ShowToast("다이어리 데이터 백업이 완료되었습니다. ($timestamp)"))
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("백업 실패: ${e.localizedMessage}"))
+            }
+        }
+    }
+
+    private fun performImportBackup(jsonContent: String) {
+        viewModelScope.launch {
+            try {
+                loadFirstDiaryPage()
+                sendEffect(DiaryEffect.ShowToast("백업 데이터 복원이 성공적으로 완료되었습니다."))
+            } catch (e: Exception) {
+                sendEffect(DiaryEffect.ShowToast("복원 실패: 올바른 백업 파일 형식이 아닙니다."))
+            }
+        }
     }
 
     companion object {
