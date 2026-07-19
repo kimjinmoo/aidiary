@@ -33,7 +33,7 @@
 | **인라인 텍스트 서식** | `TextFormatting` (bold/italic/underline/strikethrough/color/size 6종) |
 | **기본 폰트** | Pretendard (Regular/Medium/SemiBold/Bold OTF) |
 | **온디바이스 AI** | 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM) |
-| | 음성 인식: Sherpa-Onnx (오프라인, 한국어 Zipformer) |
+| | 음성 인식: Sherpa-Onnx SenseVoice (오프라인, 다국어: ko/en/ja/zh/yue + auto) |
 | **2B 모델 컨텍스트 보강 (v2)** | 모든 보조 액션 프롬프트는 `LLMContextBuilder` 통일, 인접 블록 + 슬라이딩 윈도우 |
 | **입체 미디어 자동 감지 (v3.2)** | 사진/영상 첨부 시 3D 포맷(MPO/HEIC aux/Stereo EXIF/Stereo MP4/MOV spatial/MV-HEVC) 자동 감지. 2D 도 첨부 가능. 영상 30초 가드. VideoView 재생 |
 | **데이터 저장 (v3)** | Room DB (메인) + 파일 시스템 샌드박스. 향후 export 기능 추가 시 그대로 활용 |

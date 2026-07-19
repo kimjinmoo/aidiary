@@ -10,7 +10,7 @@
 ### 음성인식 모델 (Sherpa-Onnx)
 
 - **절대 변경 금지**: 오프라인 모델을 온라인(스트리밍) 모델로 임의 변경하지 않는다.
-- 현재 사용 모델: `sherpa-onnx-zipformer-korean-2024-06-24` (Offline)
+- 현재 사용 모델: `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` (Offline, SenseVoice)
 - 스트리밍 모델(`sherpa-onnx-streaming-zipformer-korean-2024-06-16`)은 Sherpa-Onnx v1.13.4와 호환성 문제(native crash)가 확인되었으므로 사용 금지.
 - 모델 변경 시 반드시 실제 기기에서 테스트 후 커밋할 것.
 
