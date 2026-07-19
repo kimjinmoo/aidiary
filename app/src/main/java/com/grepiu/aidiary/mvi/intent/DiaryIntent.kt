@@ -45,6 +45,8 @@ sealed interface DiaryIntent {
     data class ShowWifiWarning(val show: Boolean) : DiaryIntent
     data object ShowSherpaDownloadNotice : DiaryIntent
     data object DismissSherpaDownloadNotice : DiaryIntent
+    data object UnsupportedDeviceClose : DiaryIntent
+    data object UnsupportedDeviceConfirm : DiaryIntent
     data object StartSherpaDownload : DiaryIntent
     data object StartRecording : DiaryIntent
     data object StopRecording : DiaryIntent

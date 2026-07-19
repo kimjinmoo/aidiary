@@ -49,7 +49,7 @@ fun RichTextField(
     val annotated = remember(value.text, formatting, baseColor) {
         formatting.toAnnotatedString(value.text, baseColor)
     }
-    val placeholderStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val placeholderStyle = textStyle.copy(color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f))
     val inputStyle = textStyle.copy(color = Color.Transparent)
     val cursorColor = MaterialTheme.colorScheme.primary
 

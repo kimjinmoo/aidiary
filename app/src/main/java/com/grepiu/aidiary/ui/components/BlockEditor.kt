@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -356,7 +357,7 @@ private fun HashtagBlockEditor(
             OutlinedTextField(
                 value = inputText,
                 onValueChange = { inputText = it },
-                placeholder = { Text("태그 입력 (쉼표로 구분)", fontSize = 13.sp) },
+                placeholder = { Text("태그 입력 (쉼표로 구분)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)) },
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
@@ -1096,7 +1097,7 @@ private fun ImageBlockEditor(
         OutlinedTextField(
             value = block.caption,
             onValueChange = onUpdateCaption,
-            placeholder = { Text("이미지 설명(선택)", fontSize = 12.sp) },
+            placeholder = { Text("이미지 설명(선택)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)) },
             textStyle = TextStyle(fontSize = 12.sp),
             singleLine = true,
             shape = RoundedCornerShape(8.dp),
@@ -1327,11 +1328,18 @@ private fun BlockAiMenu(
                     modifier = Modifier.size(16.dp),
                     color = MaterialTheme.colorScheme.primary
                 )
+            } else if (!enabled) {
+                Icon(
+                    imageVector = Icons.Default.Block,
+                    contentDescription = "AI 사용 불가 (사양 미달)",
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp)
+                )
             } else {
                 Icon(
                     imageVector = Icons.Default.AutoAwesome,
                     contentDescription = "AI 보조",
-                    tint = if (enabled) MaterialTheme.colorScheme.primary else Color.Gray,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
             }

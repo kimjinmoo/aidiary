@@ -5,6 +5,8 @@ import android.content.Context
 import android.opengl.EGL14
 import android.util.Log
 
+enum class ModelPurpose { LLM, SHERPA }
+
 data class DeviceCapability(
     val isSupported: Boolean,
     val totalRamGB: Float,
@@ -13,26 +15,42 @@ data class DeviceCapability(
 )
 
 /**
- * 디바이스 하드웨어 사양(RAM, GPU OpenCL)이 온디바이스 LLM을 돌리기에 적합한지 판단해주는 클래스입니다.
+ * 디바이스 하드웨어 사양(RAM, GPU OpenCL)이 온디바이스 AI 모델(LLM/Sherpa)을 돌리기에 적합한지 판단해주는 클래스입니다.
  */
 object DeviceCapabilityChecker {
 
     private const val TAG = "DeviceCapabilityChecker"
-    private const val MIN_RAM_GB = 6f
+    private const val MIN_RAM_GB_LLM = 6f
 
-    fun check(context: Context): DeviceCapability {
+    fun isLowRamDevice(context: Context): Boolean {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+        val memoryInfo = ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memoryInfo)
+        return memoryInfo.totalMem <= 6L * 1024 * 1024 * 1024
+    }
+
+    fun check(context: Context, purpose: ModelPurpose = ModelPurpose.LLM): DeviceCapability {
         val ramGB = getTotalRamGB(context)
+        val lowRam = isLowRamDevice(context)
 
-        if (ramGB < MIN_RAM_GB) {
-            return DeviceCapability(
-                isSupported = false,
-                totalRamGB = ramGB,
-                gpuRenderer = "",
-                reason = "죄송합니다. 이 기기는 RAM이 ${ramGB.toInt()}GB로,\n" +
-                        "온디바이스 AI 구동에 필요한 최소 사양(${MIN_RAM_GB.toInt()}GB)을 충족하지 못합니다.\n\n" +
-                        "보다 원활한 이용을 위해\n" +
-                        "RAM ${MIN_RAM_GB.toInt()}GB 이상의 기기에서 실행해 주세요."
-            )
+        if (purpose == ModelPurpose.LLM) {
+            if (lowRam || ramGB < MIN_RAM_GB_LLM) {
+                return DeviceCapability(
+                    isSupported = false,
+                    totalRamGB = ramGB,
+                    gpuRenderer = "",
+                    reason = "현재 사용 중이신 스마트폰의 하드웨어 사양으로는 온디바이스 AI 언어 모델을 이용할 수 없어요."
+                )
+            }
+        } else if (purpose == ModelPurpose.SHERPA) {
+            if (ramGB < 1.0f) {
+                return DeviceCapability(
+                    isSupported = false,
+                    totalRamGB = ramGB,
+                    gpuRenderer = "",
+                    reason = "기기 메모리가 부족하여 음성인식 모델을 구동할 수 없습니다."
+                )
+            }
         }
 
         val gpuRenderer = getGpuRenderer()

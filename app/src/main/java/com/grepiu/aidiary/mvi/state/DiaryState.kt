@@ -61,6 +61,7 @@ data class DiaryState(
     val isModelInitializing: Boolean = false,                // 모델 메모리 로드 진행 여부
     val isDeviceUnsupported: Boolean = false,                // 디바이스 온디바이스 AI 구동 지원 불가 여부
     val deviceUnsupportedReason: String? = null,             // 지원 불가 사유 텍스트
+    val showDeviceUnsupportedDialog: Boolean = false,        // 기기 미지원 상세 안내 다이얼로그 표시 여부
 
     // 저장 시 AI TAG 자동 생성 진행 상태
     val isGeneratingAnalysis: Boolean = false,               // 저장 흐름에서 AI 분석 + TAG AI 블록 생성이 진행 중인지 여부

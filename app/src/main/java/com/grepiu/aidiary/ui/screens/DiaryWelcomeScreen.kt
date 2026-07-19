@@ -45,7 +45,7 @@ fun DiaryWelcomeScreen(
     val scrollState = rememberScrollState()
 
     // 개인정보처리방침 링크 (추후 실 사용 주소로 변경 가능)
-    val privacyPolicyUrl = "https://github.com/kimjinmoo/aidiary" 
+    val privacyPolicyUrl = "https://www.grepiu.com/ai_diary_privacy.html"
 
     Box(
         modifier = modifier
@@ -87,7 +87,7 @@ fun DiaryWelcomeScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "AI Diary",
+                text = "AI 다이어리",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface

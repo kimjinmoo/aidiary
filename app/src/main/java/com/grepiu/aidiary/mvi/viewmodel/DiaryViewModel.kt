@@ -31,6 +31,7 @@ import com.grepiu.aidiary.data.repository.PlannerRepository
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
 import com.grepiu.aidiary.data.slm.DeviceCapabilityChecker
+import com.grepiu.aidiary.data.slm.ModelPurpose
 import com.grepiu.aidiary.data.slm.DecorateResultParser
 import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
@@ -168,6 +169,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun processIntent(intent: DiaryIntent) {
         when (intent) {
+            is DiaryIntent.UnsupportedDeviceClose -> {
+                _state.update { it.copy(showDeviceUnsupportedDialog = true) }
+            }
+            is DiaryIntent.UnsupportedDeviceConfirm -> {
+                prefs.edit().putBoolean("device_unsupported_dismissed", true).apply()
+                _state.update { it.copy(isDeviceUnsupported = false, showDeviceUnsupportedDialog = false) }
+            }
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
             }
@@ -1403,12 +1411,15 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // 디바이스 온디바이스 AI 사양 체크
-        val capability = DeviceCapabilityChecker.check(getApplication())
+        val capability = DeviceCapabilityChecker.check(getApplication(), ModelPurpose.LLM)
         if (!capability.isSupported) {
+            val isDismissed = prefs.getBoolean("device_unsupported_dismissed", false)
             _state.update {
                 it.copy(
-                    isDeviceUnsupported = true,
-                    deviceUnsupportedReason = capability.reason
+                    isDeviceUnsupported = !isDismissed,
+                    deviceUnsupportedReason = capability.reason,
+                    isLowRamDevice = true,
+                    showDownloadNotice = false
                 )
             }
             return

@@ -75,6 +75,7 @@ import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.DownloadStatusCard
+import com.grepiu.aidiary.ui.components.DeviceUnsupportedModalDialog
 import com.grepiu.aidiary.ui.theme.DiaryAccent
 import com.grepiu.aidiary.ui.theme.PlannerAccent
 import com.grepiu.aidiary.ui.theme.GoalsAccent
@@ -267,6 +268,13 @@ fun DiaryListScreen(
         )
     }
 
+    // 4) 기기 사양 부족 상세 안내 다이얼로그 (2030 타깃 세련된 모달)
+    if (state.showDeviceUnsupportedDialog) {
+        DeviceUnsupportedModalDialog(
+            onConfirm = { onIntent(DiaryIntent.UnsupportedDeviceConfirm) }
+        )
+    }
+
     // 캘린더 일주일+ 일자 데이터 생성 (선택된 날짜 기준 앞뒤 7일씩 총 15일 구성)
     val calendarDays = remember(state.selectedDateString) {
         val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -369,7 +377,8 @@ fun DiaryListScreen(
                     onCancelDownload = onCancelDownload,
                     onDismissNotice = onDismissNotice,
                     onStartSherpaDownload = onStartSherpaDownload,
-                    onDismissSherpaNotice = onDismissSherpaNotice
+                    onDismissSherpaNotice = onDismissSherpaNotice,
+                    onUnsupportedDeviceClose = { onIntent(DiaryIntent.UnsupportedDeviceClose) }
                 )
 
                 // ── 데일리 스탯 카드 ──
@@ -734,7 +743,8 @@ private fun AiStatusBar(
     onCancelDownload: () -> Unit,
     onDismissNotice: () -> Unit,
     onStartSherpaDownload: () -> Unit,
-    onDismissSherpaNotice: () -> Unit
+    onDismissSherpaNotice: () -> Unit,
+    onUnsupportedDeviceClose: () -> Unit = {}
 ) {
     val showAiStatus = state.isDownloadingModel ||
         state.isExtractingModel || state.isModelInitializing ||
@@ -786,7 +796,7 @@ private fun AiStatusBar(
             }
             // ── 기기 미지원 ──
             if (state.isDeviceUnsupported) {
-                UnsupportedRow(state)
+                UnsupportedRow(state, onUnsupportedDeviceClose)
             }
             // ── 준비 완료 ──
             if (state.isModelReady && !state.isDownloadingModel && !state.isExtractingModel &&
@@ -848,12 +858,15 @@ private fun InitRow() {
 }
 
 @Composable
-private fun UnsupportedRow(state: DiaryState) {
+private fun UnsupportedRow(state: DiaryState, onClose: () -> Unit = {}) {
     Surface(color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("기기 사양 부족", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error)
+            Text(state.deviceUnsupportedReason ?: "AI 사용에 사양이 부족합니다", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+            TextButton(onClick = onClose, contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
+                Text("닫기", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
@@ -2901,6 +2914,35 @@ fun ChatTabContent(
             onSendChat(inputText.trim())
             inputText = ""
         }
+    }
+
+    // ── 사양 미달 기기 (RAM 6GB 이하) 제한 가이드 화면 ──
+    if (state.isLowRamDevice || state.isDeviceUnsupported) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(32.dp)
+        ) {
+            Spacer(Modifier.height(32.dp))
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.error.copy(alpha = 0.08f), modifier = Modifier.size(88.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Block, null, tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f), modifier = Modifier.size(40.dp))
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "AI 비서 사용 제한 (사양 미달)",
+                fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, lineHeight = 26.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "RAM 6GB 이하 기기는 AI 언어 모델 구동 사양에 미달하여 AI 비서 기능을 지원하지 않습니다.\n\n신규 글 작성 시 음성 입력(STT) 기능은 계속 사용할 수 있습니다.",
+                fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, lineHeight = 21.sp
+            )
+        }
+        return
     }
 
     // ── 모델 미설치 시 가이드 화면 ──

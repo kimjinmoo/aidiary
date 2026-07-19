@@ -93,7 +93,7 @@ app/src/main/java/com/grepiu/aidiary/
 │   │   └── PlannerRepository.kt     # 플래너/목표 로컬 JSON 영속화
 │   │
 │   └── slm/
-│       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정
+│       ├── DeviceCapabilityChecker.kt # RAM/SDK/GPU 호환성 판정 (RAM 6GB 이하 시 LLM 설치 사양 불가능, STT 모델만 설치/사용 허용)
 │       ├── DiaryLLMEngine.kt        # LiteRT-LM 추론 (스트리밍 + 멀티턴 + 작업별 Sampler)
 │       ├── LLMContextBuilder.kt     # 보조 액션 프롬프트 계층적 빌더
 │       ├── DecorateResult.kt        # AI 꾸미기 JSON 파서 + TextFormatting 변환
@@ -115,6 +115,7 @@ app/src/main/java/com/grepiu/aidiary/
 └── ui/
     ├── components/
     │   ├── DownloadStatusCard.kt    # 목록 상단 AI 모델 안내 카드
+    │   ├── DeviceUnsupportedModal.kt # [NEW] 2030 타깃 세련된 AI 사양 안내 감성 모달
     │   ├── BlockRenderer.kt         # 읽기 전용 블록 렌더러 (SpatialMediaBlockView 포함)
     │   ├── BlockEditor.kt           # 작성 화면용 블록 입력/편집 + AddBlockBar
     │   ├── RichTextField.kt         # 인라인 서식 프리뷰 텍스트 에디터

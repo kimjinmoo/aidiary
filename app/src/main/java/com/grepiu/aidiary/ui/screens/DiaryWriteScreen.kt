@@ -27,11 +27,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAlt
 import androidx.compose.material.icons.filled.Palette
@@ -83,6 +85,7 @@ import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
+import com.grepiu.aidiary.ui.components.DeviceUnsupportedModalDialog
 import com.grepiu.aidiary.mvi.state.PendingContentTypeChange
 import com.grepiu.aidiary.ui.components.AddBlockBar
 import com.grepiu.aidiary.ui.components.BlockEditor
@@ -153,30 +156,69 @@ fun DiaryWriteScreen(
 
     val (typeIcon, typeLabel, typeColor) = getContentTypeUI(state.draftContentType)
 
-    // AI 모델 미설치 시 다운로드 안내 다이얼로그
+    // 사양 미달 기기 기능 안내 모달 다이얼로그 (2030 타깃 세련된 모달)
+    if (state.showDeviceUnsupportedDialog) {
+        DeviceUnsupportedModalDialog(
+            onConfirm = { onIntent(DiaryIntent.UnsupportedDeviceConfirm) }
+        )
+    }
+
+    // AI 모델 미설치/사양 미달 시 안내 다이얼로그
     if (showDownloadDialog) {
+        val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
         AlertDialog(
             onDismissRequest = { showDownloadDialog = false },
-            icon = { Icon(Icons.Default.Psychology, null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("AI 글쓰기 도우미", fontWeight = FontWeight.Bold) },
+            icon = {
+                Icon(
+                    if (isLowRam) Icons.Default.Warning else Icons.Default.Psychology,
+                    null,
+                    tint = if (isLowRam) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    if (isLowRam) "AI 사용 제한 안내" else "AI 글쓰기 도우미",
+                    fontWeight = FontWeight.Bold,
+                    color = if (isLowRam) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("AI 언어 모델(Gemma, 약 2.3GB)을 설치하면 아래 기능을 사용할 수 있습니다.", fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 4.dp)) {
-                        FeatureItem("🔤", "AI 자동 분류", "글 내용을 분석해 일기/글/메모로 자동 분류")
-                        FeatureItem("✨", "AI 제목 추천", "본문 기반으로 어울리는 제목 자동 생성")
-                        FeatureItem("🌐", "AI 번역", "외국어 본문을 한국어로 자연스럽게 번역")
-                        FeatureItem("✏️", "AI 보정", "맞춤법·띄어쓰기 오류 자동 교정")
-                        FeatureItem("🎨", "AI 꾸미기", "색상·굵기·밑줄 등 스타일 추천")
+                    if (isLowRam) {
+                        Text(
+                            "현재 스마트폰의 하드웨어 사양으로는 온디바이스 AI 언어 기능(제목 추천, 글 자동 분류, 보정, 꾸미기, 번역 등) 구동이 어려워요.\n\n(※ 음성 입력 STT 기능은 정상적으로 이용할 수 있어요.)",
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text("AI 언어 모델(Gemma, 약 2.3GB)을 설치하면 아래 기능을 사용할 수 있습니다.", fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 4.dp)) {
+                            FeatureItem("🔤", "AI 자동 분류", "글 내용을 분석해 일기/글/메모로 자동 분류")
+                            FeatureItem("✨", "AI 제목 추천", "본문 기반으로 어울리는 제목 자동 생성")
+                            FeatureItem("🌐", "AI 번역", "외국어 본문을 한국어로 자연스럽게 번역")
+                            FeatureItem("✏️", "AI 보정", "맞춤법·띄어쓰기 오류 자동 교정")
+                            FeatureItem("🎨", "AI 꾸미기", "색상·굵기·밑줄 등 스타일 추천")
+                        }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = { showDownloadDialog = false; onStartDownload() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                    Text("AI 모델 설치하기 (약 2.3GB)")
+                if (!isLowRam) {
+                    Button(onClick = { showDownloadDialog = false; onStartDownload() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                        Text("AI 모델 설치하기 (약 2.3GB)")
+                    }
+                } else {
+                    Button(onClick = { showDownloadDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                        Text("확인")
+                    }
                 }
             },
-            dismissButton = { TextButton(onClick = { showDownloadDialog = false }) { Text("닫기") } },
+            dismissButton = {
+                if (!isLowRam) {
+                    TextButton(onClick = { showDownloadDialog = false }) { Text("닫기") }
+                }
+            },
             shape = RoundedCornerShape(20.dp)
         )
     }
@@ -241,13 +283,19 @@ fun DiaryWriteScreen(
                 icon = Icons.Outlined.Lightbulb,
                 label = "글 타입",
                 trailing = {
+                    val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
                     InlineAiAction(
-                        label = if (state.isClassifyingType) "분류 중…"
+                        label = if (isLowRam) "AI 제한 (사양 미달)"
+                               else if (state.isClassifyingType) "분류 중…"
                                else if (!state.isModelReady) "AI 설치 필요"
                                else "AI 자동 분류",
                         loading = state.isClassifyingType,
-                        enabled = state.isModelReady && !state.isClassifyingType,
-                        onClick = { if (state.isModelReady) onClassifyType() else showDownloadDialog = true }
+                        enabled = !state.isClassifyingType,
+                        onClick = {
+                            if (isLowRam) showDownloadDialog = true
+                            else if (state.isModelReady) onClassifyType()
+                            else showDownloadDialog = true
+                        }
                     )
                 }
             )
@@ -257,11 +305,19 @@ fun DiaryWriteScreen(
                 onSelect = onContentTypeChange
             )
 
-            if (showAiGuide) {
+            val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
+            val shouldShowGuide = showAiGuide && (if (isLowRam) state.isDeviceUnsupported else true)
+            if (shouldShowGuide) {
                 Spacer(Modifier.height(16.dp))
                 AiWritingGuideCard(
                     isModelReady = state.isModelReady,
-                    onDismiss = { showAiGuide = false },
+                    isLowRam = isLowRam,
+                    onDismiss = {
+                        showAiGuide = false
+                        if (isLowRam) {
+                            onIntent(DiaryIntent.UnsupportedDeviceClose)
+                        }
+                    },
                     onShowDownloadDialog = { showDownloadDialog = true }
                 )
             }
@@ -276,8 +332,10 @@ fun DiaryWriteScreen(
                 isModelReady = state.isModelReady,
                 isSuggesting = state.isSuggestingTitle,
                 hasBody = state.draftPlainText.isNotBlank(),
+                isLowRam = state.isLowRamDevice || state.isDeviceUnsupported,
                 onValueChange = onUpdateTitle,
-                onSuggestClick = onSuggestTitle
+                onSuggestClick = onSuggestTitle,
+                onShowDownloadDialog = { showDownloadDialog = true }
             )
 
             // 3) 제목 스타일 (제목이 입력됐을 때만)
@@ -592,8 +650,10 @@ private fun TitleHeroField(
     isModelReady: Boolean,
     isSuggesting: Boolean,
     hasBody: Boolean,
+    isLowRam: Boolean = false,
     onValueChange: (String) -> Unit,
-    onSuggestClick: () -> Unit
+    onSuggestClick: () -> Unit,
+    onShowDownloadDialog: () -> Unit = {}
 ) {
     val titleColor = titleStyle.color?.let {
         runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
@@ -608,7 +668,7 @@ private fun TitleHeroField(
         onValueChange = { if (it.length <= maxChars) onValueChange(it) },
         placeholder = {
             Text(
-                text = "오늘의 제목을 입력하세요",
+                text = "제목을 입력하세요",
                 fontSize = titleSize.sp,
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
@@ -635,7 +695,9 @@ private fun TitleHeroField(
                 isModelReady = isModelReady,
                 isSuggesting = isSuggesting,
                 hasBody = hasBody,
-                onClick = onSuggestClick
+                isLowRam = isLowRam,
+                onClick = onSuggestClick,
+                onShowDownloadDialog = onShowDownloadDialog
             )
         },
         supportingText = {
@@ -657,26 +719,45 @@ private fun TitleAiTrailing(
     isModelReady: Boolean,
     isSuggesting: Boolean,
     hasBody: Boolean,
-    onClick: () -> Unit
+    isLowRam: Boolean = false,
+    onClick: () -> Unit,
+    onShowDownloadDialog: () -> Unit = {}
 ) {
-    val active = isModelReady && hasBody && !isSuggesting
+    val active = isModelReady && hasBody && !isSuggesting && !isLowRam
     val tint = when {
+        isLowRam -> MaterialTheme.colorScheme.error.copy(alpha = 0.6f)
         isSuggesting -> MaterialTheme.colorScheme.primary
         active -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
     }
+    val icon = when {
+        isLowRam -> Icons.Default.Block
+        !isModelReady -> Icons.Default.Psychology
+        else -> Icons.Default.AutoAwesome
+    }
     val description = when {
+        isLowRam -> "AI 사용 제한 (사양 미달)"
         isSuggesting -> "AI 제목 생성 중"
         !isModelReady -> "AI 모델 미준비"
         !hasBody -> "본문을 먼저 작성해주세요"
         else -> "AI 제목 추천"
     }
+
+    val handleClick = {
+        if (isLowRam || !isModelReady) {
+            onShowDownloadDialog()
+        } else if (active) {
+            onClick()
+        }
+    }
+
     Box(
         modifier = Modifier
             .padding(end = 6.dp)
             .size(36.dp)
             .clip(CircleShape)
-            .clickable(enabled = active, onClick = onClick),
+            .background(if (isLowRam) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f) else Color.Transparent)
+            .clickable(onClick = handleClick),
         contentAlignment = Alignment.Center
     ) {
         if (isSuggesting) {
@@ -687,7 +768,7 @@ private fun TitleAiTrailing(
             )
         } else {
             Icon(
-                imageVector = Icons.Default.AutoAwesome,
+                imageVector = icon,
                 contentDescription = description,
                 tint = tint,
                 modifier = Modifier.size(20.dp)
@@ -1306,10 +1387,11 @@ private fun FeatureItem(emoji: String, title: String, desc: String) {
 @Composable
 private fun AiWritingGuideCard(
     isModelReady: Boolean,
+    isLowRam: Boolean = false,
     onDismiss: () -> Unit,
     onShowDownloadDialog: () -> Unit
 ) {
-    val accent = if (isModelReady) MaterialTheme.colorScheme.primary else ChatAccent
+    val accent = if (isLowRam) MaterialTheme.colorScheme.error else if (isModelReady) MaterialTheme.colorScheme.primary else ChatAccent
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = accent.copy(alpha = 0.08f),
@@ -1318,7 +1400,7 @@ private fun AiWritingGuideCard(
     ) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Icon(
-                imageVector = if (isModelReady) Icons.Default.AutoAwesome else Icons.Default.Psychology,
+                imageVector = if (isLowRam) Icons.Default.Warning else if (isModelReady) Icons.Default.AutoAwesome else Icons.Default.Psychology,
                 contentDescription = null,
                 tint = accent,
                 modifier = Modifier.size(16.dp)
@@ -1326,11 +1408,16 @@ private fun AiWritingGuideCard(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isModelReady) "AI 글쓰기 도우미" else "AI 모델 설치 필요",
+                    text = if (isLowRam) "AI 언어 기능 사양 제한 안내" else if (isModelReady) "AI 글쓰기 도우미" else "AI 모델 설치 필요",
                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent
                 )
                 Spacer(Modifier.height(6.dp))
-                if (isModelReady) {
+                if (isLowRam) {
+                    Text(
+                        text = "현재 스마트폰의 하드웨어 사양으로는 AI 언어 기능(제목 추천, 글 분류, 보정, 꾸미기, 번역 등) 사용이 제한돼요. 음성 입력(STT)은 정상적으로 이용할 수 있어요.",
+                        fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (isModelReady) {
                     Text(
                         text = "글 타입은 'AI 자동 분류', 제목은 ✨ 버튼으로 AI 자동 생성, 본문은 각 블록의 ✦ 메뉴에서 번역·보정·꾸미기를 이용할 수 있어요.",
                         fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1367,15 +1454,26 @@ private fun InlineAiAction(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val active = enabled && !loading
-    val contentColor = if (active) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    val isLowRam = label.contains("제한") || label.contains("불가")
+    val active = enabled && !loading && !isLowRam
+    val contentColor = when {
+        isLowRam -> MaterialTheme.colorScheme.error
+        active -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    }
+    val containerColor = when {
+        isLowRam -> MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+        active -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        else -> Color.Transparent
+    }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .clip(RoundedCornerShape(999.dp))
-            .clickable(enabled = active, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .background(containerColor)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 4.dp)
     ) {
         if (loading) {
             CircularProgressIndicator(
@@ -1385,7 +1483,7 @@ private fun InlineAiAction(
             )
         } else {
             Icon(
-                imageVector = Icons.Default.AutoAwesome,
+                imageVector = if (isLowRam) Icons.Default.Block else Icons.Default.AutoAwesome,
                 contentDescription = null,
                 tint = contentColor,
                 modifier = Modifier.size(12.dp)
@@ -1395,7 +1493,7 @@ private fun InlineAiAction(
         Text(
             text = label,
             fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             color = contentColor
         )
     }

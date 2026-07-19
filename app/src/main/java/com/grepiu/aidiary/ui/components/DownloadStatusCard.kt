@@ -27,6 +27,7 @@ fun DownloadStatusCard(
     onDismissWifiWarning: () -> Unit,
     onStartSherpaDownload: () -> Unit = {},
     onDismissSherpaNotice: () -> Unit = {},
+    onUnsupportedDeviceClose: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -37,7 +38,7 @@ fun DownloadStatusCard(
     ) {
         // 1. 기기 최소 사양 미달 상태 (전역)
         if (state.isDeviceUnsupported) {
-            DeviceUnsupportedSection(state)
+            DeviceUnsupportedSection(state, onUnsupportedDeviceClose)
         }
 
         // 2. 다운로드 진행 중 (전역, 하나의 다운로드만 진행)
@@ -87,21 +88,30 @@ fun DownloadStatusCard(
 }
 
 @Composable
-private fun DeviceUnsupportedSection(state: DiaryState) {
+private fun DeviceUnsupportedSection(state: DiaryState, onClose: () -> Unit = {}) {
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f))
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "📱 AI 언어 기능 사양 안내",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = onClose) {
+                    Text("닫기", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "\u26A0\uFE0F 기기 사양 부족 안내",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
-            Text(
-                text = state.deviceUnsupportedReason ?: "이 기기는 온디바이스 AI 구동을 지원하지 않습니다.",
+                text = state.deviceUnsupportedReason ?: "현재 스마트폰의 하드웨어 사양으로는 온디바이스 AI 언어 모델 구동이 어려워요.\n\n(※ 음성인식 STT 모델은 정상적으로 이용할 수 있어요.)",
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
