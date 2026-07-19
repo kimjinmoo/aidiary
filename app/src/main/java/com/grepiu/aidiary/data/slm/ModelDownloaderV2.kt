@@ -66,7 +66,7 @@ class ModelDownloaderV2(private val context: Context) {
         val extractDir = getSherpaModelDir()
         
         // 1. tar.bz2 다운로드
-        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 900L * 1024 * 1024, onProgress)
+        val archiveResult = downloadModelTo(url, SHERPA_ARCHIVE, 120L * 1024 * 1024, onProgress)
         if (archiveResult.isFailure) {
             if (archiveFile.exists()) archiveFile.delete()
             return archiveResult

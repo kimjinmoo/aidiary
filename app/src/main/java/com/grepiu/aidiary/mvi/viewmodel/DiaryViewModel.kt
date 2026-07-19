@@ -3044,7 +3044,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
         private const val SHERPA_DOWNLOAD_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2"
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
 
         /** 표 블록 UI 안전 범위. */
         private const val TABLE_MAX_ROWS = 30
