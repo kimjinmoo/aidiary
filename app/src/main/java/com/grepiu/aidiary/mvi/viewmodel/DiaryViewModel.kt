@@ -1437,10 +1437,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // 사용자가 직접 선택 시 다운로드하도록 자동 팝업은 끔
+        // 영구 닫기(X)를 누르지 않았다면 메인 화면 상단 알림 배너 표시 (중앙 팝업 모달은 없음)
+        val isNoticeDismissed = prefs.getBoolean("llm_notice_dismissed", false)
         _state.update {
             it.copy(
-                showDownloadNotice = false,
+                showDownloadNotice = !isNoticeDismissed,
                 isLowRamDevice = downloader.isLowRamDevice()
             )
         }
@@ -2336,8 +2337,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             initSherpa()
             return
         }
-        // 사용자가 직접 [설치 필요] 선택 시 다운로드하도록 자동 팝업은 끔
-        _state.update { it.copy(showSherpaDownloadNotice = false) }
+        // 영구 닫기(X)를 누르지 않았다면 메인 화면 상단 알림 배너 표시 (중앙 팝업 모달은 없음)
+        val isNoticeDismissed = prefs.getBoolean("stt_notice_dismissed", false)
+        _state.update { it.copy(showSherpaDownloadNotice = !isNoticeDismissed) }
     }
 
     private fun initSherpa() {

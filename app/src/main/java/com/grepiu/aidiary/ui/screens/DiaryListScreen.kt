@@ -493,6 +493,7 @@ fun DiaryListScreen(
                                 task.seriesId?.let { sid -> onIntent(DiaryIntent.DeletePlannerTaskSeries(sid)) }
                             },
                             onSuggestTask = { intent -> onIntent(intent) },
+                            onClearSuggestedTask = { onIntent(DiaryIntent.ClearSuggestedPlannerTask) },
                             onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("PLANNER")) }
                         )
                     }
@@ -756,9 +757,12 @@ private fun AiStatusBar(
     onDismissSherpaNotice: () -> Unit,
     onUnsupportedDeviceClose: () -> Unit = {}
 ) {
+    val showLlmNotice = !state.isModelReady && !state.isLowRamDevice && !state.isDeviceUnsupported && state.showDownloadNotice
+    val showSherpaNotice = !state.isSherpaModelReady && state.showSherpaDownloadNotice
+
     val showAiStatus = state.isDownloadingModel ||
         state.isExtractingModel || state.isModelInitializing ||
-        state.showDownloadNotice || state.showSherpaDownloadNotice ||
+        showLlmNotice || showSherpaNotice ||
         state.isDeviceUnsupported
 
     if (!showAiStatus) return
@@ -783,16 +787,16 @@ private fun AiStatusBar(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // ── LLM 다운로드 안내 ──
-            if (state.showDownloadNotice && !state.isDownloadingModel && !state.isExtractingModel) {
+            if (showLlmNotice && !state.isDownloadingModel && !state.isExtractingModel) {
                 NoticeRow(
                     emoji = "\uD83E\uDDE0", label = "AI 언어 모델 설치 (2.3GB)",
                     buttonLabel = "다운로드", onAction = onStartDownload, onDismiss = onDismissNotice
                 )
             }
             // ── STT 다운로드 안내 ──
-            if (state.showSherpaDownloadNotice && !state.isDownloadingModel && !state.isExtractingModel) {
+            if (showSherpaNotice && !state.isDownloadingModel && !state.isExtractingModel) {
                 NoticeRow(
-                    emoji = "\uD83C\uDF99\uFE0F", label = "음성인식 설치 (1.0GB)",
+                    emoji = "\uD83C\uDF99\uFE0F", label = "음성인식 모델 설치 (1.0GB)",
                     buttonLabel = "다운로드", onAction = onStartSherpaDownload, onDismiss = onDismissSherpaNotice
                 )
             }
@@ -840,17 +844,35 @@ private fun NoticeRow(emoji: String, label: String, buttonLabel: String, onActio
 
 @Composable
 private fun ProgressRow(state: DiaryState, onCancel: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f), shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(10.dp))
-            Text(
-                if (state.isExtractingModel) "모델 압축 해제 중…" else "AI 다운로드 ${(state.modelDownloadProgress * 100).toInt()}%",
-                fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
-                Text("취소", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+    Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (state.isExtractingModel) "모델 압축 해제 중…" else "AI 다운로드 ${(state.modelDownloadProgress * 100).toInt()}%",
+                    fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
+                    Text("취소", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color(0xFFE65100),
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "다운로드/압축해제 중에는 화면을 끄지 마세요! (꺼지면 처음부터 재시작)",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFFE65100)
+                )
             }
         }
     }
@@ -1736,6 +1758,7 @@ fun PlannerTabContent(
     onDeleteTask: (PlannerTask) -> Unit,
     onDeleteTaskSeries: (PlannerTask) -> Unit,
     onSuggestTask: (DiaryIntent.SuggestPlannerTask) -> Unit,
+    onClearSuggestedTask: () -> Unit = {},
     onRequestBriefing: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1805,6 +1828,14 @@ fun PlannerTabContent(
 
     val hasDetail = startTime != null || endTime != null || locationText.isNotBlank() || isRepeat
 
+    // AI 추천 결과가 생성되면 입력 폼 텍스트필드에 자동으로 세팅
+    LaunchedEffect(state.suggestedPlannerTaskText) {
+        if (!state.suggestedPlannerTaskText.isNullOrBlank()) {
+            onTextChange(state.suggestedPlannerTaskText)
+            onClearSuggestedTask()
+        }
+    }
+
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize()
@@ -1854,11 +1885,14 @@ fun PlannerTabContent(
                         }
                     }
 
-                    // 퀵 옵션 칩 행
+                    // 퀵 옵션 칩 행 (저해상도/좁은 화면 대응 가로 스크롤)
                     Spacer(Modifier.height(8.dp))
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                     ) {
                         // 시간 칩
                         FilterChip(
@@ -1873,7 +1907,8 @@ fun PlannerTabContent(
                                     if (startTime != null || endTime != null) {
                                         listOfNotNull(startTime, endTime).joinToString("~")
                                     } else "시간",
-                                    fontSize = 12.sp
+                                    fontSize = 12.sp,
+                                    maxLines = 1
                                 )
                             },
                             leadingIcon = { Icon(Icons.Default.Schedule, null, modifier = Modifier.size(14.dp)) },
@@ -1887,7 +1922,7 @@ fun PlannerTabContent(
                                 expandedSection = next
                                 isExpanded = next != null
                             },
-                            label = { Text(if (locationText.isNotBlank()) locationText.take(8) else "장소", fontSize = 12.sp) },
+                            label = { Text(if (locationText.isNotBlank()) locationText.take(8) else "장소", fontSize = 12.sp, maxLines = 1) },
                             leadingIcon = { Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(14.dp)) },
                             shape = RoundedCornerShape(8.dp),
                         )
@@ -1899,13 +1934,12 @@ fun PlannerTabContent(
                                 expandedSection = next
                                 isExpanded = next != null
                             },
-                            label = { Text(if (isRepeat && selectedDays.isNotEmpty()) "매주" else "반복", fontSize = 12.sp) },
+                            label = { Text(if (isRepeat && selectedDays.isNotEmpty()) "매주" else "반복", fontSize = 12.sp, maxLines = 1) },
                             leadingIcon = { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(14.dp)) },
                             shape = RoundedCornerShape(8.dp),
                         )
                         // AI 추천 칩
                         if (state.isModelReady) {
-                            Spacer(Modifier.weight(1f))
                             AssistChip(
                                 onClick = {
                                     onSuggestTask(DiaryIntent.SuggestPlannerTask(
@@ -1916,15 +1950,17 @@ fun PlannerTabContent(
                                 },
                                 label = {
                                     Text(
-                                        if (state.isSuggestingPlannerTask) "생성 중..." else "AI 추천",
-                                        fontSize = 12.sp
+                                        if (state.isSuggestingPlannerTask) "✨ AI 생성 중..." else "✨ AI 자동 추천",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1
                                     )
                                 },
                                 leadingIcon = {
                                     if (state.isSuggestingPlannerTask) {
                                         CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                                     } else {
-                                        Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                                     }
                                 },
                                 shape = RoundedCornerShape(8.dp),
@@ -1938,39 +1974,68 @@ fun PlannerTabContent(
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f))
                             Spacer(Modifier.height(10.dp))
 
-                            // ── 시간 섹션 ──
+                            // ── 시간 선택 섹션 (터치 이벤트를 100% 보장하는 Surface 클릭 버튼) ──
                             AnimatedVisibility(visible = expandedSection == "time") {
                                 Column {
-                                    Text("시간 설정", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Spacer(Modifier.height(6.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedTextField(
-                                            value = startTime ?: "",
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            placeholder = { Text("시작", fontSize = 13.sp) },
-                                            trailingIcon = { Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(16.dp)) },
-                                            singleLine = true,
-                                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, textAlign = TextAlign.Center),
-                                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                                            shape = RoundedCornerShape(10.dp),
-                                            modifier = Modifier.weight(1f).clickable { showTimePicker(true) }
-                                        )
-                                        OutlinedTextField(
-                                            value = endTime ?: "",
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            placeholder = { Text("종료", fontSize = 13.sp) },
-                                            trailingIcon = { Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(16.dp)) },
-                                            singleLine = true,
-                                            textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, textAlign = TextAlign.Center),
-                                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                                            shape = RoundedCornerShape(10.dp),
-                                            modifier = Modifier.weight(1f).clickable { showTimePicker(false) }
-                                        )
+                                    Text("시간 설정 ⏰", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 시작 시간 선택 버튼
+                                        Surface(
+                                            onClick = { showTimePicker(true) },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (startTime != null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                            border = BorderStroke(1.dp, if (startTime != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                            modifier = Modifier.weight(1f).height(44.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center,
+                                                modifier = Modifier.padding(horizontal = 10.dp)
+                                            ) {
+                                                Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = startTime ?: "시작 시간",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = if (startTime != null) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (startTime != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        Text("~", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                                        // 종료 시간 선택 버튼
+                                        Surface(
+                                            onClick = { showTimePicker(false) },
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (endTime != null) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                                            border = BorderStroke(1.dp, if (endTime != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                            modifier = Modifier.weight(1f).height(44.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center,
+                                                modifier = Modifier.padding(horizontal = 10.dp)
+                                            ) {
+                                                Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = endTime ?: "종료 시간",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = if (endTime != null) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (endTime != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
                                         if (startTime != null || endTime != null) {
-                                            IconButton(onClick = { startTime = null; endTime = null }, modifier = Modifier.size(36.dp)) {
-                                                Icon(Icons.Default.Close, "리셋", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                                            IconButton(onClick = { startTime = null; endTime = null }, modifier = Modifier.size(38.dp)) {
+                                                Icon(Icons.Default.Close, "리셋", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                                             }
                                         }
                                     }
