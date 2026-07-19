@@ -275,13 +275,26 @@ fun DiaryListScreen(
         )
     }
 
-    // 5) 전문가 수준의 설정(Settings) 페이지
-    if (state.isSettingsOpen) {
+    // 5) 전문가 수준의 설정(Settings) 페이지 (슬라이드 & 페이드 애니메이션 적용)
+    AnimatedVisibility(
+        visible = state.isSettingsOpen,
+        enter = slideInHorizontally(
+            initialOffsetX = { fullWidth -> fullWidth },
+            animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+        ) + fadeIn(animationSpec = tween(300)),
+        exit = slideOutHorizontally(
+            targetOffsetX = { fullWidth -> fullWidth },
+            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+        ) + fadeOut(animationSpec = tween(250))
+    ) {
         DiarySettingsScreen(
             state = state,
             onIntent = onIntent,
             onBack = { onIntent(DiaryIntent.ToggleSettingsScreen(false)) }
         )
+    }
+
+    if (state.isSettingsOpen) {
         return
     }
 
@@ -844,39 +857,63 @@ private fun NoticeRow(emoji: String, label: String, buttonLabel: String, onActio
 
 @Composable
 private fun ProgressRow(state: DiaryState, onCancel: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+    val progress = state.modelDownloadProgress
+    val pct = (progress * 100).toInt()
+    val isExtracting = state.isExtractingModel
+
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    if (state.isExtractingModel) "모델 압축 해제 중…" else "AI 다운로드 ${(state.modelDownloadProgress * 100).toInt()}%",
-                    fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.primary
                 )
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = onCancel, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp), modifier = Modifier.height(28.dp)) {
-                    Text("취소", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (isExtracting) "압축 해제 중… $pct%"
+                               else "AI 다운로드 $pct%",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "⚠ 화면 끄지 마세요 · 꺼지면 처음부터 재시작",
+                        fontSize = 10.sp,
+                        color = Color(0xFFE65100),
+                        letterSpacing = (-0.1).sp
+                    )
+                }
+                if (!isExtracting) {
+                    TextButton(
+                        onClick = onCancel,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("취소", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = null,
-                    tint = Color(0xFFE65100),
-                    modifier = Modifier.size(13.dp)
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(
-                    text = "다운로드/압축해제 중에는 화면을 끄지 마세요! (꺼지면 처음부터 재시작)",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFFE65100)
-                )
-            }
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp)),
+                color = if (isExtracting) MaterialTheme.colorScheme.secondary
+                        else MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primaryContainer
+            )
         }
     }
 }
+
 
 @Composable
 private fun InitRow() {

@@ -1526,7 +1526,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     onExtracting = { totalSize ->
                         extracting = true
                         _state.update {
-                            it.copy(modelDownloadProgress = 0f, modelDownloadSizeText = "압축 해제 중... 0 / ${downloader.toHumanReadableSize(totalSize)}")
+                            it.copy(
+                                isDownloadingModel = false,
+                                isExtractingModel = true,
+                                modelDownloadProgress = 0f,
+                                modelDownloadSizeText = "압축 해제 중... 0 / ${downloader.toHumanReadableSize(totalSize)}"
+                            )
                         }
                     }
                 )

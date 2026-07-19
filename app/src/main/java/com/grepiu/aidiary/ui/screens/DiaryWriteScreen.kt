@@ -284,13 +284,15 @@ fun DiaryWriteScreen(
                 label = "글 타입",
                 trailing = {
                     val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
+                    val isDownloadingNow = state.isDownloadingModel || state.isExtractingModel
                     InlineAiAction(
                         label = if (isLowRam) "AI 제한 (사양 미달)"
                                else if (state.isClassifyingType) "분류 중…"
+                               else if (isDownloadingNow) "다운로드 중..."
                                else if (!state.isModelReady) "AI 설치 필요"
                                else "AI 자동 분류",
-                        loading = state.isClassifyingType,
-                        enabled = !state.isClassifyingType,
+                        loading = state.isClassifyingType || isDownloadingNow,
+                        enabled = !state.isClassifyingType && !isDownloadingNow,
                         onClick = {
                             if (isLowRam) showDownloadDialog = true
                             else if (state.isModelReady) onClassifyType()
@@ -312,6 +314,7 @@ fun DiaryWriteScreen(
                 AiWritingGuideCard(
                     isModelReady = state.isModelReady,
                     isLowRam = isLowRam,
+                    isDownloading = state.isDownloadingModel || state.isExtractingModel,
                     onDismiss = {
                         showAiGuide = false
                         if (isLowRam) {
@@ -1388,10 +1391,13 @@ private fun FeatureItem(emoji: String, title: String, desc: String) {
 private fun AiWritingGuideCard(
     isModelReady: Boolean,
     isLowRam: Boolean = false,
+    isDownloading: Boolean = false,
     onDismiss: () -> Unit,
     onShowDownloadDialog: () -> Unit
 ) {
-    val accent = if (isLowRam) MaterialTheme.colorScheme.error else if (isModelReady) MaterialTheme.colorScheme.primary else ChatAccent
+    val accent = if (isLowRam) MaterialTheme.colorScheme.error
+                 else if (isModelReady || isDownloading) MaterialTheme.colorScheme.primary
+                 else ChatAccent
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = accent.copy(alpha = 0.08f),
@@ -1399,16 +1405,29 @@ private fun AiWritingGuideCard(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
     ) {
         Row(verticalAlignment = Alignment.Top, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Icon(
-                imageVector = if (isLowRam) Icons.Default.Warning else if (isModelReady) Icons.Default.AutoAwesome else Icons.Default.Psychology,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(16.dp)
-            )
+            if (isDownloading && !isModelReady && !isLowRam) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = accent
+                )
+            } else {
+                Icon(
+                    imageVector = if (isLowRam) Icons.Default.Warning else if (isModelReady) Icons.Default.AutoAwesome else Icons.Default.Psychology,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isLowRam) "AI 언어 기능 사양 제한 안내" else if (isModelReady) "AI 글쓰기 도우미" else "AI 모델 설치 필요",
+                    text = when {
+                        isLowRam -> "AI 언어 기능 사양 제한 안내"
+                        isModelReady -> "AI 글쓰기 도우미"
+                        isDownloading -> "AI 모델 다운로드 중..."
+                        else -> "AI 모델 설치 필요"
+                    },
                     fontSize = 13.sp, fontWeight = FontWeight.Bold, color = accent
                 )
                 Spacer(Modifier.height(6.dp))
@@ -1420,6 +1439,11 @@ private fun AiWritingGuideCard(
                 } else if (isModelReady) {
                     Text(
                         text = "글 타입은 'AI 자동 분류', 제목은 ✨ 버튼으로 AI 자동 생성, 본문은 각 블록의 ✦ 메뉴에서 번역·보정·꾸미기를 이용할 수 있어요.",
+                        fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (isDownloading) {
+                    Text(
+                        text = "AI 모델을 다운로드하고 있습니다. 완료 후 AI 글쓰기 기능을 이용할 수 있어요.",
                         fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
