@@ -46,6 +46,8 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.AlertDialog
+import com.grepiu.aidiary.ui.components.AppDialog
+import com.grepiu.aidiary.ui.components.AppWarningDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -166,27 +168,16 @@ fun DiaryWriteScreen(
     // AI 모델 미설치/사양 미달 시 안내 다이얼로그
     if (showDownloadDialog) {
         val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
-        AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
-            icon = {
-                Icon(
-                    if (isLowRam) Icons.Default.Warning else Icons.Default.Psychology,
-                    null,
-                    tint = if (isLowRam) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            },
-            title = {
-                Text(
-                    if (isLowRam) "AI 사용 제한 안내" else "AI 글쓰기 도우미",
-                    fontWeight = FontWeight.Bold,
-                    color = if (isLowRam) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
-                )
-            },
+        AppDialog(
+            onDismiss = { showDownloadDialog = false },
+            title = if (isLowRam) "AI 사용 제한 안내" else "AI 글쓰기 도우미",
+            icon = if (isLowRam) Icons.Default.Warning else Icons.Default.Psychology,
+            iconTint = if (isLowRam) MaterialTheme.colorScheme.error else null,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (isLowRam) {
                         Text(
-                            "현재 스마트폰의 하드웨어 사양으로는 온디바이스 AI 언어 기능(제목 추천, 글 자동 분류, 보정, 꾸미기, 번역 등) 구동이 어려워요.\n\n(※ 음성 입력 STT 기능은 정상적으로 이용할 수 있어요.)",
+                            "현재 스마트폰의 하드웨어 사양 제약으로 인해 일부 온디바이스 AI 언어 모델 구동이 어려워요.\n\n(※ 음성 입력 STT 기능은 정상적으로 이용할 수 있어요.)",
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -203,23 +194,12 @@ fun DiaryWriteScreen(
                     }
                 }
             },
-            confirmButton = {
-                if (!isLowRam) {
-                    Button(onClick = { showDownloadDialog = false; onStartDownload() }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
-                        Text("AI 모델 설치하기 (약 2.3GB)")
-                    }
-                } else {
-                    Button(onClick = { showDownloadDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
-                        Text("확인")
-                    }
-                }
+            confirmText = if (isLowRam) "확인" else "AI 모델 설치하기 (약 2.3GB)",
+            onConfirm = {
+                showDownloadDialog = false
+                if (!isLowRam) onStartDownload()
             },
-            dismissButton = {
-                if (!isLowRam) {
-                    TextButton(onClick = { showDownloadDialog = false }) { Text("닫기") }
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
+            dismissText = if (isLowRam) null else "닫기"
         )
     }
 
@@ -228,10 +208,10 @@ fun DiaryWriteScreen(
         val isSherpa = state.wifiWarningSource == "sherpa"
         val modelName = if (isSherpa) "음성인식 모델" else "AI 언어 모델"
         val downloadSize = if (isSherpa) "약 1.0GB" else "약 2.3GB"
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
-            icon = { Icon(Icons.Filled.Warning, null, tint = Color(0xFFE65100)) },
-            title = { Text("Wi-Fi 연결 확인", fontWeight = FontWeight.Bold) },
+        AppWarningDialog(
+            onDismiss = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
+            title = "Wi-Fi 연결 확인",
+            icon = Icons.Default.Warning,
             text = {
                 Text(
                     "현재 Wi-Fi에 연결되어 있지 않습니다.\n\n" +
@@ -240,18 +220,9 @@ fun DiaryWriteScreen(
                     fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (isSherpa) onStartSherpaDownload() else onStartDownload()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
-                ) { Text("데이터로 다운로드", color = Color.White) }
-            },
-            dismissButton = {
-                TextButton(onClick = { onIntent(DiaryIntent.ShowWifiWarning(false)) }) { Text("취소") }
-            },
-            shape = RoundedCornerShape(20.dp)
+            confirmText = "데이터로 다운로드",
+            onConfirm = { if (isSherpa) onStartSherpaDownload() else onStartDownload() },
+            dismissText = "취소"
         )
     }
 
@@ -1604,23 +1575,10 @@ private fun ContentTypeChangeDialog(
     onKeep: () -> Unit,
     onCancel: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        shape = RoundedCornerShape(20.dp),
-        icon = {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        },
-        title = {
-            Text(
-                text = "글 타입이 다른 것 같아요",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-        },
+    AppDialog(
+        onDismiss = onCancel,
+        title = "글 타입이 다른 것 같아요",
+        icon = Icons.Default.AutoAwesome,
         text = {
             val currentLabel = pending.currentType.label
             val suggestedLabel = pending.suggestedType.label
@@ -1629,26 +1587,16 @@ private fun ContentTypeChangeDialog(
                         "현재 선택한 타입은 \"$currentLabel\" 입니다.\n\n" +
                         "어떤 타입으로 저장할까요?",
                 fontSize = 13.sp,
-                lineHeight = 20.sp
+                lineHeight = 20.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(
-                    text = "\"${pending.suggestedType.label}\" 으로 변경",
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                TextButton(onClick = onKeep) {
-                    Text("\"${pending.currentType.label}\" 유지")
-                }
-                TextButton(onClick = onCancel) {
-                    Text("취소")
-                }
+        confirmText = "\"${pending.suggestedType.label}\" 으로 변경",
+        onConfirm = onConfirm,
+        dismissText = "취소",
+        extraActions = {
+            TextButton(onClick = onKeep) {
+                Text("\"${pending.currentType.label}\" 유지")
             }
         }
     )

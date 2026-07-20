@@ -44,6 +44,7 @@ import java.util.Locale
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.OpenSourceLicenseModalDialog
+import com.grepiu.aidiary.ui.components.AppWarningDialog
 import com.grepiu.aidiary.ui.theme.AppTheme
 
 /**
@@ -96,39 +97,24 @@ fun DiarySettingsScreen(
         val isSherpa = state.wifiWarningSource == "sherpa"
         val modelName = if (isSherpa) "음성인식 모델" else "AI 언어 모델"
         val downloadSize = if (isSherpa) "약 1.0GB" else "약 2.3GB"
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
-            icon = { Icon(Icons.Default.Warning, null, tint = Color(0xFFE65100)) },
-            title = { Text("Wi-Fi 연결 확인 ⚠️", fontWeight = FontWeight.Bold) },
+        AppWarningDialog(
+            onDismiss = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
+            title = "Wi-Fi 연결 확인",
+            icon = Icons.Default.Warning,
             text = {
                 Text(
                     "현재 Wi-Fi 에 연결되어 있지 않아요.\n" +
                     "모바일 데이터로 $modelName($downloadSize)을 다운로드하시겠습니까?\n\n" +
                     "(※ 모바일 데이터 사용료가 발생할 수 있습니다.)",
-                    fontSize = 14.sp, lineHeight = 20.sp
+                    fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onIntent(DiaryIntent.ShowWifiWarning(false))
-                        if (isSherpa) {
-                            onIntent(DiaryIntent.StartSherpaDownload)
-                        } else {
-                            onIntent(DiaryIntent.StartDownload)
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
-                ) {
-                    Text("모바일 데이터로 다운로드", color = Color.White, fontWeight = FontWeight.Bold)
-                }
+            confirmText = "모바일 데이터로 다운로드",
+            onConfirm = {
+                onIntent(DiaryIntent.ShowWifiWarning(false))
+                if (isSherpa) onIntent(DiaryIntent.StartSherpaDownload) else onIntent(DiaryIntent.StartDownload)
             },
-            dismissButton = {
-                TextButton(onClick = { onIntent(DiaryIntent.ShowWifiWarning(false)) }) {
-                    Text("취소")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
+            dismissText = "취소"
         )
     }
 

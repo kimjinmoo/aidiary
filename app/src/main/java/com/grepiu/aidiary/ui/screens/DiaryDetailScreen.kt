@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import com.grepiu.aidiary.ui.components.AppDestructiveDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -422,43 +423,19 @@ private fun DeleteConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(20.dp),
-        icon = {
-            Icon(
-                imageVector = Icons.Filled.DeleteOutline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error
-            )
-        },
-        title = {
-            Text(
-                text = "일기를 삭제할까요?",
-                fontWeight = FontWeight.Bold
-            )
-        },
+    AppDestructiveDialog(
+        onDismiss = onDismiss,
+        title = "일기를 삭제할까요?",
+        icon = Icons.Filled.DeleteOutline,
         text = {
             Text(
                 text = "삭제된 일기는 휴지통으로 이동되지 않고 즉시 사라져요. 되돌릴 수 없어요.",
                 fontSize = 13.sp,
-                lineHeight = 20.sp
+                lineHeight = 20.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm,
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Text("삭제", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("취소")
-            }
-        }
+        confirmText = "삭제",
+        onConfirm = onConfirm
     )
 }

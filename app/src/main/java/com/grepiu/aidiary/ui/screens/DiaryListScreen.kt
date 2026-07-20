@@ -83,6 +83,10 @@ import com.grepiu.aidiary.data.repository.PlannerTask
 import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
+import com.grepiu.aidiary.ui.components.AppDialog
+import com.grepiu.aidiary.ui.components.AppDestructiveDialog
+import com.grepiu.aidiary.ui.components.AppLoadingDialog
+import com.grepiu.aidiary.ui.components.AppWarningDialog
 import com.grepiu.aidiary.ui.components.DownloadStatusCard
 import com.grepiu.aidiary.ui.components.DeviceUnsupportedModalDialog
 import com.grepiu.aidiary.ui.theme.DiaryAccent
@@ -146,15 +150,9 @@ fun DiaryListScreen(
     var showBackupDialog by remember { mutableStateOf(false) }
 
     if (showBackupDialog) {
-        AlertDialog(
-            onDismissRequest = { showBackupDialog = false },
-            title = {
-                Text(
-                    text = "데이터 백업 및 복원",
-                    fontWeight = FontWeight.ExtraBold,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            },
+        AppDialog(
+            onDismiss = { showBackupDialog = false },
+            title = "데이터 백업 및 복원",
             text = {
                 Text(
                     text = "모든 일기 본문과 분석 데이터, 그리고 첨부된 사진/동영상 미디어를 하나의 ZIP 파일로 내보내거나, 기존 백업에서 전체 복원할 수 있습니다.\n\n※ 복원 시 동일한 날짜의 일기는 덮어써집니다.",
@@ -162,80 +160,36 @@ fun DiaryListScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
-            confirmButton = {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    TextButton(
-                        onClick = {
-                            showBackupDialog = false
-                            onIntent(DiaryIntent.RequestImportBackup)
-                        }
-                    ) {
-                        Text("가져오기 (Import)", fontWeight = FontWeight.Bold)
-                    }
-                    Button(
-                        onClick = {
-                            showBackupDialog = false
-                            onIntent(DiaryIntent.RequestExportBackup)
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text("내보내기 (Export)", fontWeight = FontWeight.Bold)
-                    }
-                }
+            confirmText = "내보내기 (Export)",
+            onConfirm = {
+                showBackupDialog = false
+                onIntent(DiaryIntent.RequestExportBackup)
             },
-            dismissButton = {
-                TextButton(onClick = { showBackupDialog = false }) {
-                    Text("취소")
+            dismissText = "취소",
+            icon = Icons.Default.Backup,
+            extraActions = {
+                TextButton(onClick = {
+                    showBackupDialog = false
+                    onIntent(DiaryIntent.RequestImportBackup)
+                }) {
+                    Text("가져오기 (Import)", fontWeight = FontWeight.Bold)
                 }
-            },
-            shape = RoundedCornerShape(20.dp)
+            }
         )
     }
 
     // 1) 백업/복원 진행 중 로딩 다이얼로그
     if (state.isBackupProcessing) {
-        AlertDialog(
-            onDismissRequest = {}, // 취소 불가
-            title = null,
-            text = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.padding(vertical = 12.dp)
-                ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Text(
-                        text = state.backupProgressMessage ?: "데이터 백업/복원을 진행 중입니다…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-            },
-            confirmButton = {},
-            dismissButton = null,
-            shape = RoundedCornerShape(16.dp)
+        AppLoadingDialog(
+            message = state.backupProgressMessage ?: "데이터 백업/복원을 진행 중입니다…"
         )
     }
 
     // 2) 백업/복원 성공 안내 다이얼로그
     if (state.backupSuccessMessage != null) {
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.DismissBackupSuccess) },
-            title = {
-                Text(
-                    text = "백업 및 복원 완료",
-                    fontWeight = FontWeight.ExtraBold,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            },
+        AppDialog(
+            onDismiss = { onIntent(DiaryIntent.DismissBackupSuccess) },
+            title = "백업 및 복원 완료",
             text = {
                 Text(
                     text = state.backupSuccessMessage,
@@ -243,47 +197,19 @@ fun DiaryListScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
-            confirmButton = {
-                Button(
-                    onClick = { onIntent(DiaryIntent.DismissBackupSuccess) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text("확인", fontWeight = FontWeight.Bold)
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
+            confirmText = "확인",
+            onConfirm = { onIntent(DiaryIntent.DismissBackupSuccess) },
+            dismissText = null,
+            icon = Icons.Default.CheckCircle
         )
     }
 
     // 2.5) 앱 업데이트 알림 다이얼로그
     if (state.showUpdateDialog && state.latestVersion != null) {
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.DismissUpdateDialog) },
-            icon = {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Default.SystemUpdateAlt,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-            },
-            title = {
-                Text(
-                    text = "새로운 업데이트가 있어요",
-                    fontWeight = FontWeight.ExtraBold,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            },
+        AppDialog(
+            onDismiss = { onIntent(DiaryIntent.DismissUpdateDialog) },
+            title = "새로운 업데이트가 있어요",
+            icon = Icons.Default.SystemUpdateAlt,
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -292,7 +218,7 @@ fun DiaryListScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -323,25 +249,9 @@ fun DiaryListScreen(
                     }
                 }
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        // 향후 다운로드 URL이 확정되면 해당 링크로 연결
-                        onIntent(DiaryIntent.DismissUpdateDialog)
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text("지금 업데이트", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onIntent(DiaryIntent.DismissUpdateDialog) }) {
-                    Text("나중에")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
+            confirmText = "지금 업데이트",
+            onConfirm = { onIntent(DiaryIntent.DismissUpdateDialog) },
+            dismissText = "나중에"
         )
     }
 
@@ -350,10 +260,10 @@ fun DiaryListScreen(
         val isSherpa = state.wifiWarningSource == "sherpa"
         val modelName = if (isSherpa) "음성인식 모델 (Sherpa)" else "AI 언어 모델 (Gemma)"
         val downloadSize = if (isSherpa) "약 1.05GB" else "약 2.3GB"
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
-            icon = { Icon(Icons.Default.Warning, null, tint = Color(0xFFE65100)) },
-            title = { Text("Wi-Fi 연결 확인", fontWeight = FontWeight.Bold) },
+        AppWarningDialog(
+            onDismiss = { onIntent(DiaryIntent.ShowWifiWarning(false)) },
+            title = "Wi-Fi 연결 확인",
+            icon = Icons.Default.Warning,
             text = {
                 Text(
                     "현재 Wi-Fi에 연결되어 있지 않습니다.\n\n" +
@@ -363,18 +273,9 @@ fun DiaryListScreen(
                     fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (isSherpa) onStartSherpaDownload() else onStartDownload()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
-                ) { Text("데이터로 다운로드", color = Color.White) }
-            },
-            dismissButton = {
-                TextButton(onClick = { onIntent(DiaryIntent.ShowWifiWarning(false)) }) { Text("취소") }
-            },
-            shape = RoundedCornerShape(20.dp)
+            confirmText = "데이터로 다운로드",
+            onConfirm = { if (isSherpa) onStartSherpaDownload() else onStartDownload() },
+            dismissText = "취소"
         )
     }
 
@@ -2606,48 +2507,30 @@ fun PlannerSeriesDeleteDialog(
     onDeleteThisOnly: () -> Unit,
     onCancel: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        shape = RoundedCornerShape(20.dp),
-        icon = {
-            Icon(
-                imageVector = Icons.Default.DateRange,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-        },
-        title = {
-            Text(
-                text = "반복 계획을 어떻게 삭제할까요?",
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-        },
+    AppDestructiveDialog(
+        onDismiss = onCancel,
+        title = "반복 계획을 어떻게 삭제할까요?",
+        icon = Icons.Default.DateRange,
         text = {
             Text(
                 text = "\"${task.text}\" 는 반복 계획으로 등록되어 있어요.\n전체 반복 일정을 모두 지울지, 오늘 일정만 지울지 선택해 주세요.",
                 fontSize = 13.sp,
-                lineHeight = 20.sp
+                lineHeight = 20.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
-        confirmButton = {
+        confirmText = "전체 삭제",
+        onConfirm = onDeleteAll,
+        dismissText = "취소",
+        extraContent = {
             TextButton(
-                onClick = onDeleteAll,
+                onClick = onDeleteThisOnly,
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
+                    contentColor = MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
+                ),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Text("전체 삭제", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onDeleteThisOnly) {
-                    Text("이 날만 삭제", color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f))
-                }
-                TextButton(onClick = onCancel) {
-                    Text("취소")
-                }
+                Text("이 날만 삭제", fontWeight = FontWeight.SemiBold)
             }
         }
     )
