@@ -841,7 +841,15 @@ private fun NormalModeTopBar(
         actions = {
             if (isDiaryTab) {
                 IconButton(onClick = onSearchClick) {
-                    Icon(Icons.Default.Search, "검색", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Search, "검색", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                        }
+                    }
                 }
             }
             if (!isToday) {
@@ -856,10 +864,26 @@ private fun NormalModeTopBar(
                 ) { Text("오늘", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
             IconButton(onClick = onOpenDatePicker) {
-                Icon(Icons.Default.DateRange, "날짜 선택 모달", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.DateRange, "날짜 선택 모달", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
+                }
             }
             IconButton(onClick = { onIntent(DiaryIntent.ToggleSettingsScreen(true)) }) {
-                Icon(Icons.Default.Settings, "설정", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Settings, "설정", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+                    }
+                }
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
