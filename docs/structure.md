@@ -36,6 +36,7 @@
 | **온디바이스 AI** | 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM) |
 | | 음성 인식: Sherpa-Onnx SenseVoice (오프라인, 다국어: ko/en/ja/zh/yue + auto) |
 | **온디바이스 AI 챗봇** | 5종 원터치 프리셋 (이번주 써머리 / 이번달 감정 / 최근 기록 / 다음주 계획 / 현재 목표 현황) + 가로 슬라이더 & 복사/스트리밍 고도화 UI |
+| **일기 수정 기능 (v4.3)** | `DiaryIntent.EditDiary` 인텐트를 통한 기존 일기 작성 모드(`DiaryPhase.WRITE`) 로드, 제목/블록/타입/감정 기존 데이터 유지 및 `editingDiaryId` 기반 기존 entry 업데이트 보존 |
 | **2B 모델 컨텍스트 보강 (v2)** | 모든 보조 액션 프롬프트는 `LLMContextBuilder` 통일, 인접 블록 + 슬라이딩 윈도우 |
 | **입체 미디어 자동 감지 (v3.2)** | 사진/영상 첨부 시 3D 포맷(MPO/HEIC aux/Stereo EXIF/Stereo MP4/MOV spatial/MV-HEVC) 자동 감지. 2D 도 첨부 가능. 영상 30초 가드. VideoView 재생 |
 | **데이터 저장 (v3)** | Room DB (메인) + 파일 시스템 샌드박스. 향후 export 기능 추가 시 그대로 활용 |
@@ -522,3 +523,14 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
 - [ ] 한글 IME 조합(ㅇ→아→안→안녕) 입력 보존이 필요하면 `RichTextEditorBody` 의 외부 텍스트 동기화 로직을 수정할 때 `tfv.composition` 검사
 - [ ] **단위 테스트**: Android framework 메서드 (`Log.isLoggable`, `ExifInterface` 등) 가 mock 되지 않으므로 `app/build.gradle.kts` 에 `testOptions.unitTests.isReturnDefaultValues = true` 설정 필수 (이미 설정됨)
 - [ ] **본 문서도 함께 갱신**
+
+---
+
+## 8. v4.2 최근 UI/UX 고도화 사항
+
+- **전역 보기 모드 (`DiaryState.viewMode`) 상태 승격**:
+  - 기존 로컬 `rememberSaveable`로 관리되던 `globalViewMode`를 MVI `DiaryState.viewMode` 및 `DiaryIntent.SelectViewMode` 인텐트로 승격하여, 상세보기(`DiaryPhase.DETAIL`) 진입 후 뒤로가기를 하거나 작성 화면(`DiaryPhase.WRITE`) 완료 후 되돌아오더라도 사용자가 선택한 `BLOG` (또는 `CALENDAR`) 보기 모드가 100% 영속되도록 UX 대응 완료.
+- **X (트위터) / Threads 스타일 SNS 타임라인 피드**:
+  - `UnifiedBlogView`를 수직 쓰레드 연결선(`Thread Line`), 소셜 아바타 배지(`✨`, `📌`, `🎯`), 소셜 반응 바(💬 AI대화, ❤️ 좋아요, 📋 복사, 📤 공유)를 포함한 트렌디한 피드로 전면 개편.
+- **해시태그 블록 가로 스크롤 & 자동 스크롤**:
+  - 작성 및 읽기 화면의 해시태그 목록에 `horizontalScroll` 및 `LaunchedEffect` 기반 신규 태그 입력 시 우측 끝 자동 스크롤 기능 적용.

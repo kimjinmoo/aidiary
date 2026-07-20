@@ -21,11 +21,13 @@ sealed interface DiaryIntent {
         /** Write 화면 진입 시 사전 선택할 콘텐츠 타입 (null = 기본값 유지) */
         val initialContentType: ContentType? = null
     ) : DiaryIntent
+    data class SelectViewMode(val mode: com.grepiu.aidiary.ui.util.DiaryViewMode) : DiaryIntent
     data class UpdateDraft(
         val content: String? = null,
         val emotion: String? = null
     ) : DiaryIntent
     data object SaveDiary : DiaryIntent
+    data class EditDiary(val diary: DiaryEntry) : DiaryIntent
     data class DeleteDiary(val id: String) : DiaryIntent
     /**
      * 저장 시 AI 가 추천한 글 타입(suggestedType) 으로 변경하고 저장을 이어서 진행합니다.

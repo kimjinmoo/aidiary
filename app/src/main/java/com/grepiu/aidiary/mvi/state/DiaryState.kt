@@ -45,8 +45,10 @@ data class DiaryState(
     val plannerTasks: List<PlannerTask> = emptyList(),       // 사용자 할 일 목록
     val selectedDateString: String = "",                     // 선택된 날짜 (포맷: yyyy-MM-dd)
     val activeTab: String = "DIARY",                         // 현재 활성화된 탭 (DIARY, PLANNER, GOALS)
+    val viewMode: com.grepiu.aidiary.ui.util.DiaryViewMode = com.grepiu.aidiary.ui.util.DiaryViewMode.LIST, // 현재 보기 모드 (LIST, BLOG, CALENDAR)
 
     // 작성/수정 중인 임시 일기 상태
+    val editingDiaryId: String? = null,                     // 수정 중인 기존 일기 ID (null 이면 신규 작성)
     val draftTitle: String = "",                            // 상단 입력란의 글 제목 (키보드/AI 모두 이 필드로 갱신)
     val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문 (HeadingBlock 은 본문 내 '섹션 제목' 용도)
     val draftTitleStyle: TitleStyle = TitleStyle.Default,   // 제목 스타일 (색상/크기)

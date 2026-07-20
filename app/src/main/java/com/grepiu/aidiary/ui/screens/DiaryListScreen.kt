@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -357,8 +358,8 @@ fun DiaryListScreen(
     // 기록 필터링을 위한 선택된 타입 상태 (null은 전체)
     var selectedTypeFilter by remember { mutableStateOf<ContentType?>(null) }
 
-    // 전역 보기 모드 (리스트/블로그/달력) — 전체 화면을 인수한다. 블로그/달력은 일기+계획+목표 통합 피드.
-    var globalViewMode by rememberSaveable { mutableStateOf(DiaryViewMode.LIST) }
+    // 전역 보기 모드 (리스트/블로그/달력) — ViewModel state.viewMode로 단방향 상태 유지 (화면 전환 후에도 영속)
+    val globalViewMode = state.viewMode
 
     // AI 비서 바텀시트 표시 여부 — 헤더 좌측 AI 버튼으로 열림. 어느 보기 모드에서든 접근.
     var showAiSheet by rememberSaveable { mutableStateOf(false) }
@@ -456,7 +457,7 @@ fun DiaryListScreen(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                    ViewModeToggle(mode = globalViewMode, onModeChange = { globalViewMode = it })
+                    ViewModeToggle(mode = globalViewMode, onModeChange = { onIntent(DiaryIntent.SelectViewMode(it)) })
                 }
             }
 
@@ -1840,6 +1841,8 @@ fun PlannerTabContent(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     val tasksForDate = remember(state.plannerTasks, state.selectedDateString) {
         state.plannerTasks.filter { it.dateString == state.selectedDateString }
@@ -1903,7 +1906,9 @@ fun PlannerTabContent(
 
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding()
     ) {
         // ── 입력 폼 ──
         item {
@@ -1938,7 +1943,17 @@ fun PlannerTabContent(
                             shape = RoundedCornerShape(12.dp),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                             keyboardActions = KeyboardActions(onDone = { handleAddTask() }),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .bringIntoViewRequester(bringIntoViewRequester)
+                                .onFocusEvent { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch {
+                                            kotlinx.coroutines.delay(200)
+                                            bringIntoViewRequester.bringIntoView()
+                                        }
+                                    }
+                                }
                         )
                         Spacer(Modifier.width(8.dp))
                         FilledIconButton(
@@ -2696,6 +2711,8 @@ fun GoalsTabContent(
     var selectedCategory by remember { mutableStateOf("전체") }
     var isFinishedExpanded by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val goalBringIntoViewRequester = remember { BringIntoViewRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     // 진행 중인 목표와 완료된 목표 분리
     val activeGoals = remember(state.goals, selectedCategory) {
@@ -2704,7 +2721,9 @@ fun GoalsTabContent(
     val completedGoalsList = remember(state.goals) { state.goals.filter { it.isCompleted } }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .imePadding(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         // A. 목표 진행률 대시보드 (원형 게이지 및 동적 응원 메시지 도입)
@@ -2806,7 +2825,17 @@ fun GoalsTabContent(
                             keyboardActions = KeyboardActions(onDone = {
                                 if (newGoalText.isNotBlank()) { onAddGoal(newGoalText, selectedCategory); focusManager.clearFocus() }
                             }),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .bringIntoViewRequester(goalBringIntoViewRequester)
+                                .onFocusEvent { focusState ->
+                                    if (focusState.isFocused) {
+                                        coroutineScope.launch {
+                                            kotlinx.coroutines.delay(200)
+                                            goalBringIntoViewRequester.bringIntoView()
+                                        }
+                                    }
+                                }
                         )
                         Spacer(Modifier.width(8.dp))
                         FilledIconButton(
@@ -4179,21 +4208,35 @@ private fun BlogDateHeader(dateString: String) {
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp, bottom = 6.dp)
     ) {
-        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-        Text(
-            text = label,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text("📌", fontSize = 11.sp)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
     }
 }
 
-/** 전역 통합 블로그 — 일기+계획+목표를 날짜 헤더로 묶어 최신순 피드로 (전체 기록, 페이지네이션 무관). */
+/** X (트위터) / Threads (쓰레드) 컨셉 전역 통합 피드 */
 @Composable
 private fun UnifiedBlogView(
     diaries: List<DiaryMeta>,
@@ -4204,25 +4247,74 @@ private fun UnifiedBlogView(
     val groups = remember(diaries, tasks, goals) {
         com.grepiu.aidiary.ui.util.buildUnifiedByDate(diaries, tasks, goals)
     }
+
+    // 상세 화면 이탈 후 복원 시 스크롤 위치 100% 보존
+    val listState = rememberLazyListState()
+
+    // 최초 1회 오늘 날짜 자동 스크롤 여부 영속화
+    var hasScrolledToToday by rememberSaveable { mutableStateOf(false) }
+
+    val todayStr = remember {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    }
+
+    LaunchedEffect(groups) {
+        if (!hasScrolledToToday && groups.isNotEmpty()) {
+            var targetIndex = 0
+            var currentIndex = 0
+            var found = false
+
+            for ((date, items) in groups) {
+                if (date == todayStr || date <= todayStr) {
+                    targetIndex = currentIndex
+                    found = true
+                    break
+                }
+                currentIndex += 1 + items.size // 헤더 1개 + 아이템들
+            }
+
+            if (found && targetIndex >= 0) {
+                listState.scrollToItem(targetIndex)
+            }
+            hasScrolledToToday = true
+        }
+    }
+
     if (groups.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("아직 기록이 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Text("🧵", fontSize = 28.sp) }
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("아직 작성된 쓰레드 피드가 없어요", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                Spacer(Modifier.height(4.dp))
+                Text("일기, 계획, 목표를 등록하면 타임라인이 시작됩니다", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         return
     }
+
     LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         modifier = Modifier.fillMaxSize()
     ) {
         groups.forEach { (date, items) ->
             item(key = "uh_$date") { BlogDateHeader(date) }
-            items(items, key = { dayItemKey(it) }) { di ->
-                when (di) {
-                    is DayItem.DiaryItem -> DiaryListItemCard(diary = di.meta, onClick = { onSelectDiary(di.meta) })
-                    is DayItem.TaskItem -> UnifiedTaskRow(di.task)
-                    is DayItem.GoalDayItem -> UnifiedGoalRow(di.goal)
-                }
+            items(items.size, key = { dayItemKey(items[it]) }) { index ->
+                val item = items[index]
+                val isLast = index == items.lastIndex
+                BlogThreadPostCard(
+                    dayItem = item,
+                    isLastInGroup = isLast,
+                    onSelectDiary = onSelectDiary
+                )
             }
         }
     }
@@ -4232,6 +4324,331 @@ private fun dayItemKey(di: DayItem): String = when (di) {
     is DayItem.DiaryItem -> "d_${di.meta.id}"
     is DayItem.TaskItem -> "t_${di.task.id}"
     is DayItem.GoalDayItem -> "g_${di.goal.id}"
+}
+
+/**
+ * X (Twitter) & Threads 쓰레드 타임라인 피드 카드 컴포저블.
+ * 좌측 수직 스레드 선(Thread Line)과 아바타, 우측 타임라인 포스트 및 소셜 반응 바.
+ */
+@Composable
+private fun BlogThreadPostCard(
+    dayItem: DayItem,
+    isLastInGroup: Boolean,
+    onSelectDiary: (DiaryMeta) -> Unit
+) {
+    val context = LocalContext.current
+    var isLiked by remember { mutableStateOf(false) }
+
+    val avatarIcon = when (dayItem) {
+        is DayItem.DiaryItem -> "✨"
+        is DayItem.TaskItem -> "📌"
+        is DayItem.GoalDayItem -> "🎯"
+    }
+
+    val typeLabel = when (dayItem) {
+        is DayItem.DiaryItem -> "일기"
+        is DayItem.TaskItem -> "계획"
+        is DayItem.GoalDayItem -> "목표"
+    }
+
+    val typeAccent = when (dayItem) {
+        is DayItem.DiaryItem -> DiaryAccent
+        is DayItem.TaskItem -> PlannerAccent
+        is DayItem.GoalDayItem -> GoalsAccent
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+    ) {
+        // 1. 좌측 수직 스레드 아바타 & 커넥터 라인
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.width(42.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = typeAccent.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, typeAccent.copy(alpha = 0.25f)),
+                modifier = Modifier.size(34.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(avatarIcon, fontSize = 14.sp)
+                }
+            }
+
+            if (!isLastInGroup) {
+                Box(
+                    modifier = Modifier
+                        .width(2.dp)
+                        .weight(1f, fill = true)
+                        .padding(vertical = 4.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
+                )
+            } else {
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+
+        Spacer(Modifier.width(8.dp))
+
+        // 2. 우측 쓰레드 포스트 카드 본문
+        Surface(
+            onClick = {
+                if (dayItem is DayItem.DiaryItem) onSelectDiary(dayItem.meta)
+            },
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+            shadowElevation = 0.5.dp,
+            modifier = Modifier
+                .weight(1f)
+                .padding(bottom = 10.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                // (1) 핸들 헤더 (@my.diary · 뱃지)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "나의 기록",
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "@my.diary",
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "·",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Spacer(Modifier.width(6.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = typeAccent.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = typeLabel,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = typeAccent,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // 일기 감정 표출
+                    if (dayItem is DayItem.DiaryItem && dayItem.meta.emotion.isNotBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = dayItem.meta.emotion,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(6.dp))
+
+                // (2) 포스트 본문 텍스트
+                when (dayItem) {
+                    is DayItem.DiaryItem -> {
+                        if (dayItem.meta.title.isNotBlank()) {
+                            Text(
+                                text = dayItem.meta.title,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(3.dp))
+                        }
+                        Text(
+                            text = dayItem.meta.contentPreview,
+                            fontSize = 13.5.sp,
+                            lineHeight = 20.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    is DayItem.TaskItem -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (dayItem.task.isCompleted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = null,
+                                tint = PlannerAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = dayItem.task.text,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textDecoration = if (dayItem.task.isCompleted) TextDecoration.LineThrough else null,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (!dayItem.task.startTime.isNullOrBlank() || !dayItem.task.location.isNullOrBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (!dayItem.task.startTime.isNullOrBlank()) {
+                                    Text(
+                                        text = "⏰ ${dayItem.task.startTime}" + (dayItem.task.endTime?.let { " ~$it" } ?: ""),
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (!dayItem.task.location.isNullOrBlank()) {
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "📍 ${dayItem.task.location}",
+                                        fontSize = 11.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    is DayItem.GoalDayItem -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TaskAlt,
+                                contentDescription = null,
+                                tint = GoalsAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = dayItem.goal.text,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textDecoration = if (dayItem.goal.isCompleted) TextDecoration.LineThrough else null,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (dayItem.goal.category.isNotBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "🏷️ ${dayItem.goal.category}",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                // (3) 하단 X / Threads 소셜 반응 바 (Social Action Bar)
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                ) {
+                    // 💬 대화
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                android.widget.Toast.makeText(context, "AI 비서에서 더 자세히 질문해 보세요 ✨", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChatBubbleOutline,
+                            contentDescription = "댓글/소통",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("AI 대화", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    }
+
+                    // ❤️ 좋아요 토글
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { isLiked = !isLiked }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "좋아요",
+                            tint = if (isLiked) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    // 📋 텍스트 복사
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                val textToCopy = when (dayItem) {
+                                    is DayItem.DiaryItem -> "${dayItem.meta.title}\n${dayItem.meta.contentPreview}"
+                                    is DayItem.TaskItem -> dayItem.task.text
+                                    is DayItem.GoalDayItem -> dayItem.goal.text
+                                }
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clip = android.content.ClipData.newPlainText("쓰레드 텍스트", textToCopy)
+                                clipboard.setPrimaryClip(clip)
+                                android.widget.Toast.makeText(context, "쓰레드가 복사되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "복사",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    // 📤 공유
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                val textToShare = when (dayItem) {
+                                    is DayItem.DiaryItem -> "[AI 다이어리 쓰레드]\n${dayItem.meta.title}\n${dayItem.meta.contentPreview}"
+                                    is DayItem.TaskItem -> "[AI 다이어리 계획]\n${dayItem.task.text}"
+                                    is DayItem.GoalDayItem -> "[AI 다이어리 목표]\n${dayItem.goal.text}"
+                                }
+                                val sendIntent = android.content.Intent().apply {
+                                    action = android.content.Intent.ACTION_SEND
+                                    putExtra(android.content.Intent.EXTRA_TEXT, textToShare)
+                                    type = "text/plain"
+                                }
+                                context.startActivity(android.content.Intent.createChooser(sendIntent, "쓰레드 공유"))
+                            }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "공유",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** 통합 피드/달력의 계획(할 일) 행 */
@@ -4303,7 +4720,7 @@ private fun UnifiedGoalRow(goal: Goal) {
     }
 }
 
-/** 전역 통합 달력 — 월간 그리드(도트=일기/계획/목표 무엇이든) + 선택일 하단 통합 목록. */
+/** 전역 통합 달력 — 사람 손으로 색칠하고 작성한 듯한 다이어리 핸드메이드 감성 UI/UX 뷰. */
 @Composable
 private fun UnifiedCalendarView(
     diaries: List<DiaryMeta>,
@@ -4322,6 +4739,7 @@ private fun UnifiedCalendarView(
     }
     var year by remember { mutableStateOf(initCal.get(Calendar.YEAR)) }
     var month by remember { mutableStateOf(initCal.get(Calendar.MONTH) + 1) }
+
     LaunchedEffect(selectedDateString) {
         runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDateString) }
             .getOrNull()?.let {
@@ -4329,40 +4747,80 @@ private fun UnifiedCalendarView(
                 year = c.get(Calendar.YEAR); month = c.get(Calendar.MONTH) + 1
             }
     }
+
     val cells = remember(year, month) { buildMonthGrid(year, month) }
     val monthPrefix = remember(year, month) { "%04d-%02d-".format(year, month) }
     val dayItems = remember(selectedDateString, diaries, tasks, goals) {
         com.grepiu.aidiary.ui.util.unifiedForDate(selectedDateString, diaries, tasks, goals)
     }
+
     LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         modifier = Modifier.fillMaxSize()
     ) {
+        // 1. 상단 아날로그 종이 네비게이션 칩
         item(key = "ucal_nav") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                IconButton(onClick = { if (month == 1) { month = 12; year-- } else month-- }) {
-                    Icon(Icons.Default.ChevronLeft, "이전 달")
-                }
-                Text("${year}년 ${month}월", fontSize = 16.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 16.dp))
-                IconButton(onClick = { if (month == 12) { month = 1; year++ } else month++ }) {
-                    Icon(Icons.Default.ChevronRight, "다음 달")
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    IconButton(onClick = { if (month == 1) { month = 12; year-- } else month-- }) {
+                        Icon(Icons.Default.ChevronLeft, "이전 달", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("🗓️", fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "${year}년 ${month}월",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(onClick = { if (month == 12) { month = 1; year++ } else month++ }) {
+                        Icon(Icons.Default.ChevronRight, "다음 달", tint = MaterialTheme.colorScheme.onSurface)
+                    }
                 }
             }
         }
+
+        // 2. 요일 라벨 헤더
         item(key = "ucal_dow") {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                listOf("일" to Color(0xFFE53935), "월" to MaterialTheme.colorScheme.onSurfaceVariant, "화" to MaterialTheme.colorScheme.onSurfaceVariant, "수" to MaterialTheme.colorScheme.onSurfaceVariant, "목" to MaterialTheme.colorScheme.onSurfaceVariant, "금" to MaterialTheme.colorScheme.onSurfaceVariant, "토" to Color(0xFF3D7BB5)).forEach { (d, color) ->
-                    Text(d, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                listOf(
+                    "일" to Color(0xFFE53935),
+                    "월" to MaterialTheme.colorScheme.onSurfaceVariant,
+                    "화" to MaterialTheme.colorScheme.onSurfaceVariant,
+                    "수" to MaterialTheme.colorScheme.onSurfaceVariant,
+                    "목" to MaterialTheme.colorScheme.onSurfaceVariant,
+                    "금" to MaterialTheme.colorScheme.onSurfaceVariant,
+                    "토" to Color(0xFF3D7BB5)
+                ).forEach { (d, color) ->
+                    Text(
+                        text = d,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
                         color = color,
-                        textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
+
+        // 3. 달력 셀 그리드 (형광펜 색칠 & 미니 스티커 도트 감성)
         items(cells.chunked(7), key = { row -> "urow_" + row.joinToString("_") { it?.toString() ?: "x" } }) { week ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                 week.forEachIndexed { colIdx, day ->
                     if (day == null) {
                         Spacer(Modifier.weight(1f))
@@ -4370,38 +4828,169 @@ private fun UnifiedCalendarView(
                         val dateStr = monthPrefix + "%02d".format(day)
                         val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
                         val isToday = dateStr == todayStr
-                        val hasEntry = diaryDatesUnified.contains(dateStr)
                         val isSelected = dateStr == selectedDateString
-                        val dayColor = when {
+
+                        // 일기/계획/목표 3색 존재 여부 계산
+                        val hasDiary = remember(diaries, dateStr) { diaries.any { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.timestamp)) == dateStr } }
+                        val hasTask = remember(tasks, dateStr) { tasks.any { it.dateString == dateStr } }
+                        val hasGoal = remember(goals, dateStr) { goals.any { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.timestamp)) == dateStr } }
+
+                        // 연속 계획 판별 (전날 및 다음날 동일/반복 태스크 연동)
+                        val prevDateStr = remember(dateStr) { getOffsetDateStr(dateStr, -1) }
+                        val nextDateStr = remember(dateStr) { getOffsetDateStr(dateStr, 1) }
+
+                        val hasPrevTask = remember(tasks, dateStr) {
+                            if (!hasTask) false
+                            else {
+                                val curTasks = tasks.filter { it.dateString == dateStr }
+                                val prevTasks = tasks.filter { it.dateString == prevDateStr }
+                                curTasks.any { cur ->
+                                    prevTasks.any { prev -> (cur.seriesId != null && cur.seriesId == prev.seriesId) || (cur.text == prev.text) }
+                                }
+                            }
+                        }
+
+                        val hasNextTask = remember(tasks, dateStr) {
+                            if (!hasTask) false
+                            else {
+                                val curTasks = tasks.filter { it.dateString == dateStr }
+                                val nextTasks = tasks.filter { it.dateString == nextDateStr }
+                                curTasks.any { cur ->
+                                    nextTasks.any { next -> (cur.seriesId != null && cur.seriesId == next.seriesId) || (cur.text == next.text) }
+                                }
+                            }
+                        }
+
+                        val textColor = when {
                             isSelected -> Color.White
                             colIdx == 0 -> Color(0xFFE53935)
                             colIdx == 6 -> Color(0xFF3D7BB5)
                             else -> MaterialTheme.colorScheme.onSurface
                         }
-                        Box(
-                            modifier = Modifier.weight(1f).aspectRatio(1f).padding(2.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primary
-                                    else if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                                    else Color.Transparent
-                                )
-                                .then(
-                                    if (isToday && !isSelected) Modifier.border(
-                                        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-                                        RoundedCornerShape(12.dp)
-                                    ) else Modifier
-                                )
-                                .clickable { onDateSelect(dateStr) },
-                            contentAlignment = Alignment.Center
+
+                        val cellBgColor = when {
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+                        }
+
+                        val borderStroke = when {
+                            isToday && !isSelected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                            isSelected -> null
+                            else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f))
+                        }
+
+                        Surface(
+                            onClick = { onDateSelect(dateStr) },
+                            shape = RoundedCornerShape(16.dp),
+                            color = cellBgColor,
+                            border = borderStroke,
+                            shadowElevation = if (isSelected) 3.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(0.92f)
+                                .padding(2.5.dp)
                         ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("$day", fontSize = 13.sp,
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "$day",
+                                    fontSize = 14.sp,
                                     fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
-                                    color = dayColor)
-                                if (hasEntry) {
-                                    Box(Modifier.padding(top = 2.dp).size(5.dp).clip(CircleShape)
-                                        .background(if (isSelected) Color.White else DiaryAccent))
+                                    color = textColor
+                                )
+
+                                // 하단 아날로그 형광펜 연속 줄 (Highlighter Line Band) & 미니 스티커 도트
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    // 1. 연속 계획 형광펜 라인 (두께 14.dp의 손으로 슥 그은 스케줄 밴드)
+                                    if (hasTask) {
+                                        val highlighterColor = if (isSelected) Color.White.copy(alpha = 0.85f) else PlannerAccent.copy(alpha = 0.35f)
+                                        val textColor = if (isSelected) PlannerAccent else MaterialTheme.colorScheme.onSurface
+
+                                        val (barShape, fillModifier) = when {
+                                            // 1. 연속 중간 (양쪽 모두 형광펜으로 연결된 중간일)
+                                            hasPrevTask && hasNextTask -> {
+                                                Pair(
+                                                    RoundedCornerShape(0.dp),
+                                                    Modifier.fillMaxWidth().height(14.dp)
+                                                )
+                                            }
+                                            // 2. 연속 시작일 (오늘부터 오른쪽으로 형광펜 칠해진 날)
+                                            hasNextTask -> {
+                                                Pair(
+                                                    RoundedCornerShape(topStart = 7.dp, bottomStart = 7.dp),
+                                                    Modifier.fillMaxWidth().padding(start = 4.dp).height(14.dp)
+                                                )
+                                            }
+                                            // 3. 연속 종료일 (왼쪽에서 형광펜 칠해져 오는 날)
+                                            hasPrevTask -> {
+                                                Pair(
+                                                    RoundedCornerShape(topEnd = 7.dp, bottomEnd = 7.dp),
+                                                    Modifier.fillMaxWidth().padding(end = 4.dp).height(14.dp)
+                                                )
+                                            }
+                                            // 4. 단일 날짜 계획 (형광펜 미니 캡슐 마킹)
+                                            else -> {
+                                                Pair(
+                                                    RoundedCornerShape(7.dp),
+                                                    Modifier.width(24.dp).height(14.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = barShape,
+                                            color = highlighterColor,
+                                            modifier = fillModifier
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = "📌",
+                                                    fontSize = 8.5.sp,
+                                                    lineHeight = 10.sp
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Spacer(Modifier.height(14.dp))
+                                    }
+
+                                    Spacer(Modifier.height(3.dp))
+
+                                    // 2. 일기/목표 보조 미니 스티커 도트
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.height(5.dp)
+                                    ) {
+                                        if (hasDiary) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(4.5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color.White else DiaryAccent)
+                                            )
+                                        }
+                                        if (hasGoal) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(4.5.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color.White.copy(alpha = 0.7f) else GoalsAccent)
+                                            )
+                                        }
+                                        if (!hasDiary && !hasGoal) {
+                                            Spacer(modifier = Modifier.height(4.5.dp))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -4409,19 +4998,59 @@ private fun UnifiedCalendarView(
                 }
             }
         }
+
+        // 4. 하단 다이어리 스크랩북 세션 헤더
         item(key = "ucal_sel_header") {
             val pretty = remember(selectedDateString) {
-                try { SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(
-                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDateString) ?: Date()) }
-                catch (_: Exception) { selectedDateString }
+                try {
+                    SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(
+                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDateString) ?: Date()
+                    )
+                } catch (_: Exception) { selectedDateString }
             }
-            Text("$pretty 기록", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text("📖", fontSize = 12.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "$pretty 의 기록 스크랩북",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
+
+        // 5. 선택 일자 스크랩북 포스트 목록
         if (dayItems.isEmpty()) {
             item(key = "ucal_empty") {
-                Text("이 날의 기록이 없어요", fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(vertical = 24.dp)
+                    ) {
+                        Text(
+                            text = "이 날은 아직 작성된 기록이 없어요 ✏️",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         } else {
             items(dayItems, key = { dayItemKey(it) }) { di ->
@@ -4934,4 +5563,16 @@ private fun CustomTimePickerModal(
             }
         }
     }
+}
+
+private fun getOffsetDateStr(dateStr: String, offsetDays: Int): String {
+    return try {
+        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val date = fmt.parse(dateStr) ?: Date()
+        val cal = Calendar.getInstance().apply {
+            time = date
+            add(Calendar.DAY_OF_MONTH, offsetDays)
+        }
+        fmt.format(cal.time)
+    } catch (_: Exception) { "" }
 }

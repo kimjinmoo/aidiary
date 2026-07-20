@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -250,10 +252,27 @@ fun BlockRenderer(
 @Composable
 private fun HashtagRenderer(tags: List<String>) {
     if (tags.isEmpty()) return
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = 4.dp)
+    ) {
         tags.forEach { tag ->
-            Surface(shape = RoundedCornerShape(8.dp), color = Color(0xFF26A69A).copy(alpha = 0.1f)) {
-                Text("#$tag", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF26A69A), modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFF26A69A).copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, Color(0xFF26A69A).copy(alpha = 0.2f))
+            ) {
+                Text(
+                    text = "#$tag",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFF26A69A),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
             }
         }
     }

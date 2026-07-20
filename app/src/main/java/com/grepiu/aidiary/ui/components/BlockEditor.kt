@@ -330,26 +330,38 @@ private fun HashtagBlockEditor(
 ) {
     var inputText by remember(block.id) { mutableStateOf("") }
     val tags = block.tags
+    val scrollState = rememberScrollState()
+
+    // 태그 추가 시 우측 끝으로 자동 스크롤
+    LaunchedEffect(tags.size) {
+        if (tags.isNotEmpty()) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
 
     Column {
         if (tags.isNotEmpty()) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(scrollState)
             ) {
                 tags.forEach { tag ->
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF26A69A).copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF26A69A).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF26A69A).copy(alpha = 0.25f)),
                         onClick = { onTagsChange(tags - tag) }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
                         ) {
-                            Text("#$tag", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color(0xFF26A69A))
-                            IconButton(onClick = { onTagsChange(tags - tag) }, modifier = Modifier.size(18.dp)) {
-                                Icon(Icons.Default.Close, "삭제", modifier = Modifier.size(12.dp), tint = Color(0xFF26A69A).copy(alpha = 0.6f))
+                            Text("#$tag", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF26A69A))
+                            IconButton(onClick = { onTagsChange(tags - tag) }, modifier = Modifier.size(20.dp)) {
+                                Icon(Icons.Default.Close, "삭제", modifier = Modifier.size(13.dp), tint = Color(0xFF26A69A).copy(alpha = 0.7f))
                             }
                         }
                     }

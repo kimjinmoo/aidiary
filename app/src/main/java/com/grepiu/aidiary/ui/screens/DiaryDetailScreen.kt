@@ -23,7 +23,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -73,6 +75,7 @@ import java.util.Locale
 @Composable
 fun DiaryDetailScreen(
     diary: DiaryEntry,
+    onEdit: () -> Unit = {},
     onDelete: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -126,6 +129,7 @@ fun DiaryDetailScreen(
                 typeColor = typeColor,
                 scrollProgress = scrollProgress,
                 onBack = onBack,
+                onEdit = onEdit,
                 onDelete = { showDeleteDialog = true }
             )
         },
@@ -190,7 +194,24 @@ fun DiaryDetailScreen(
                     }
                 }
 
-                Spacer(Modifier.height(56.dp))
+                Spacer(Modifier.height(32.dp))
+
+                // 하단 수정 액션 버튼
+                Button(
+                    onClick = onEdit,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Icon(Icons.Filled.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("이 ${typeLabel} 수정하기", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                Spacer(Modifier.height(40.dp))
             }
         }
     }
@@ -205,6 +226,7 @@ private fun DetailTopBar(
     typeColor: Color,
     scrollProgress: Float,
     onBack: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     // 스크롤 시 자연스러운 elevation 증가 (0dp → 4dp)
@@ -244,6 +266,13 @@ private fun DetailTopBar(
                     }
                 },
                 actions = {
+                    IconButton(onClick = onEdit) {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "수정하기",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(onClick = onDelete) {
                         Icon(
                             imageVector = Icons.Filled.DeleteOutline,

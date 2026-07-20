@@ -583,6 +583,7 @@ private fun DetailRoute(
     state.selectedDiary?.let { diary ->
         DiaryDetailScreen(
             diary = diary,
+            onEdit = { viewModel.processIntent(DiaryIntent.EditDiary(diary)) },
             onDelete = { viewModel.processIntent(DiaryIntent.DeleteDiary(diary.id)) },
             onBack = { viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST)) },
             modifier = modifier

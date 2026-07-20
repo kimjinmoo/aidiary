@@ -212,6 +212,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 saveTheme(intent.theme)
                 _state.update { it.copy(appTheme = intent.theme) }
             }
+            is DiaryIntent.SelectViewMode -> {
+                _state.update { it.copy(viewMode = intent.mode) }
+            }
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
             }
@@ -260,8 +263,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { currentState ->
                     currentState.copy(
                         phase = targetPhase,
-                        selectedDiary = intent.selectedDiary,
-                        // 새 일기 작성 화면 진입 시 draft 값 초기화
+                        selectedDiary = intent.selectedDiary ?: currentState.selectedDiary,
+                        editingDiaryId = if (targetPhase == DiaryPhase.WRITE) null else currentState.editingDiaryId,
                         draftTitle = if (targetPhase == DiaryPhase.WRITE) "" else currentState.draftTitle,
                         draftBlocks = if (targetPhase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
                         draftTitleStyle = if (targetPhase == DiaryPhase.WRITE) TitleStyle.Default else currentState.draftTitleStyle,
@@ -290,6 +293,21 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.SaveDiary -> {
                 saveDiaryDraft()
+            }
+            is DiaryIntent.EditDiary -> {
+                val d = intent.diary
+                _state.update { currentState ->
+                    currentState.copy(
+                        editingDiaryId = d.id,
+                        draftTitle = d.title,
+                        draftBlocks = d.blocks,
+                        draftTitleStyle = d.titleStyle,
+                        draftEmotion = d.emotion,
+                        draftContentType = d.contentType,
+                        selectedDiary = d,
+                        phase = DiaryPhase.WRITE
+                    )
+                }
             }
             is DiaryIntent.DeleteDiary -> {
                 viewModelScope.launch {
@@ -3079,15 +3097,32 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             currentState.draftBlocks
         }
-        val newEntry = DiaryEntry(
-            title = currentState.sessionTitle,
-            titleStyle = currentState.draftTitleStyle,
-            blocks = finalBlocks,
-            content = plain,
-            emotion = finalEmotion,
-            aiAnalysis = null,
-            contentType = currentState.draftContentType
-        )
+        val isEditing = currentState.editingDiaryId != null
+        val existing = currentState.selectedDiary
+
+        val newEntry = if (isEditing) {
+            DiaryEntry(
+                id = currentState.editingDiaryId!!,
+                timestamp = existing?.timestamp ?: System.currentTimeMillis(),
+                title = currentState.sessionTitle,
+                titleStyle = currentState.draftTitleStyle,
+                blocks = finalBlocks,
+                content = plain,
+                emotion = finalEmotion,
+                aiAnalysis = existing?.aiAnalysis,
+                contentType = currentState.draftContentType
+            )
+        } else {
+            DiaryEntry(
+                title = currentState.sessionTitle,
+                titleStyle = currentState.draftTitleStyle,
+                blocks = finalBlocks,
+                content = plain,
+                emotion = finalEmotion,
+                aiAnalysis = null,
+                contentType = currentState.draftContentType
+            )
+        }
 
         val updated = repository.addEntry(newEntry)
         // 저장 직후 메타 1페이지 다시 로드 + draft 초기화
@@ -3095,6 +3130,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         _state.update {
             it.copy(
                 phase = DiaryPhase.LIST,
+                editingDiaryId = null,
                 draftTitle = "",
                 draftBlocks = emptyList(),
                 draftTitleStyle = TitleStyle.Default,
@@ -3103,7 +3139,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 isGeneratingAnalysis = false
             )
         }
-        sendEffect(DiaryEffect.ShowToast("${currentState.draftContentType.label}이(가) 저장되었어요."))
+        val toastMsg = if (isEditing) "${currentState.draftContentType.label}이(가) 수정되었어요." else "${currentState.draftContentType.label}이(가) 저장되었어요."
+        sendEffect(DiaryEffect.ShowToast(toastMsg))
     }
 
     /**
