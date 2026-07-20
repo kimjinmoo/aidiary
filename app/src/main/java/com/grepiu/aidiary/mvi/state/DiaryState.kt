@@ -31,6 +31,10 @@ data class DiaryState(
      * 2만건 이상에서도 인메모리 ≈ 4~6MB.
      */
     val diaries: List<DiaryMeta> = emptyList(),
+    /** 기록이 1건 이상 있는 날짜(yyyy-MM-dd) 집합 — 달력 도트용. observeMetas 파생. */
+    val diaryDates: Set<String> = emptySet(),
+    /** 달력에서 선택한 날짜의 기록(페이지네이션 무관 조회 결과). */
+    val selectedDateDiaries: List<DiaryMeta> = emptyList(),
     val selectedDiary: DiaryEntry? = null,                   // 상세 보기용 풀 DiaryEntry (lazy)
     
     // 플래너 및 목표 기록 관련 상태 추가

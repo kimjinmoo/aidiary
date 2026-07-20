@@ -37,6 +37,7 @@ import com.grepiu.aidiary.data.slm.ModelDownloaderV2
 import com.grepiu.aidiary.data.slm.DiaryLLMEngine
 import com.grepiu.aidiary.data.slm.SherpaEngine
 import com.grepiu.aidiary.data.slm.toTextFormatting
+import com.grepiu.aidiary.ui.util.dateStringOf
 import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryPhase
@@ -134,6 +135,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             ensureWhisperModelReady()
+        }
+
+        // 전체 메타 구독 → 달력 도트용 날짜 집합 (페이지네이션 무관)
+        viewModelScope.launch {
+            repository.observeMetas().collect { metas ->
+                val dates = metas.mapTo(HashSet()) { dateStringOf(it.timestamp) }
+                _state.update { it.copy(diaryDates = dates) }
+            }
         }
     }
 
@@ -658,6 +667,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             // ===== 플래너 및 목표 기록 =====
             is DiaryIntent.SelectDate -> {
                 _state.update { it.copy(selectedDateString = intent.dateString) }
+                viewModelScope.launch {
+                    val metas = repository.metasForDate(intent.dateString)
+                    _state.update { it.copy(selectedDateDiaries = metas) }
+                }
             }
             is DiaryIntent.ChangeTab -> {
                 _state.update { it.copy(activeTab = intent.tab) }
