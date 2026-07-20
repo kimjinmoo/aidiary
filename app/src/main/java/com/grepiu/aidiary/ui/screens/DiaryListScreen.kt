@@ -3333,7 +3333,8 @@ fun ChatTabContent(
         if (!isImeVisible) focusManager.clearFocus()
     }
 
-    LaunchedEffect(state.chatMessages.size) {
+    val lastMsgText = state.chatMessages.lastOrNull()?.text.orEmpty()
+    LaunchedEffect(lastMsgText) {
         if (state.chatMessages.isNotEmpty()) {
             listState.animateScrollToItem(state.chatMessages.size - 1)
         }
