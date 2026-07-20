@@ -525,7 +525,8 @@ fun DiaryListScreen(
                             onCancelSearch = {
                                 isSearchFocused = false
                                 onIntent(DiaryIntent.ClearDiarySearch)
-                            }
+                            },
+                            onDateSelectFromCalendar = { onIntent(DiaryIntent.SelectDate(it)) }
                         )
                     }
                     "PLANNER" -> {
@@ -1459,8 +1460,11 @@ fun DiaryTabContent(
     onClearSearch: () -> Unit,
     isSearchFocused: Boolean,
     onSearchFocusChange: (Boolean) -> Unit,
-    onCancelSearch: () -> Unit
+    onCancelSearch: () -> Unit,
+    onDateSelectFromCalendar: (String) -> Unit
 ) {
+    LaunchedEffect(Unit) { onDateSelectFromCalendar(state.selectedDateString) }
+
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
     val parsedDateText = remember(state.selectedDateString) {
         try {
@@ -1722,12 +1726,14 @@ fun DiaryTabContent(
                 )
             }
             DiaryViewMode.CALENDAR -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("달력 보기 (다음 Task)", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                DiaryCalendarView(
+                    diaryDates = state.diaryDates,
+                    selectedDateString = state.selectedDateString,
+                    selectedDateDiaries = state.selectedDateDiaries,
+                    typeFilter = selectedTypeFilter,
+                    onDateSelect = onDateSelectFromCalendar,
+                    onSelectDiary = onSelectDiary
+                )
             }
         }
 }
@@ -3993,3 +3999,114 @@ private fun BlogDateHeader(dateString: String) {
 private fun filteredDiariesForBlog(state: DiaryState, typeFilter: ContentType?): List<DiaryMeta> =
     if (typeFilter == null) state.diaries
     else state.diaries.filter { it.contentType == typeFilter }
+
+/** 달력 보기 — 월간 그리드 + 선택일 하단 기록. 도트=diaryDates, 선택일 기록=selectedDateDiaries. */
+@Composable
+private fun DiaryCalendarView(
+    diaryDates: Set<String>,
+    selectedDateString: String,
+    selectedDateDiaries: List<DiaryMeta>,
+    typeFilter: ContentType?,
+    onDateSelect: (String) -> Unit,
+    onSelectDiary: (DiaryMeta) -> Unit
+) {
+    val initCal = remember(selectedDateString) {
+        Calendar.getInstance().apply {
+            try { time = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDateString) ?: Date() }
+            catch (_: Exception) {}
+        }
+    }
+    var year by remember { mutableStateOf(initCal.get(Calendar.YEAR)) }
+    var month by remember { mutableStateOf(initCal.get(Calendar.MONTH) + 1) } // 1-12
+
+    val cells = remember(year, month) { buildMonthGrid(year, month) }
+    val monthPrefix = remember(year, month) { "%04d-%02d-".format(year, month) }
+    val visibleDiaries = remember(selectedDateDiaries, typeFilter) {
+        if (typeFilter == null) selectedDateDiaries
+        else selectedDateDiaries.filter { it.contentType == typeFilter }
+    }
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        item(key = "cal_nav") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+                IconButton(onClick = { if (month == 1) { month = 12; year-- } else month-- }) {
+                    Icon(Icons.Default.ChevronLeft, "이전 달")
+                }
+                Text("${year}년 ${month}월", fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 16.dp))
+                IconButton(onClick = { if (month == 12) { month = 1; year++ } else month++ }) {
+                    Icon(Icons.Default.ChevronRight, "다음 달")
+                }
+            }
+        }
+        item(key = "cal_dow") {
+            Row(Modifier.fillMaxWidth()) {
+                listOf("일","월","화","수","목","금","토").forEach { d ->
+                    Text(d, fontSize = 11.sp, fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+                }
+            }
+        }
+        items(cells.chunked(7), key = { row -> "row_" + row.joinToString("_") { it?.toString() ?: "x" } }) { week ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                week.forEach { day ->
+                    if (day == null) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        val dateStr = monthPrefix + "%02d".format(day)
+                        val hasEntry = diaryDates.contains(dateStr)
+                        val isSelected = dateStr == selectedDateString
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .padding(2.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { onDateSelect(dateStr) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("$day", fontSize = 13.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface)
+                                if (hasEntry) {
+                                    Box(Modifier.padding(top = 2.dp).size(5.dp).clip(CircleShape)
+                                        .background(if (isSelected) Color.White else DiaryTypeColor))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item(key = "cal_sel_header") {
+            val pretty = remember(selectedDateString) {
+                try { SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(
+                    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDateString) ?: Date()) }
+                catch (_: Exception) { selectedDateString }
+            }
+            Text("$pretty 기록", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+        }
+        if (visibleDiaries.isEmpty()) {
+            item(key = "cal_empty") {
+                Text("이 날의 기록이 없어요", fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+            }
+        } else {
+            items(visibleDiaries, key = { it.id }) { meta ->
+                DiaryListItemCard(diary = meta, onClick = { onSelectDiary(meta) })
+            }
+        }
+    }
+}
