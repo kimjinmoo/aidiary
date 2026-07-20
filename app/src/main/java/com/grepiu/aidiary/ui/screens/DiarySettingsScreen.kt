@@ -144,70 +144,8 @@ fun DiarySettingsScreen(
         )
     }
 
-    // 2) AI 모델(Gemma 4) 다운로드 안내 다이얼로그
-    if (state.showDownloadNotice) {
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.ShowDownloadNotice(false)) },
-            icon = { Icon(Icons.Default.Psychology, null, tint = MaterialTheme.colorScheme.primary) },
-            title = { Text("Gemma 4 AI 언어 모델 다운로드 🤖", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "온디바이스 AI 언어 모델(약 2.3GB)을 다운로드할까요?\n\n" +
-                    "다운로드 후 오프라인에서 AI 비서, 자동 제목 추천, 글 분류, 보정, 번역 기능을 사용할 수 있습니다.",
-                    fontSize = 14.sp, lineHeight = 20.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onIntent(DiaryIntent.ShowDownloadNotice(false))
-                        onIntent(DiaryIntent.StartDownload)
-                    }
-                ) {
-                    Text("다운로드 시작", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onIntent(DiaryIntent.ShowDownloadNotice(false)) }) {
-                    Text("취소")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
-
-    // 3) Sherpa 음성인식 모델 다운로드 안내 다이얼로그
-    if (state.showSherpaDownloadNotice) {
-        AlertDialog(
-            onDismissRequest = { onIntent(DiaryIntent.DismissSherpaDownloadNotice) },
-            icon = { Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.tertiary) },
-            title = { Text("Sherpa 음성 인식 모델 다운로드 🎙️", fontWeight = FontWeight.Bold) },
-            text = {
-                Text(
-                    "오프라인 음성 인식 모델(약 1.0GB)을 다운로드할까요?\n\n" +
-                    "다운로드 후 인터넷 연결 없이 음성(말)으로 일기를 자유롭게 작성할 수 있습니다.",
-                    fontSize = 14.sp, lineHeight = 20.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onIntent(DiaryIntent.DismissSherpaDownloadNotice)
-                        onIntent(DiaryIntent.StartSherpaDownload)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                ) {
-                    Text("다운로드 시작", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onIntent(DiaryIntent.DismissSherpaDownloadNotice) }) {
-                    Text("취소")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
+    // NOTE: LLM(Gemma)/Sherpa 다운로드 안내는 설정 진입 시 자동 모달로 띄우지 않는다.
+    // 안내는 (1) 목록 상단 알림 배너(AiStatusBar), (2) 각 페이지 다운로드, (3) 아래 설정 모델 카드 탭으로 제공.
 
     Scaffold(
         topBar = {
