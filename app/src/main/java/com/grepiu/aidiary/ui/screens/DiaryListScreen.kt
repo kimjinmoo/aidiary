@@ -353,6 +353,9 @@ fun DiaryListScreen(
     // 기록 필터링을 위한 선택된 타입 상태 (null은 전체)
     var selectedTypeFilter by remember { mutableStateOf<ContentType?>(null) }
 
+    // 기록 탭 보기 모드 (리스트/블로그/달력) — 공통 헤더 및 주간 스트립 표시 여부에 공유되므로 상위로 호이스팅.
+    var diaryViewMode by rememberSaveable { mutableStateOf(DiaryViewMode.LIST) }
+
     var isSearchFocused by remember { mutableStateOf(false) }
     var isChatInputFocused by remember { mutableStateOf(false) }
     val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && state.activeTab == "DIARY"
@@ -449,24 +452,27 @@ fun DiaryListScreen(
                         )
 
                         // A. 글래스모피즘 캘린더 스트립 컨테이너
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                            tonalElevation = 1.dp,
-                            shadowElevation = 2.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            WeeklyCalendarStrip(
-                                days = calendarDays,
-                                selectedDateStr = state.selectedDateString,
-                                diaries = state.diaries,
-                                plannerTasks = state.plannerTasks,
-                                goals = state.goals,
-                                onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
-                            )
+                        // 기록 탭이 블로그/달력 보기일 때는 자체 날짜 탐색 UI(피드/월간 그리드)가 있으므로 주간 스트립을 숨긴다.
+                        if (!(state.activeTab == "DIARY" && diaryViewMode != DiaryViewMode.LIST)) {
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                tonalElevation = 1.dp,
+                                shadowElevation = 2.dp,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                            ) {
+                                WeeklyCalendarStrip(
+                                    days = calendarDays,
+                                    selectedDateStr = state.selectedDateString,
+                                    diaries = state.diaries,
+                                    plannerTasks = state.plannerTasks,
+                                    goals = state.goals,
+                                    onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
+                                )
+                            }
                         }
                     }
                 }
@@ -509,6 +515,8 @@ fun DiaryListScreen(
                             state = state,
                             selectedTypeFilter = selectedTypeFilter,
                             onTypeFilterChange = { selectedTypeFilter = it },
+                            viewMode = diaryViewMode,
+                            onViewModeChange = { diaryViewMode = it },
                             onSelectDiary = onSelectDiary,
                             onLoadMore = { onIntent(DiaryIntent.LoadMoreDiaries) },
                             onWriteDiary = { contentType -> onWriteDiary(contentType) },
@@ -1447,6 +1455,8 @@ fun DiaryTabContent(
     state: DiaryState,
     selectedTypeFilter: ContentType?,
     onTypeFilterChange: (ContentType?) -> Unit,
+    viewMode: DiaryViewMode,
+    onViewModeChange: (DiaryViewMode) -> Unit,
     onSelectDiary: (DiaryMeta) -> Unit,
     onLoadMore: () -> Unit,
     onWriteDiary: (ContentType) -> Unit,
@@ -1496,7 +1506,6 @@ fun DiaryTabContent(
 
     val focusManager = LocalFocusManager.current
     val lazyListState = rememberLazyListState()
-    var viewMode by rememberSaveable { mutableStateOf(DiaryViewMode.LIST) }
 
     LaunchedEffect(lazyListState.isScrollInProgress) {
         if (lazyListState.isScrollInProgress) {
@@ -1507,6 +1516,20 @@ fun DiaryTabContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
+        // 공통 헤더 — 타입 필터 + 보기 모드 토글. LIST/BLOG/CALENDAR 3모드에서 항상 고정 표시.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+        ) {
+            DiaryTypeFilterRow(
+                selectedTypeFilter = selectedTypeFilter,
+                onTypeFilterChange = onTypeFilterChange,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(8.dp))
+            ViewModeToggle(mode = viewMode, onModeChange = onViewModeChange)
+        }
+
         when (viewMode) {
             DiaryViewMode.LIST -> {
         LazyColumn(
@@ -1514,94 +1537,38 @@ fun DiaryTabContent(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             modifier = Modifier.weight(1f)
         ) {
-            // 타입 필터 칩 — 심플하고 프로페셔널한 FilterChip 기반
+            // 선택일 날짜 타이틀 + 기록 수 배지 (보기 모드 토글/타입 필터는 공통 헤더로 이동됨)
             item {
-                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        val typeName = when {
-                            isSearchMode -> "'${state.searchQuery}' 검색 결과"
-                            selectedTypeFilter == ContentType.DIARY -> "일기"
-                            selectedTypeFilter == ContentType.POST -> "새 글"
-                            selectedTypeFilter == ContentType.NOTE -> "메모"
-                            else -> "전체 기록"
-                        }
-                        Text(
-                            text = if (isSearchMode) typeName
-                                   else parsedDateText,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                        ) {
-                            Text(
-                                text = "${filteredDiaries.size}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                            )
-                        }
-                        Spacer(Modifier.weight(1f))
-                        ViewModeToggle(mode = viewMode, onModeChange = { viewMode = it })
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)
+                ) {
+                    val typeName = when {
+                        isSearchMode -> "'${state.searchQuery}' 검색 결과"
+                        selectedTypeFilter == ContentType.DIARY -> "일기"
+                        selectedTypeFilter == ContentType.POST -> "새 글"
+                        selectedTypeFilter == ContentType.NOTE -> "메모"
+                        else -> "전체 기록"
                     }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // FilterChip row
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    Text(
+                        text = if (isSearchMode) typeName
+                               else parsedDateText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                     ) {
-                        val chips = listOf(
-                            Triple(null as ContentType?, "전체", Icons.AutoMirrored.Filled.MenuBook),
-                            Triple(ContentType.DIARY, "일기", Icons.AutoMirrored.Filled.MenuBook),
-                            Triple(ContentType.POST, "새 글", Icons.Default.EditNote),
-                            Triple(ContentType.NOTE, "메모", Icons.Default.NoteAlt),
+                        Text(
+                            text = "${filteredDiaries.size}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
-                        chips.forEach { (type, label, icon) ->
-                            val selected = selectedTypeFilter == type
-                            // 콘텐츠 타입별 고유색으로 필터칩 구분 (전체=primary, 일기=로즈, 새글=모브, 메모=세이지)
-                            val chipColor = when (type) {
-                                ContentType.DIARY -> DiaryTypeColor
-                                ContentType.POST -> PostTypeColor
-                                ContentType.NOTE -> NoteTypeColor
-                                else -> MaterialTheme.colorScheme.primary
-                            }
-                            FilterChip(
-                                selected = selected,
-                                onClick = { onTypeFilterChange(type) },
-                                label = {
-                                    Text(
-                                        label,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                        // 미선택 라벨도 타입색으로 은은하게 물들여 구분
-                                        color = if (selected) Color.White else chipColor
-                                    )
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        icon,
-                                        label,
-                                        // 선택: 흰색(타입색 배경 위) / 미선택: 타입색 아이콘
-                                        tint = if (selected) Color.White else chipColor,
-                                        modifier = Modifier.size(if (selected) 16.dp else 14.dp)
-                                    )
-                                },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = chipColor,
-                                    selectedLabelColor = Color.White,
-                                    selectedLeadingIconColor = Color.White,
-                                ),
-                            )
-                        }
                     }
                 }
             }
@@ -3883,6 +3850,67 @@ fun WriteActionBar(
 
             // 시스템 네비게이션 바 여백
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * 기록 타입 필터 칩 행 — 심플하고 프로페셔널한 FilterChip 기반.
+ * LIST/BLOG/CALENDAR 3모드 공통 헤더에서 사용되며, 좁은 화면에서 칩이 잘리지 않도록 가로 스크롤을 적용한다.
+ */
+@Composable
+private fun DiaryTypeFilterRow(
+    selectedTypeFilter: ContentType?,
+    onTypeFilterChange: (ContentType?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+    ) {
+        val chips = listOf(
+            Triple(null as ContentType?, "전체", Icons.AutoMirrored.Filled.MenuBook),
+            Triple(ContentType.DIARY, "일기", Icons.AutoMirrored.Filled.MenuBook),
+            Triple(ContentType.POST, "새 글", Icons.Default.EditNote),
+            Triple(ContentType.NOTE, "메모", Icons.Default.NoteAlt),
+        )
+        chips.forEach { (type, label, icon) ->
+            val selected = selectedTypeFilter == type
+            // 콘텐츠 타입별 고유색으로 필터칩 구분 (전체=primary, 일기=로즈, 새글=모브, 메모=세이지)
+            val chipColor = when (type) {
+                ContentType.DIARY -> DiaryTypeColor
+                ContentType.POST -> PostTypeColor
+                ContentType.NOTE -> NoteTypeColor
+                else -> MaterialTheme.colorScheme.primary
+            }
+            FilterChip(
+                selected = selected,
+                onClick = { onTypeFilterChange(type) },
+                label = {
+                    Text(
+                        label,
+                        fontSize = 13.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        // 미선택 라벨도 타입색으로 은은하게 물들여 구분
+                        color = if (selected) Color.White else chipColor
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        icon,
+                        label,
+                        // 선택: 흰색(타입색 배경 위) / 미선택: 타입색 아이콘
+                        tint = if (selected) Color.White else chipColor,
+                        modifier = Modifier.size(if (selected) 16.dp else 14.dp)
+                    )
+                },
+                shape = RoundedCornerShape(10.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = chipColor,
+                    selectedLabelColor = Color.White,
+                    selectedLeadingIconColor = Color.White,
+                ),
+            )
         }
     }
 }
