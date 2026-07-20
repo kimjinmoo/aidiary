@@ -821,6 +821,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 llmEngine?.clearChat()
                 _state.update { it.copy(chatMessages = emptyList()) }
             }
+            is DiaryIntent.RequestAiPreset -> {
+                runAiPreset(intent.kind)
+            }
         }
     }
 
@@ -2241,7 +2244,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
      *  - 컨텍스트 빌더 [DiaryLLMEngine.buildChatContextBlock] 로 RAG 블록을 표준화
      *  - 일기 RAG 컨텍스트는 평문이 길어 maxChars 적용 + 핵심 정보만 추출
      */
-    private fun runOnDeviceChat(query: String) {
+    /**
+     * 챗 스트리밍 공통 골격. [userMessage] 를 대화에 추가하고, [buildContext] 로 만든
+     * 컨텍스트 블록과 [llmPrompt] 로 [DiaryLLMEngine.generateChatResponse] 를 스트리밍한다.
+     * 자유 대화(runOnDeviceChat)와 프리셋 질의(runAiPreset)가 공유한다.
+     */
+    private fun streamChat(userMessage: String, llmPrompt: String, buildContext: suspend () -> String) {
         val currentState = _state.value
         val engine = llmEngine
         if (engine == null || !currentState.isModelReady) {
@@ -2251,11 +2259,58 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         chatJob?.cancel()
 
-        val userMsg = ChatMessage("USER", query)
+        val userMsg = ChatMessage("USER", userMessage)
         val aiMsg = ChatMessage("AI", "생각 중...")
         _state.update { it.copy(chatMessages = it.chatMessages + userMsg + aiMsg) }
 
         chatJob = viewModelScope.launch {
+            val contextBlock = buildContext()
+
+            var hasStartedOutput = false
+            engine.onTokenReceived = { token, done ->
+                _state.update { current ->
+                    val list = current.chatMessages.toMutableList()
+                    if (list.isNotEmpty()) {
+                        val last = list.last()
+                        if (last.sender == "AI") {
+                            val newText = if (!hasStartedOutput) {
+                                hasStartedOutput = true
+                                token
+                            } else {
+                                last.text + token
+                            }
+                            list[list.size - 1] = last.copy(
+                                text = newText.replace("\\n", "\n").replace("\\t", " ")
+                            )
+                        }
+                    }
+                    current.copy(
+                        chatMessages = list,
+                        isGeneratingChat = !done
+                    )
+                }
+            }
+
+            try {
+                engine.generateChatResponse(contextBlock, llmPrompt)
+            } catch (e: Exception) {
+                _state.update { current ->
+                    val list = current.chatMessages.toMutableList()
+                    if (list.isNotEmpty() && list.last().sender == "AI") {
+                        list[list.size - 1] = list.last().copy(text = "[답변을 생성할 수 없습니다: ${e.message}]")
+                    }
+                    current.copy(chatMessages = list, isGeneratingChat = false)
+                }
+            }
+        }
+    }
+
+    private fun runOnDeviceChat(query: String) {
+        val engine = llmEngine ?: run {
+            sendEffect(DiaryEffect.ShowToast("AI 모델이 아직 준비되지 않았습니다."))
+            return
+        }
+        streamChat(userMessage = query, llmPrompt = query) {
             val cleanQuery = query.trim().lowercase()
             val keywords = cleanQuery.split("\\s+".toRegex())
                 .filter { it.length > 1 }
@@ -2316,42 +2371,66 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 matchedGoals = goalLines
             )
 
-            var hasStartedOutput = false
-            engine.onTokenReceived = { token, done ->
-                _state.update { current ->
-                    val list = current.chatMessages.toMutableList()
-                    if (list.isNotEmpty()) {
-                        val last = list.last()
-                        if (last.sender == "AI") {
-                            val newText = if (!hasStartedOutput) {
-                                hasStartedOutput = true
-                                token
-                            } else {
-                                last.text + token
-                            }
-                            list[list.size - 1] = last.copy(
-                                text = newText.replace("\\n", "\n").replace("\\t", " ")
-                            )
-                        }
-                    }
-                    current.copy(
-                        chatMessages = list,
-                        isGeneratingChat = !done
-                    )
-                }
-            }
+            contextBlock
+        }
+    }
 
-            try {
-                engine.generateChatResponse(contextBlock, query)
-            } catch (e: Exception) {
-                _state.update { current ->
-                    val list = current.chatMessages.toMutableList()
-                    if (list.isNotEmpty() && list.last().sender == "AI") {
-                        list[list.size - 1] = list.last().copy(text = "[답변을 생성할 수 없습니다: ${e.message}]")
-                    }
-                    current.copy(chatMessages = list, isGeneratingChat = false)
-                }
+    /**
+     * AI 프리셋 질의 — 날짜범위 기록을 컨텍스트로 만들어 요약을 챗 스트림에 출력.
+     * @param kind "WEEK_SUMMARY" | "MONTH_EMOTION" | "RECENT"
+     */
+    private fun runAiPreset(kind: String) {
+        if (!requireReadyModel()) return
+        viewModelScope.launch {
+            val payload = buildPresetPayload(kind)
+            if (payload == null || payload.third.isBlank()) {
+                sendEffect(DiaryEffect.ShowToast("요약할 기록이 부족해요."))
+                return@launch
             }
+            val (label, prompt, context) = payload
+            streamChat(userMessage = label, llmPrompt = prompt) { context }
+        }
+    }
+
+    /** 프리셋 kind → (대화에 표시할 라벨, LLM 프롬프트, 컨텍스트 블록). 데이터 없으면 null. */
+    private suspend fun buildPresetPayload(kind: String): Triple<String, String, String>? {
+        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val todayStr = fmt.format(Date())
+        fun metaLine(m: DiaryMeta): String {
+            val dateStr = fmt.format(Date(m.timestamp))
+            val emotion = if (m.emotion.isBlank() || m.emotion == "Neutral") "" else " [감정: ${m.emotion}]"
+            val preview = com.grepiu.aidiary.data.slm.LLMContextBuilder.truncateChars(m.contentPreview, CHAT_DIARY_CONTENT_CHARS)
+            return "- $dateStr ${m.title}$emotion: $preview"
+        }
+        return when (kind) {
+            "WEEK_SUMMARY" -> {
+                val (start, end) = com.grepiu.aidiary.ui.util.weekRangeMillis(todayStr)
+                val metas = withContext(Dispatchers.IO) { repository.metasForRange(start, end) }
+                if (metas.isEmpty()) return null
+                val ctx = "[이번 주 기록 ${metas.size}건]\n" +
+                    metas.sortedBy { it.timestamp }.take(PRESET_ENTRY_LIMIT).joinToString("\n") { metaLine(it) }
+                Triple("이번주 써머리", "위 이번 주 기록들을 바탕으로 한 주를 3~4문장으로 따뜻하게 요약해줘.", ctx)
+            }
+            "MONTH_EMOTION" -> {
+                val (start, end) = com.grepiu.aidiary.ui.util.monthRangeMillis(todayStr)
+                val metas = withContext(Dispatchers.IO) { repository.metasForRange(start, end) }
+                if (metas.isEmpty()) return null
+                val emotionStats = metas.filter { it.emotion.isNotBlank() && it.emotion != "Neutral" }
+                    .groupingBy { it.emotion }.eachCount()
+                    .entries.sortedByDescending { it.value }
+                    .joinToString(", ") { "${it.key} ${it.value}건" }
+                val ctx = "[이번 달 기록 ${metas.size}건]\n" +
+                    "감정 분포: ${if (emotionStats.isBlank()) "감정 기록 없음" else emotionStats}\n\n" +
+                    metas.sortedBy { it.timestamp }.take(PRESET_ENTRY_LIMIT).joinToString("\n") { metaLine(it) }
+                Triple("이번달 감정", "위 이번 달 기록의 감정 흐름을 분석하고 3~4문장으로 요약해줘.", ctx)
+            }
+            "RECENT" -> {
+                val metas = _state.value.diaries.take(PRESET_ENTRY_LIMIT)
+                if (metas.isEmpty()) return null
+                val ctx = "[최근 기록 ${metas.size}건]\n" + metas.joinToString("\n") { metaLine(it) }
+                Triple("최근 기록", "위 최근 기록들을 3~4문장으로 요약해줘.", ctx)
+            }
+            else -> null
         }
     }
 
@@ -3060,6 +3139,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         private const val CHAT_TASK_CONTEXT_LIMIT = 3
         private const val CHAT_GOAL_CONTEXT_LIMIT = 3
         private const val CHAT_DIARY_CONTENT_CHARS = 80
+
+        // AI 프리셋(주/월 요약) 컨텍스트에 넣을 최대 기록 수. 1024 토큰 한도 고려.
+        private const val PRESET_ENTRY_LIMIT = 12
 
         private const val MODEL_DOWNLOAD_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"

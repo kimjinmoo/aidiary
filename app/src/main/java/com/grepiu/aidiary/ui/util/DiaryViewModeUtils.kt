@@ -27,6 +27,33 @@ fun dayRangeMillis(dateString: String): Pair<Long, Long> {
     return start to cal.timeInMillis
 }
 
+/** "yyyy-MM-dd" 가 속한 주(월요일 시작) 00:00(포함) ~ 다음 주 월요일 00:00(제외) 밀리초. */
+fun weekRangeMillis(dateString: String): Pair<Long, Long> {
+    val cal = Calendar.getInstance()
+    cal.time = dateFmt().parse(dateString) ?: Date(0)
+    cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+    // DAY_OF_WEEK: 일=1 … 토=7. 월요일까지 되돌릴 일수.
+    val diffToMonday = if (cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY) 6
+        else cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY
+    cal.add(Calendar.DAY_OF_MONTH, -diffToMonday)
+    val start = cal.timeInMillis
+    cal.add(Calendar.DAY_OF_MONTH, 7)
+    return start to cal.timeInMillis
+}
+
+/** "yyyy-MM-dd" 가 속한 달 1일 00:00(포함) ~ 다음 달 1일 00:00(제외) 밀리초. */
+fun monthRangeMillis(dateString: String): Pair<Long, Long> {
+    val cal = Calendar.getInstance()
+    cal.time = dateFmt().parse(dateString) ?: Date(0)
+    cal.set(Calendar.DAY_OF_MONTH, 1)
+    cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
+    cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+    val start = cal.timeInMillis
+    cal.add(Calendar.MONTH, 1)
+    return start to cal.timeInMillis
+}
+
 /** 메타 목록 → 기록 있는 날짜(yyyy-MM-dd) 집합 */
 fun metasToDateSet(metas: List<DiaryMeta>): Set<String> =
     metas.mapTo(HashSet()) { dateStringOf(it.timestamp) }

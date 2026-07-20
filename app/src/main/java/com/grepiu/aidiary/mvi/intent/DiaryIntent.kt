@@ -194,6 +194,11 @@ sealed interface DiaryIntent {
     data class SendChatMessage(val text: String) : DiaryIntent
     /** 챗봇 대화 기록을 초기화합니다. */
     data object ClearChatHistory : DiaryIntent
+    /**
+     * AI 프리셋 질의를 실행합니다 (날짜범위 컨텍스트 기반 요약을 챗 스트림으로 출력).
+     * @param kind "WEEK_SUMMARY" | "MONTH_EMOTION" | "RECENT"
+     */
+    data class RequestAiPreset(val kind: String) : DiaryIntent
 
     // ===== 작성 보조 AI 액션 =====
     /** 본문으로 한국어 제목 자동 생성. */

@@ -21,6 +21,26 @@ class DiaryViewModeUtilsTest {
     }
 
     @Test
+    fun weekRange_startsMonday_spansSevenDays() {
+        // 2026-07-20 은 월요일
+        val (startMon, endMon) = weekRangeMillis("2026-07-20")
+        assertEquals("2026-07-20", dateStringOf(startMon))
+        assertEquals("2026-07-27", dateStringOf(endMon))
+        // 같은 주 일요일(2026-07-26) 도 동일한 주 범위로 접힘
+        val (startSun, endSun) = weekRangeMillis("2026-07-26")
+        assertEquals("2026-07-20", dateStringOf(startSun))
+        assertEquals("2026-07-27", dateStringOf(endSun))
+    }
+
+    @Test
+    fun monthRange_coversWholeMonth() {
+        val (start, end) = monthRangeMillis("2026-07-20")
+        assertEquals("2026-07-01", dateStringOf(start))
+        assertEquals("2026-08-01", dateStringOf(end))
+        assertTrue(end > start)
+    }
+
+    @Test
     fun metasToDateSet_collectsDistinctDates() {
         val day1 = 1_800_000_000_000L
         val sameDayLater = day1 + 3_600_000L

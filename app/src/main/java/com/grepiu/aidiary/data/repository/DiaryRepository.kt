@@ -84,6 +84,10 @@ class DiaryRepository(
         return dao.metasForDateRange(start, end).map { it.toDiaryMeta() }
     }
 
+    /** [startMillis](포함) ~ [endMillis](제외) 범위의 기록 메타. 주/월 요약 컨텍스트용. */
+    suspend fun metasForRange(startMillis: Long, endMillis: Long): List<DiaryMeta> =
+        dao.metasForDateRange(startMillis, endMillis).map { it.toDiaryMeta() }
+
     /**
      * 단건 메타. 존재하지 않으면 null.
      */

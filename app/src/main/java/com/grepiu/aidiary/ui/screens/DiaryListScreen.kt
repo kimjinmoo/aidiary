@@ -360,11 +360,13 @@ fun DiaryListScreen(
     // 전역 보기 모드 (리스트/블로그/달력) — 전체 화면을 인수한다. 블로그/달력은 일기+계획+목표 통합 피드.
     var globalViewMode by rememberSaveable { mutableStateOf(DiaryViewMode.LIST) }
 
+    // AI 비서 바텀시트 표시 여부 — 헤더 좌측 AI 버튼으로 열림. 어느 보기 모드에서든 접근.
+    var showAiSheet by rememberSaveable { mutableStateOf(false) }
+
     var isSearchFocused by remember { mutableStateOf(false) }
-    var isChatInputFocused by remember { mutableStateOf(false) }
     val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && state.activeTab == "DIARY"
-    // 헤더/캘린더/탭셀렉터 숨김 (검색 또는 AI 비서 입력 포커스 시). TopAppBar는 항상 표시.
-    val isHeaderHidden = isSearchActive || (isChatInputFocused && state.activeTab == "CHAT")
+    // 헤더/캘린더/탭셀렉터 숨김 (검색 포커스 시). AI는 바텀시트라 헤더에 영향 없음. TopAppBar는 항상 표시.
+    val isHeaderHidden = isSearchActive
 
     // 스크롤 기반 헤더 접힘(collapse). 스탯카드+캘린더만 접고 탭바는 sticky 유지.
     // isHeaderHidden(검색/챗 포커스) 와 별개로 동작한다.
@@ -397,7 +399,7 @@ fun DiaryListScreen(
                 onShowBackupDialog = { showBackupDialog = it },
                 context = context,
                 isSearchActive = isSearchActive || isSearchFocused,
-                isChatFocused = isChatInputFocused && state.activeTab == "CHAT",
+                isChatFocused = false,
                 isDiaryTab = state.activeTab == "DIARY",
                 onSearchClick = {
                     isSearchFocused = true
@@ -428,12 +430,27 @@ fun DiaryListScreen(
                     )
                 )
         ) {
-            // 전역 보기 모드 토글 — 우측 정렬, 헤더 숨김이 아닐 때만. LIST/BLOG/CALENDAR 전체 화면을 전환.
+            // 전역 헤더 — 좌측 AI 비서 버튼 + 우측 보기 모드 토글(LIST/BLOG/CALENDAR). 헤더 숨김이 아닐 때만.
             if (!isHeaderHidden) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    FilledIconButton(
+                        onClick = { showAiSheet = true },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = "AI 비서",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     ViewModeToggle(mode = globalViewMode, onModeChange = { globalViewMode = it })
                 }
             }
@@ -490,7 +507,7 @@ fun DiaryListScreen(
                     }
                 }
 
-            // B. 세그먼티드 탭 셀렉터 (다이어리, 플래너, 나의 목표, AI 비서) — sticky (접히지 않음)
+            // B. 세그먼티드 탭 셀렉터 (다이어리, 플래너, 나의 목표) — sticky (접히지 않음). AI는 헤더 버튼으로 분리.
             TabSelector(
                 activeTab = state.activeTab,
                 onTabSelect = { onIntent(DiaryIntent.ChangeTab(it)) }
@@ -507,7 +524,7 @@ fun DiaryListScreen(
                     .nestedScroll(collapseScrollConnection)
                     .padding(horizontal = 16.dp)
             ) {
-                val tabOrder = remember { listOf("DIARY", "PLANNER", "GOALS", "CHAT") }
+                val tabOrder = remember { listOf("DIARY", "PLANNER", "GOALS") }
                 AnimatedContent(
                     targetState = state.activeTab,
                     transitionSpec = {
@@ -600,16 +617,6 @@ fun DiaryListScreen(
                             onRequestBriefing = { onIntent(DiaryIntent.RequestBriefing("GOALS")) }
                         )
                     }
-                    "CHAT" -> {
-                        // AI 비서 RAG 챗봇 탭 렌더링
-                        ChatTabContent(
-                            state = state,
-                            onSendChat = { onIntent(DiaryIntent.SendChatMessage(it)) },
-                            onClearHistory = { onIntent(DiaryIntent.ClearChatHistory) },
-                            onInputFocusChange = { isChatInputFocused = it },
-                            onStartDownload = onStartDownload
-                        )
-                    }
                     }
                 }
             }
@@ -637,6 +644,18 @@ fun DiaryListScreen(
                         )
                     }
                 }
+            }
+
+            // AI 비서 바텀시트 — 헤더 좌측 버튼으로 열림. 프리셋 칩 + 기존 챗봇 UI 재사용.
+            if (showAiSheet) {
+                AiAssistantSheet(
+                    state = state,
+                    onDismiss = { showAiSheet = false },
+                    onSendChat = { onIntent(DiaryIntent.SendChatMessage(it)) },
+                    onClearHistory = { onIntent(DiaryIntent.ClearChatHistory) },
+                    onPreset = { kind -> onIntent(DiaryIntent.RequestAiPreset(kind)) },
+                    onStartDownload = onStartDownload
+                )
             }
         }
     }
@@ -1365,8 +1384,7 @@ fun TabSelector(
         listOf(
             Triple("DIARY", "기록", Icons.AutoMirrored.Filled.MenuBook),
             Triple("PLANNER", "계획", Icons.Default.DateRange),
-            Triple("GOALS", "목표", Icons.Default.TaskAlt),
-            Triple("CHAT", "AI 비서", Icons.Default.Star)
+            Triple("GOALS", "목표", Icons.Default.TaskAlt)
         )
     }
     val selectedIndex = remember(activeTab) {
@@ -1389,9 +1407,7 @@ fun TabSelector(
                 .height(42.dp)
         ) {
             val maxWidth = this.maxWidth
-            val tabWidth = maxWidth / 4
-            // 소형/저해상도 폰에서 긴 라벨(AI 비서)이 잘리지 않도록 축약
-            val narrowTabs = maxWidth < 380.dp
+            val tabWidth = maxWidth / 3
 
             // 슬라이딩 백그라운드 인디케이터
             val indicatorOffset by androidx.compose.animation.core.animateDpAsState(
@@ -1462,7 +1478,7 @@ fun TabSelector(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (narrowTabs && tabId == "CHAT") "AI" else label,
+                                text = label,
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = itemTextColor,
@@ -3037,6 +3053,94 @@ fun GoalItemRow(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * AI 비서 바텀시트 — 헤더 좌측 AI 버튼으로 열림. 상단 프리셋 칩 + 기존 [ChatTabContent] 재사용.
+ * 어느 보기 모드(목록/블로그/달력)에서든 접근 가능.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AiAssistantSheet(
+    state: DiaryState,
+    onDismiss: () -> Unit,
+    onSendChat: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    onPreset: (String) -> Unit,
+    onStartDownload: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.92f)
+                .fillMaxWidth()
+                .imePadding()
+        ) {
+            // 헤더: 타이틀 + 대화 초기화
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "AI 비서",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.weight(1f))
+                if (state.chatMessages.isNotEmpty()) {
+                    TextButton(onClick = onClearHistory) { Text("대화 초기화") }
+                }
+            }
+
+            // 프리셋 칩 — 원터치 요약 질의
+            val presets = listOf(
+                "WEEK_SUMMARY" to "이번주 써머리",
+                "MONTH_EMOTION" to "이번달 감정",
+                "RECENT" to "최근 기록"
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets.forEach { (kind, label) ->
+                    AssistChip(
+                        onClick = { if (!state.isGeneratingChat) onPreset(kind) },
+                        enabled = !state.isGeneratingChat,
+                        label = { Text(label) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+            }
+
+            // 기존 챗봇 UI 재사용 (메시지 스트림 + 입력창 + 모델 다운로드 CTA)
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                ChatTabContent(
+                    state = state,
+                    onSendChat = onSendChat,
+                    onClearHistory = onClearHistory,
+                    onStartDownload = onStartDownload
+                )
             }
         }
     }
