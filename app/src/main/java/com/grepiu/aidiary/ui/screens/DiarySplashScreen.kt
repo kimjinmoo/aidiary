@@ -10,19 +10,34 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.grepiu.aidiary.ui.theme.Pretendard
 import kotlinx.coroutines.delay
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * 앱 실행 시 표시되는 애니메이션 스플래시 화면입니다.
- * 스마트한 느낌의 그라데이션 우주 공간 테마와 궤도를 도는 인공지능 입자선,
- * 바운스 핏 로고 및 한글 폰트 타이포그래피 애니메이션이 가미되어 있습니다.
+ * 프리미엄 라이트 오로라 파스텔 스플래시 화면.
+ * 새 2030 타깃 밝은 App 아이콘과 동일한 톤앤무드(화이트 & 스카이블루 & 피치)로 리디자인.
+ *
+ * 애니메이션 구성:
+ *  1. 배경 - 부드럽게 살아있는 오로라 그라데이션 파형 (라이트 앰비언트 Blob 2개)
+ *  2. 아이콘 카드 - 그라스모피즘 카드 + 스케일 스프링 바운스 인트로 등장
+ *  3. 다이어리 아이콘 - 새 아이콘과 동일한 스타일(노트북+별빛) Canvas 드로잉
+ *  4. 회전 반짝임 링 - 아이콘 주위를 돌며 AI 연결성 시각화
+ *  5. 파티클 스파클 - 공간에 떠다니는 소형 AI 별 파티클 7개
+ *  6. 타이틀 슬라이드업 - 'AI 다이어리' 타이포그래피 바텀업 스무스 등장
+ *  7. 서브타이틀 & AI 뱃지 - 지연 페이드인 + 슬라이드업
+ *  8. 하단 로딩 인디케이터 - 부드러운 좌→우 스위핑 밝은 라인
  */
 @Composable
 fun DiarySplashScreen(
@@ -31,367 +46,637 @@ fun DiarySplashScreen(
 ) {
     var startAnimation by remember { mutableStateOf(false) }
 
-    // 메인 북 카드 로고 스케일/투명도 애니메이션 (바운스 효과)
-    val logoScale by animateFloatAsState(
-        targetValue = if (startAnimation) 1.5f else 0.4f,
+    // ────────────────────────────────────────────────────────────
+    // 1. 아이콘 카드 등장 애니메이션 (Spring Bounce)
+    // ────────────────────────────────────────────────────────────
+    val cardScale by animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0.3f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessLow
         ),
-        label = "logoScale"
+        label = "cardScale"
     )
-
-    val logoAlpha by animateFloatAsState(
+    val cardAlpha by animateFloatAsState(
         targetValue = if (startAnimation) 1f else 0f,
-        animationSpec = tween(800),
-        label = "logoAlpha"
+        animationSpec = tween(700, easing = FastOutSlowInEasing),
+        label = "cardAlpha"
     )
 
-    // 타이틀 텍스트 슬라이드 및 투명도 애니메이션
-    val textAlpha by animateFloatAsState(
+    // ────────────────────────────────────────────────────────────
+    // 2. 타이틀 슬라이드업
+    // ────────────────────────────────────────────────────────────
+    val titleAlpha by animateFloatAsState(
         targetValue = if (startAnimation) 1f else 0f,
-        animationSpec = tween(1000, delayMillis = 600),
-        label = "textAlpha"
+        animationSpec = tween(900, delayMillis = 500, easing = FastOutSlowInEasing),
+        label = "titleAlpha"
+    )
+    val titleSlideY by animateFloatAsState(
+        targetValue = if (startAnimation) 0f else 48f,
+        animationSpec = tween(900, delayMillis = 500, easing = FastOutSlowInEasing),
+        label = "titleSlideY"
     )
 
-    val textTranslationY by animateFloatAsState(
-        targetValue = if (startAnimation) 0f else 30f,
-        animationSpec = tween(1000, delayMillis = 600),
-        label = "textTranslation"
-    )
-
-    // 서브타이틀 투명도 애니메이션
+    // ────────────────────────────────────────────────────────────
+    // 3. 서브타이틀 페이드인
+    // ────────────────────────────────────────────────────────────
     val subtitleAlpha by animateFloatAsState(
         targetValue = if (startAnimation) 1f else 0f,
-        animationSpec = tween(1000, delayMillis = 1100),
+        animationSpec = tween(800, delayMillis = 900, easing = FastOutSlowInEasing),
         label = "subtitleAlpha"
     )
+    val subtitleSlideY by animateFloatAsState(
+        targetValue = if (startAnimation) 0f else 24f,
+        animationSpec = tween(800, delayMillis = 900, easing = FastOutSlowInEasing),
+        label = "subtitleSlideY"
+    )
 
-    // 무한 루프 애니메이션 효과들
-    val infiniteTransition = rememberInfiniteTransition(label = "aura")
-    
-    // AI 연산/연결성을 나타내는 두 개의 궤도(오빗) 회전각
-    val orbitRotation by infiniteTransition.animateFloat(
+    // ────────────────────────────────────────────────────────────
+    // 4. AI 뱃지 페이드인
+    // ────────────────────────────────────────────────────────────
+    val badgeAlpha by animateFloatAsState(
+        targetValue = if (startAnimation) 1f else 0f,
+        animationSpec = tween(800, delayMillis = 1200, easing = FastOutSlowInEasing),
+        label = "badgeAlpha"
+    )
+
+    // ────────────────────────────────────────────────────────────
+    // 5. 무한 애니메이션 (배경 Blob, 링 회전, 파티클, 로딩바)
+    // ────────────────────────────────────────────────────────────
+    val infiniteTransition = rememberInfiniteTransition(label = "inf")
+
+    // 배경 오로라 Blob 맥동
+    val blobPulse by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "blobPulse"
+    )
+
+    // 아이콘 주위 반짝임 링 회전
+    val ringRotation by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(8000, easing = LinearEasing)
+            animation = tween(7000, easing = LinearEasing)
         ),
-        label = "orbitRotation"
+        label = "ringRotation"
+    )
+    val ringRotationReverse by infiniteTransition.animateFloat(
+        initialValue = 360f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(11000, easing = LinearEasing)
+        ),
+        label = "ringRotationReverse"
     )
 
-    // 은은하게 깜빡이는 아우라 백그라운드
-    val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.3f,
-        targetValue = 0.8f,
+    // AI 별 파티클 부유 효과
+    val particleFloat by infiniteTransition.animateFloat(
+        initialValue = -8f,
+        targetValue = 8f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
+            animation = tween(2400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "glowAlpha"
+        label = "particleFloat"
     )
 
-    // AI 스파클의 가벼운 맥동(Pulse) 효과
-    val sparkScale by infiniteTransition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 1.15f,
+    // 아이콘 그라스 카드 은은한 맥동
+    val iconPulse by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
+            animation = tween(1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "sparkScale"
+        label = "iconPulse"
+    )
+
+    // 하단 로딩 스위퍼
+    val loaderProgress by infiniteTransition.animateFloat(
+        initialValue = -0.4f,
+        targetValue = 1.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600, easing = FastOutSlowInEasing)
+        ),
+        label = "loaderProgress"
     )
 
     LaunchedEffect(Unit) {
         startAnimation = true
-        delay(2500) // 약 2.5초간 진행 후 목록 화면으로 진입
+        delay(2800)
         onTimeout()
     }
 
+    // ════════════════════════════════════════════════════════════
+    // 메인 배경: 라이트 오로라 파스텔 그라데이션
+    // ════════════════════════════════════════════════════════════
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF0C091A), // 스마트한 느낌의 깊은 어두운 밤하늘
-                        Color(0xFF150F2B),
-                        Color(0xFF281E48)
+                        Color(0xFFFFFFFF),          // 최상단 화이트
+                        Color(0xFFF0F7FF),          // 연한 아이스 블루
+                        Color(0xFFE8F4FF),          // 하늘빛 화이트
+                        Color(0xFFFDF0F5),          // 연한 피치 로즈
+                        Color(0xFFFFF8F6),          // 따뜻한 화이트
                     )
                 )
             ),
         contentAlignment = Alignment.Center
     ) {
-        // 1. 네온 빛 입자(배경 데코레이션) 은은하게 렌더링
-        Canvas(modifier = Modifier.fillMaxSize().alpha(glowAlpha)) {
-            val canvasWidth = size.width
-            val canvasHeight = size.height
-            
-            // 왼쪽 위 오라
+
+        // ──────────────────────────────────────────────────────
+        // 레이어 1: 오로라 Blob 배경 (부드럽게 살아있는 느낌)
+        // ──────────────────────────────────────────────────────
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val t = blobPulse
+
+            // Blob 1: 좌상단 스카이 블루 오로라
             drawCircle(
-                color = Color(0xFF6E59C7),
-                radius = 180.dp.toPx(),
-                center = androidx.compose.ui.geometry.Offset(canvasWidth * 0.2f, canvasHeight * 0.3f),
-                style = Stroke(width = 0f),
-                alpha = 0.15f
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x55A8D8FF),
+                        Color(0x2272B5F0),
+                        Color(0x00A8D8FF)
+                    ),
+                    center = Offset(w * (0.15f + t * 0.08f), h * (0.2f - t * 0.05f)),
+                    radius = w * (0.55f + t * 0.1f)
+                ),
+                radius = w * (0.55f + t * 0.1f),
+                center = Offset(w * (0.15f + t * 0.08f), h * (0.2f - t * 0.05f))
             )
-            // 오른쪽 아래 오라
+
+            // Blob 2: 우하단 피치 핑크 오로라
             drawCircle(
-                color = Color(0xFF9070FF),
-                radius = 240.dp.toPx(),
-                center = androidx.compose.ui.geometry.Offset(canvasWidth * 0.8f, canvasHeight * 0.7f),
-                style = Stroke(width = 0f),
-                alpha = 0.12f
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x55FFB8C6),
+                        Color(0x22F99CB4),
+                        Color(0x00FFB8C6)
+                    ),
+                    center = Offset(w * (0.88f - t * 0.07f), h * (0.78f + t * 0.05f)),
+                    radius = w * (0.5f + t * 0.08f)
+                ),
+                radius = w * (0.5f + t * 0.08f),
+                center = Offset(w * (0.88f - t * 0.07f), h * (0.78f + t * 0.05f))
+            )
+
+            // Blob 3: 중앙 민트 오로라 (은은하게)
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x3396E8C8),
+                        Color(0x1168C9A6),
+                        Color(0x0096E8C8)
+                    ),
+                    center = Offset(w * 0.5f, h * 0.45f),
+                    radius = w * 0.4f
+                ),
+                radius = w * 0.4f,
+                center = Offset(w * 0.5f, h * 0.45f)
             )
         }
 
+        // ──────────────────────────────────────────────────────
+        // 레이어 2: 작은 AI 파티클 스파클들 (7개 랜덤 배치)
+        // ──────────────────────────────────────────────────────
+        val particles = remember {
+            listOf(
+                Triple(0.12f, 0.18f, 14f),  // (x비율, y비율, 크기)
+                Triple(0.85f, 0.12f, 10f),
+                Triple(0.92f, 0.42f, 8f),
+                Triple(0.08f, 0.62f, 12f),
+                Triple(0.78f, 0.78f, 9f),
+                Triple(0.20f, 0.85f, 7f),
+                Triple(0.60f, 0.10f, 11f),
+            )
+        }
+        Canvas(modifier = Modifier.fillMaxSize().alpha(subtitleAlpha)) {
+            val w = size.width
+            val h = size.height
+            particles.forEachIndexed { i, (rx, ry, sz) ->
+                val floatOffset = if (i % 2 == 0) particleFloat else -particleFloat
+                val cx = w * rx
+                val cy = h * ry + floatOffset * (0.6f + i * 0.1f)
+                val sPx = sz.dp.toPx()
+                // 4방향 스파클 별
+                val starPath = Path().apply {
+                    moveTo(cx, cy - sPx)
+                    quadraticTo(cx, cy, cx + sPx * 0.4f, cy)
+                    quadraticTo(cx, cy, cx, cy + sPx)
+                    quadraticTo(cx, cy, cx - sPx * 0.4f, cy)
+                    quadraticTo(cx, cy, cx, cy - sPx)
+                }
+                drawPath(
+                    starPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            if (i % 3 == 0) Color(0xFFFFD6A5) else if (i % 3 == 1) Color(0xFFB8E0FF) else Color(0xFFFFC8D8),
+                            Color.White
+                        ),
+                        start = Offset(cx - sPx, cy - sPx),
+                        end = Offset(cx + sPx, cy + sPx)
+                    ),
+                    alpha = 0.75f
+                )
+            }
+        }
+
+        // ──────────────────────────────────────────────────────
+        // 메인 컨텐츠 컬럼
+        // ──────────────────────────────────────────────────────
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize()
         ) {
-            // 2. 다이어리 로고 그래픽 레이아웃
+            Spacer(modifier = Modifier.weight(1f))
+
+            // ══════════════════════════════════════════════════
+            // 아이콘 영역: 그라스모피즘 카드 + 다이어리 Canvas
+            // ══════════════════════════════════════════════════
             Box(
                 modifier = Modifier
-                    .size(240.dp)
-                    .scale(logoScale)
-                    .alpha(logoAlpha),
+                    .size(200.dp)
+                    .scale(cardScale * iconPulse)
+                    .alpha(cardAlpha),
                 contentAlignment = Alignment.Center
             ) {
-                // 회전하는 점선 궤도 디자인 (Connectivity 느낌 부여)
+                // 링 1: 외곽 점선 회전 링 (시계방향)
                 Canvas(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer(rotationZ = orbitRotation)
+                        .size(200.dp)
+                        .graphicsLayer(rotationZ = ringRotation)
                 ) {
-                    val sizePx = size.width
-                    // 외곽 궤도
+                    val r = size.width / 2f - 4.dp.toPx()
                     drawCircle(
-                        color = Color(0xFF8A76FF),
-                        radius = (sizePx / 2) - 15.dp.toPx(),
-                        style = Stroke(
-                            width = 1.dp.toPx(),
-                            pathEffect = PathEffect.dashPathEffect(
-                                intervals = floatArrayOf(20f, 40f),
-                                phase = 0f
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color(0x00A8D8FF),
+                                Color(0x88A8D8FF),
+                                Color(0xFFFFB8C6),
+                                Color(0x88FFD6A5),
+                                Color(0x00A8D8FF),
                             )
                         ),
-                        alpha = 0.4f
-                    )
-                    // 내곽 궤도
-                    drawCircle(
-                        color = Color(0xFFD0BCFF),
-                        radius = (sizePx / 2) - 40.dp.toPx(),
+                        radius = r,
                         style = Stroke(
-                            width = 0.8.dp.toPx(),
+                            width = 2.dp.toPx(),
                             pathEffect = PathEffect.dashPathEffect(
-                                intervals = floatArrayOf(15f, 30f),
-                                phase = 15f
+                                floatArrayOf(18f, 22f), 0f
                             )
-                        ),
-                        alpha = 0.3f
+                        )
                     )
                 }
 
-                // 다이어리 노트 드로잉
+                // 링 2: 내곽 반시계방향 링 (피치 톤)
                 Canvas(
-                    modifier = Modifier.size(120.dp)
+                    modifier = Modifier
+                        .size(160.dp)
+                        .graphicsLayer(rotationZ = ringRotationReverse)
                 ) {
+                    val r = size.width / 2f - 4.dp.toPx()
+                    drawCircle(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color(0x00FFB8C6),
+                                Color(0x77FFB8C6),
+                                Color(0xFFB8E0FF),
+                                Color(0x00FFB8C6),
+                            )
+                        ),
+                        radius = r,
+                        style = Stroke(
+                            width = 1.5.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(
+                                floatArrayOf(10f, 18f), 0f
+                            )
+                        )
+                    )
+                }
+
+                // 아이콘 그라스모피즘 카드 배경
+                Canvas(modifier = Modifier.size(130.dp)) {
+                    val cardR = size.width / 2f
+                    // 카드 그림자 (Soft Shadow)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0x22A8C8FF), Color(0x00A8C8FF)),
+                            center = Offset(cardR + 4.dp.toPx(), cardR + 8.dp.toPx()),
+                            radius = cardR * 1.15f
+                        ),
+                        radius = cardR * 1.15f,
+                        center = Offset(cardR + 4.dp.toPx(), cardR + 8.dp.toPx())
+                    )
+                    // 카드 메인 (밝은 glassmorphism)
+                    drawRoundRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFF8FCFF),  // 상단 아이스 화이트
+                                Color(0xFFFEF6F8),  // 하단 피치 화이트
+                            ),
+                            start = Offset(0f, 0f),
+                            end = Offset(size.width, size.height)
+                        ),
+                        cornerRadius = CornerRadius(28.dp.toPx()),
+                        size = size
+                    )
+                    // 카드 테두리 (thin gradient stroke)
+                    drawRoundRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xCCB8E0FF),
+                                Color(0xCCFFB8C6),
+                                Color(0xCCFFD6A5),
+                            )
+                        ),
+                        cornerRadius = CornerRadius(28.dp.toPx()),
+                        size = size,
+                        style = Stroke(width = 1.5.dp.toPx())
+                    )
+                }
+
+                // 다이어리 노트 + AI 스타 Canvas 드로잉 (새 아이콘과 동일 무드)
+                Canvas(modifier = Modifier.size(74.dp)) {
                     val w = size.width
                     val h = size.height
 
-                    // 다이어리 바디
-                    val bookLeft = w * 0.28f
-                    val bookTop = h * 0.26f
-                    val bookW = w * 0.44f
-                    val bookH = h * 0.54f
-
-                    // 그림자 효과
+                    // ── 다이어리 페이지 그림자
                     val shadowPath = Path().apply {
                         addRoundRect(
-                            androidx.compose.ui.geometry.RoundRect(
-                                left = bookLeft + 5.dp.toPx(),
-                                top = bookTop + 5.dp.toPx(),
-                                right = bookLeft + bookW + 5.dp.toPx(),
-                                bottom = bookTop + bookH + 5.dp.toPx(),
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+                            RoundRect(
+                                left = w * 0.22f + 3.dp.toPx(),
+                                top = h * 0.12f + 4.dp.toPx(),
+                                right = w * 0.22f + w * 0.60f + 3.dp.toPx(),
+                                bottom = h * 0.12f + h * 0.72f + 4.dp.toPx(),
+                                cornerRadius = CornerRadius(8.dp.toPx())
                             )
                         )
                     }
-                    drawPath(shadowPath, Color(0x40000000))
+                    drawPath(shadowPath, Color(0x18779ABF))
 
-                    // 다이어리 커버 둥근 사각형
-                    val bookPath = Path().apply {
+                    // ── 다이어리 커버 (스카이 블루 ~ 화이트 그라데이션)
+                    val coverPath = Path().apply {
                         addRoundRect(
-                            androidx.compose.ui.geometry.RoundRect(
-                                left = bookLeft,
-                                top = bookTop,
-                                right = bookLeft + bookW,
-                                bottom = bookTop + bookH,
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(10.dp.toPx())
+                            RoundRect(
+                                left = w * 0.22f,
+                                top = h * 0.12f,
+                                right = w * 0.22f + w * 0.60f,
+                                bottom = h * 0.12f + h * 0.72f,
+                                cornerRadius = CornerRadius(8.dp.toPx())
                             )
                         )
                     }
-                    
-                    val bookGradient = Brush.linearGradient(
-                        colors = listOf(Color(0xFFEBE6FF), Color(0xFFCBBDFD)),
-                        start = androidx.compose.ui.geometry.Offset(bookLeft, bookTop),
-                        end = androidx.compose.ui.geometry.Offset(bookLeft + bookW, bookTop + bookH)
+                    drawPath(
+                        coverPath,
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFFE8F6FF),
+                                Color(0xFFFDF8FF),
+                                Color(0xFFFFF0F4),
+                            ),
+                            start = Offset(w * 0.22f, h * 0.12f),
+                            end = Offset(w * 0.82f, h * 0.84f)
+                        )
                     )
-                    drawPath(bookPath, bookGradient)
-
-                    // 얇은 테두리선
-                    drawPath(bookPath, Color(0xFFE2DCFF), alpha = 0.8f, style = Stroke(width = 1.5.dp.toPx()))
-
-                    // 다이어리 내 필기 느낌선 (언제 어디서든 입력을 연상)
-                    val lineStartX = bookLeft + 12.dp.toPx()
-                    val lineEndX = bookLeft + bookW - 12.dp.toPx()
-                    val lineY1 = bookTop + 18.dp.toPx()
-                    val lineY2 = bookTop + 28.dp.toPx()
-                    val lineY3 = bookTop + 38.dp.toPx()
-                    val lineY4 = bookTop + 48.dp.toPx()
-
-                    drawLine(
-                        color = Color(0x66504675),
-                        start = androidx.compose.ui.geometry.Offset(lineStartX, lineY1),
-                        end = androidx.compose.ui.geometry.Offset(lineEndX, lineY1),
-                        strokeWidth = 1.8.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                    drawLine(
-                        color = Color(0x66504675),
-                        start = androidx.compose.ui.geometry.Offset(lineStartX, lineY2),
-                        end = androidx.compose.ui.geometry.Offset(lineEndX, lineY2),
-                        strokeWidth = 1.8.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                    drawLine(
-                        color = Color(0x66504675),
-                        start = androidx.compose.ui.geometry.Offset(lineStartX, lineY3),
-                        end = androidx.compose.ui.geometry.Offset(lineEndX - 15.dp.toPx(), lineY3),
-                        strokeWidth = 1.8.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                    drawLine(
-                        color = Color(0x33504675),
-                        start = androidx.compose.ui.geometry.Offset(lineStartX, lineY4),
-                        end = androidx.compose.ui.geometry.Offset(lineEndX - 10.dp.toPx(), lineY4),
-                        strokeWidth = 1.8.dp.toPx(),
-                        cap = StrokeCap.Round
+                    // 커버 테두리
+                    drawPath(
+                        coverPath,
+                        Color(0xAABBDDF0),
+                        style = Stroke(width = 1.2.dp.toPx())
                     )
 
-                    // 좌측 스프링 제본용 링들
-                    val ringX = bookLeft
-                    for (i in 0..4) {
-                        val ringY = bookTop + 11.dp.toPx() + (i * 12.dp.toPx())
-                        drawArc(
-                            color = Color(0xFF6C5A96),
-                            startAngle = 100f,
-                            sweepAngle = 160f,
-                            useCenter = false,
-                            topLeft = androidx.compose.ui.geometry.Offset(ringX - 5.dp.toPx(), ringY - 3.dp.toPx()),
-                            size = androidx.compose.ui.geometry.Size(10.dp.toPx(), 7.dp.toPx()),
-                            style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                    // ── 줄 (노트 필기 라인 3개)
+                    val lx1 = w * 0.30f
+                    val lx2 = w * 0.76f
+                    listOf(0.32f, 0.45f, 0.58f).forEachIndexed { i, yr ->
+                        drawLine(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(Color(0x6688B8D8), Color(0x2288B8D8))
+                            ),
+                            start = Offset(lx1, h * yr),
+                            end = Offset(if (i == 2) lx2 - w * 0.1f else lx2, h * yr),
+                            strokeWidth = 1.4.dp.toPx(),
+                            cap = StrokeCap.Round
                         )
                     }
 
-                    // 북마크 책갈피 끈
-                    val bookmarkPath = Path().apply {
-                        moveTo(bookLeft + bookW - 16.dp.toPx(), bookTop)
-                        lineTo(bookLeft + bookW - 16.dp.toPx(), bookTop + 20.dp.toPx())
-                        lineTo(bookLeft + bookW - 11.dp.toPx(), bookTop + 15.dp.toPx())
-                        lineTo(bookLeft + bookW - 6.dp.toPx(), bookTop + 20.dp.toPx())
-                        lineTo(bookLeft + bookW - 6.dp.toPx(), bookTop)
-                        close()
+                    // ── 좌측 스프링 링 바인딩 (3개)
+                    val ringX = w * 0.22f
+                    for (i in 0..2) {
+                        val ry = h * 0.24f + i * h * 0.18f
+                        drawArc(
+                            brush = Brush.sweepGradient(
+                                listOf(Color(0xFF72B5E8), Color(0xFFA8D8FF))
+                            ),
+                            startAngle = 90f,
+                            sweepAngle = 180f,
+                            useCenter = false,
+                            topLeft = Offset(ringX - 5.dp.toPx(), ry - 4.dp.toPx()),
+                            size = androidx.compose.ui.geometry.Size(10.dp.toPx(), 8.dp.toPx()),
+                            style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
+                        )
                     }
-                    drawPath(bookmarkPath, Color(0xFFEFA2B5))
+
+                    // ── 우상단 AI 별 스파클 (메인, 골든 피치)
+                    val sCx = w * 0.75f
+                    val sCy = h * 0.16f
+                    val sR = 9.dp.toPx()
+                    val aiStar = Path().apply {
+                        moveTo(sCx, sCy - sR)
+                        quadraticTo(sCx, sCy, sCx + sR * 0.42f, sCy)
+                        quadraticTo(sCx, sCy, sCx, sCy + sR)
+                        quadraticTo(sCx, sCy, sCx - sR * 0.42f, sCy)
+                        quadraticTo(sCx, sCy, sCx, sCy - sR)
+                    }
+                    drawPath(
+                        aiStar,
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFFFFC878), Color(0xFFFF9EB5)),
+                            start = Offset(sCx - sR, sCy - sR),
+                            end = Offset(sCx + sR, sCy + sR)
+                        )
+                    )
+
+                    // ── 소형 서브 스파클 (좌하단, 스카이)
+                    val s2Cx = w * 0.25f
+                    val s2Cy = h * 0.83f
+                    val s2R = 5.dp.toPx()
+                    val aiStar2 = Path().apply {
+                        moveTo(s2Cx, s2Cy - s2R)
+                        quadraticTo(s2Cx, s2Cy, s2Cx + s2R * 0.4f, s2Cy)
+                        quadraticTo(s2Cx, s2Cy, s2Cx, s2Cy + s2R)
+                        quadraticTo(s2Cx, s2Cy, s2Cx - s2R * 0.4f, s2Cy)
+                        quadraticTo(s2Cx, s2Cy, s2Cx, s2Cy - s2R)
+                    }
+                    drawPath(
+                        aiStar2,
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF88D8FF), Color(0xFFB0E8D4)),
+                            start = Offset(s2Cx - s2R, s2Cy - s2R),
+                            end = Offset(s2Cx + s2R, s2Cy + s2R)
+                        )
+                    )
                 }
 
-                // AI 스파클링 스타(언제나 연결되어 지능화 분석하는 AI 상징)
-                Box(
+                // 링 위의 작은 빛 점 (회전과 함께 돔)
+                Canvas(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .scale(sparkScale)
+                        .size(200.dp)
+                        .graphicsLayer(rotationZ = ringRotation)
                 ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val w = size.width
-                        val h = size.height
-
-                        // 1. 우상단 금빛/핑크 네온 스타
-                        val star1CenterX = w * 0.70f
-                        val star1CenterY = h * 0.30f
-                        val star1Size = 22.dp.toPx()
-
-                        val starPath1 = Path().apply {
-                            moveTo(star1CenterX, star1CenterY - star1Size)
-                            quadraticTo(star1CenterX, star1CenterY, star1CenterX + star1Size, star1CenterY)
-                            quadraticTo(star1CenterX, star1CenterY, star1CenterX, star1CenterY + star1Size)
-                            quadraticTo(star1CenterX, star1CenterY, star1CenterX - star1Size, star1CenterY)
-                            quadraticTo(star1CenterX, star1CenterY, star1CenterX, star1CenterY - star1Size)
-                        }
-                        
-                        val star1Gradient = Brush.linearGradient(
-                            colors = listOf(Color(0xFFFFF7C0), Color(0xFFFF9EA7)),
-                            start = androidx.compose.ui.geometry.Offset(star1CenterX - star1Size, star1CenterY - star1Size),
-                            end = androidx.compose.ui.geometry.Offset(star1CenterX + star1Size, star1CenterY + star1Size)
-                        )
-                        drawPath(starPath1, star1Gradient)
-                        drawPath(starPath1, Color.White, alpha = 0.9f, style = Stroke(width = 1.dp.toPx()))
-
-                        // 2. 좌하단 하늘/퍼플 스타
-                        val star2CenterX = w * 0.28f
-                        val star2CenterY = h * 0.70f
-                        val star2Size = 12.dp.toPx()
-
-                        val starPath2 = Path().apply {
-                            moveTo(star2CenterX, star2CenterY - star2Size)
-                            quadraticTo(star2CenterX, star2CenterY, star2CenterX + star2Size, star2CenterY)
-                            quadraticTo(star2CenterX, star2CenterY, star2CenterX, star2CenterY + star2Size)
-                            quadraticTo(star2CenterX, star2CenterY, star2CenterX - star2Size, star2CenterY)
-                            quadraticTo(star2CenterX, star2CenterY, star2CenterX, star2CenterY - star2Size)
-                        }
-                        
-                        val star2Gradient = Brush.linearGradient(
-                            colors = listOf(Color(0xFF7DE6FF), Color(0xFFC29DFF)),
-                            start = androidx.compose.ui.geometry.Offset(star2CenterX - star2Size, star2CenterY - star2Size),
-                            end = androidx.compose.ui.geometry.Offset(star2CenterX + star2Size, star2CenterY + star2Size)
-                        )
-                        drawPath(starPath2, star2Gradient)
-                    }
+                    val cx = size.width / 2f
+                    val cy = 6.dp.toPx()
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFFD6A5), Color(0x00FFD6A5)),
+                            center = Offset(cx, cy),
+                            radius = 10.dp.toPx()
+                        ),
+                        radius = 5.dp.toPx(),
+                        center = Offset(cx, cy)
+                    )
+                }
+                Canvas(
+                    modifier = Modifier
+                        .size(160.dp)
+                        .graphicsLayer(rotationZ = ringRotationReverse)
+                ) {
+                    val cx = size.width / 2f
+                    val cy = 4.dp.toPx()
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFFB8C6), Color(0x00FFB8C6)),
+                            center = Offset(cx, cy),
+                            radius = 8.dp.toPx()
+                        ),
+                        radius = 4.dp.toPx(),
+                        center = Offset(cx, cy)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(36.dp))
 
-            // 3. 타이틀 텍스트
+            // ──────────────────────────────────────────────────
+            // 타이틀: AI 다이어리
+            // ──────────────────────────────────────────────────
             Text(
                 text = "AI 다이어리",
-                color = Color.White,
-                fontSize = 32.sp,
+                color = Color(0xFF1A2A4A),
+                fontSize = 34.sp,
                 fontFamily = Pretendard,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp,
+                letterSpacing = 1.sp,
                 modifier = Modifier
-                    .alpha(textAlpha)
-                    .graphicsLayer(translationY = textTranslationY)
+                    .alpha(titleAlpha)
+                    .graphicsLayer(translationY = titleSlideY)
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 4. 서브타이틀 설명 문구
+            // ──────────────────────────────────────────────────
+            // 서브타이틀
+            // ──────────────────────────────────────────────────
             Text(
-                text = "언제 어디서나, 스마트하게 기록하는 나만의 생각",
-                color = Color(0xFFAFAEC2),
-                fontSize = 14.sp,
+                text = "나만의 스마트 AI 기록 플래너",
+                color = Color(0xFF7A9AB8),
+                fontSize = 15.sp,
                 fontFamily = Pretendard,
                 fontWeight = FontWeight.Medium,
-                letterSpacing = 0.5.sp,
-                modifier = Modifier.alpha(subtitleAlpha)
+                letterSpacing = 0.3.sp,
+                modifier = Modifier
+                    .alpha(subtitleAlpha)
+                    .graphicsLayer(translationY = subtitleSlideY)
             )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ──────────────────────────────────────────────────
+            // AI 뱃지 (온디바이스 · 오프라인)
+            // ──────────────────────────────────────────────────
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.alpha(badgeAlpha)
+            ) {
+                listOf(
+                    "🎙️ 음성 인식" to Color(0xFFE6F4FF),
+                    "🛡️ 온디바이스" to Color(0xFFF0FFF6),
+                    "🤖 AI 감정" to Color(0xFFFFF4F0),
+                ).forEach { (label, bgColor) ->
+                    Box(
+                        modifier = Modifier.background(
+                            color = bgColor,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(50)
+                        ).padding(horizontal = 12.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontFamily = Pretendard,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF4A7A9B)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // ──────────────────────────────────────────────────
+            // 하단 스위핑 로딩 인디케이터
+            // ──────────────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 52.dp)
+                    .width(120.dp)
+                    .height(3.dp)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize().alpha(subtitleAlpha)) {
+                    val trackW = size.width
+                    val trackH = size.height
+                    // 트랙 배경
+                    drawRoundRect(
+                        color = Color(0x22A8D8FF),
+                        cornerRadius = CornerRadius(trackH / 2)
+                    )
+                    // 스위핑 글로우
+                    val sweepW = trackW * 0.45f
+                    val sweepX = trackW * loaderProgress - sweepW / 2
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0x00A8D8FF),
+                                Color(0xFFFFB8C6),
+                                Color(0xFFA8D8FF),
+                                Color(0x00A8D8FF),
+                            ),
+                            startX = sweepX,
+                            endX = sweepX + sweepW
+                        ),
+                        topLeft = Offset(sweepX.coerceIn(0f, trackW), 0f),
+                        size = androidx.compose.ui.geometry.Size(
+                            sweepW.coerceAtMost(trackW - sweepX.coerceIn(0f, trackW)),
+                            trackH
+                        ),
+                        cornerRadius = CornerRadius(trackH / 2)
+                    )
+                }
+            }
         }
     }
 }
 
-@Preview
+@Preview(showBackground = true)
 @Composable
 fun DiarySplashScreenPreview() {
     DiarySplashScreen(onTimeout = {})
