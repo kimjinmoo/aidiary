@@ -165,7 +165,18 @@ data class DiaryState(
     /** 다음 페이지 로딩 중. */
     val isLoadingMoreDiaries: Boolean = false,
     /** 전체 일기 개수 (메타 페이지네이션 판단용). */
-    val diaryTotalCount: Int = 0
+    val diaryTotalCount: Int = 0,
+
+    // ===== 앱 버전 체크 =====
+    /** 서버 버전 체크 완료 여부 (세션 당 1회). */
+    val updateCheckDone: Boolean = false,
+    /** 업데이트 알림 다이얼로그 표시 여부. */
+    val showUpdateDialog: Boolean = false,
+    /** 서버에서 받은 최신 버전 문자열. */
+    val latestVersion: String? = null,
+    /** 다이얼로그를 닫아도 유지되는 실제 업데이트 가능 여부 (설정 화면 등에서 참조). */
+    val appUpdateAvailable: Boolean = false,
+
 ) {
     /**
      * AI 분석에 넘길 평문. 블록에서 자동 추출.

@@ -257,6 +257,94 @@ fun DiaryListScreen(
         )
     }
 
+    // 2.5) 앱 업데이트 알림 다이얼로그
+    if (state.showUpdateDialog && state.latestVersion != null) {
+        AlertDialog(
+            onDismissRequest = { onIntent(DiaryIntent.DismissUpdateDialog) },
+            icon = {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.SystemUpdateAlt,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+            },
+            title = {
+                Text(
+                    text = "새로운 업데이트가 있어요",
+                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "최신 버전 ${state.latestVersion}이 출시되었습니다.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "현재: v${com.grepiu.aidiary.BuildConfig.VERSION_NAME}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Icon(
+                                Icons.Default.ArrowForward,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "최신: v${state.latestVersion}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        // 향후 다운로드 URL이 확정되면 해당 링크로 연결
+                        onIntent(DiaryIntent.DismissUpdateDialog)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text("지금 업데이트", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onIntent(DiaryIntent.DismissUpdateDialog) }) {
+                    Text("나중에")
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
     // 3) Wi-Fi 경고 다이얼로그 (모바일 데이터 다운로드 확인)
     if (state.showWifiWarning) {
         val isSherpa = state.wifiWarningSource == "sherpa"

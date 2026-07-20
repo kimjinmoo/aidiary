@@ -219,6 +219,12 @@ sealed interface DiaryIntent {
     /** 온보딩 권한 요청이 모두 완료된 후 목록 화면으로 전환합니다. */
     data object AllPermissionsResolved : DiaryIntent
 
+    // ===== 앱 버전 체크 =====
+    /** 서버에서 최신 앱 버전을 조회하고 업데이트 여부를 확인합니다. */
+    data object CheckAppVersion : DiaryIntent
+    /** 업데이트 알림 다이얼로그를 닫습니다. */
+    data object DismissUpdateDialog : DiaryIntent
+
     // ===== 일기 검색 (FTS5) =====
     /**
      * 키워드로 일기를 검색합니다. 부분 문자열 + 날짜 가중치로 정렬된 결과를

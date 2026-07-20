@@ -18,6 +18,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.grepiu.aidiary.analytics.AnalyticsManager
 import com.grepiu.aidiary.analytics.AnalyticsEvents
+import com.grepiu.aidiary.data.remote.AppVersionChecker
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
@@ -290,12 +291,34 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 when (targetPhase) {
-                    DiaryPhase.LIST -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_LIST)
+                    DiaryPhase.LIST -> {
+                        AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_LIST)
+                        if (!_state.value.updateCheckDone) {
+                            processIntent(DiaryIntent.CheckAppVersion)
+                        }
+                    }
                     DiaryPhase.WRITE -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_WRITE)
                     DiaryPhase.DETAIL -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_DETAIL)
                     DiaryPhase.SPLASH -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_SPLASH)
                     else -> {}
                 }
+            }
+            is DiaryIntent.CheckAppVersion -> {
+                if (_state.value.updateCheckDone) return
+                viewModelScope.launch {
+                    val result = AppVersionChecker.check()
+                    _state.update {
+                        it.copy(
+                            updateCheckDone = true,
+                            appUpdateAvailable = result.updateAvailable,
+                            showUpdateDialog = result.updateAvailable,
+                            latestVersion = result.latestVersion
+                        )
+                    }
+                }
+            }
+            is DiaryIntent.DismissUpdateDialog -> {
+                _state.update { it.copy(showUpdateDialog = false) }
             }
             is DiaryIntent.AcceptTermsAndProceed -> {
                 acceptTerms()
@@ -303,6 +326,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.AllPermissionsResolved -> {
                 _state.update { it.copy(phase = DiaryPhase.LIST) }
+                if (!_state.value.updateCheckDone) {
+                    processIntent(DiaryIntent.CheckAppVersion)
+                }
             }
             is DiaryIntent.UpdateDraft -> {
                 _state.update { currentState ->

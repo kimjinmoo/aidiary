@@ -59,6 +59,13 @@ fun DiarySettingsScreen(
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
+
+    // 설정 진입 시 버전 체크가 아직 안 됐다면 트리거 (fallback)
+    LaunchedEffect(Unit) {
+        if (!state.updateCheckDone) {
+            onIntent(DiaryIntent.CheckAppVersion)
+        }
+    }
     // 시스템 파일 관리자 백업 생성 런처 (Google Drive / 클라우드 / 내장메모리 저장 위치 선택)
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
@@ -258,6 +265,19 @@ fun DiarySettingsScreen(
                 }
             } ?: 1L
 
+            val versionBadgeText: String
+            val versionBadgeColor: Color
+            if (!state.updateCheckDone) {
+                versionBadgeText = "확인 중…"
+                versionBadgeColor = Color.Gray
+            } else if (state.appUpdateAvailable) {
+                versionBadgeText = "v${state.latestVersion} 업데이트 가능"
+                versionBadgeColor = MaterialTheme.colorScheme.primary
+            } else {
+                versionBadgeText = "최신 버전 ✓"
+                versionBadgeColor = MaterialTheme.colorScheme.tertiary
+            }
+
             SettingsSectionHeader(title = "앱 & 시스템 정보 📱")
             Surface(
                 shape = RoundedCornerShape(22.dp),
@@ -269,7 +289,8 @@ fun DiarySettingsScreen(
                         icon = Icons.Default.Info,
                         iconTint = MaterialTheme.colorScheme.primary,
                         title = "앱 버전 정보",
-                        badgeText = "최신 버전 ✓",
+                        badgeText = versionBadgeText,
+                        badgeColor = versionBadgeColor,
                         value = "v$appVersionName (Build $appVersionCode)"
                     )
                     HorizontalDivider(
