@@ -6,6 +6,7 @@ import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.mvi.state.DiaryPhase
+import com.grepiu.aidiary.ui.theme.AppTheme
 
 /**
  * 사용자가 유발하는 의도(Action/Event)들을 정의한 봉인 인터페이스입니다.
@@ -49,6 +50,8 @@ sealed interface DiaryIntent {
     data object UnsupportedDeviceConfirm : DiaryIntent
     data class ToggleSettingsScreen(val isOpen: Boolean) : DiaryIntent
     data class ShowLicenseDialog(val show: Boolean) : DiaryIntent
+    /** 사용자가 설정에서 색상 테마를 변경합니다. SharedPreferences 에 영속화됩니다. */
+    data class ChangeAppTheme(val theme: AppTheme) : DiaryIntent
     data object StartSherpaDownload : DiaryIntent
     data object StartRecording : DiaryIntent
     data object StopRecording : DiaryIntent
@@ -194,7 +197,7 @@ sealed interface DiaryIntent {
     data object ClearChatHistory : DiaryIntent
     /**
      * AI 프리셋 질의를 실행합니다 (날짜범위 컨텍스트 기반 요약을 챗 스트림으로 출력).
-     * @param kind "WEEK_SUMMARY" | "MONTH_EMOTION" | "RECENT"
+     * @param kind "WEEK_SUMMARY" | "MONTH_EMOTION" | "RECENT" | "NEXT_WEEK_PLAN" | "GOALS_STATUS"
      */
     data class RequestAiPreset(val kind: String) : DiaryIntent
 

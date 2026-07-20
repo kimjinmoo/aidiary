@@ -44,6 +44,7 @@ import com.grepiu.aidiary.mvi.state.DiaryPhase
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.mvi.state.ChatMessage
 import com.grepiu.aidiary.mvi.state.PendingContentTypeChange
+import com.grepiu.aidiary.ui.theme.AppTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -62,6 +63,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.coroutines.suspendCoroutine
@@ -107,11 +109,26 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("terms_accepted", true).apply()
     }
 
+    /** SharedPreferences에서 저장된 테마를 읽어 [AppTheme]로 변환합니다. */
+    private fun loadSavedTheme(): AppTheme {
+        val saved = prefs.getString("app_theme", AppTheme.ATLAS.name) ?: AppTheme.ATLAS.name
+        return runCatching { AppTheme.valueOf(saved) }.getOrDefault(AppTheme.ATLAS)
+    }
+
+    /** 선택한 테마를 SharedPreferences에 저장합니다. */
+    private fun saveTheme(theme: AppTheme) {
+        prefs.edit().putString("app_theme", theme.name).apply()
+    }
+
     // MVI 부수 효과 채널
     private val _effect = Channel<DiaryEffect>(Channel.BUFFERED)
     val effect = _effect.receiveAsFlow()
 
     init {
+        // 저장된 테마 복원
+        val savedTheme = loadSavedTheme()
+        _state.update { it.copy(appTheme = savedTheme) }
+
         // 앱 구동 시 일기 메타 페이지 1 로드 (Flow 자동 갱신은 별도 collect)
         processIntent(DiaryIntent.LoadDiaries)
 
@@ -190,6 +207,10 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.ShowLicenseDialog -> {
                 _state.update { it.copy(showLicenseDialog = intent.show) }
+            }
+            is DiaryIntent.ChangeAppTheme -> {
+                saveTheme(intent.theme)
+                _state.update { it.copy(appTheme = intent.theme) }
             }
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
@@ -2370,15 +2391,20 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * AI 프리셋 질의 — 날짜범위 기록을 컨텍스트로 만들어 요약을 챗 스트림에 출력.
-     * @param kind "WEEK_SUMMARY" | "MONTH_EMOTION" | "RECENT"
+     * AI 프리셋 질의 — 날짜범위 기록/계획/목표를 컨텍스트로 만들어 챗 스트림에 출력.
+     * @param kind "WEEK_SUMMARY" | "MONTH_EMOTION" | "RECENT" | "NEXT_WEEK_PLAN" | "GOALS_STATUS"
      */
     private fun runAiPreset(kind: String) {
         if (!requireReadyModel()) return
         viewModelScope.launch {
             val payload = buildPresetPayload(kind)
             if (payload == null || payload.third.isBlank()) {
-                sendEffect(DiaryEffect.ShowToast("요약할 기록이 부족해요."))
+                val msg = when (kind) {
+                    "NEXT_WEEK_PLAN" -> "등록된 다가오는 계획이 없어요."
+                    "GOALS_STATUS" -> "등록된 목표가 없어요."
+                    else -> "요약할 기록이 부족해요."
+                }
+                sendEffect(DiaryEffect.ShowToast(msg))
                 return@launch
             }
             val (label, prompt, context) = payload
@@ -2423,6 +2449,70 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 if (metas.isEmpty()) return null
                 val ctx = "[최근 기록 ${metas.size}건]\n" + metas.joinToString("\n") { metaLine(it) }
                 Triple("최근 기록", "위 최근 기록들을 3~4문장으로 요약해줘.", ctx)
+            }
+            "NEXT_WEEK_PLAN" -> {
+                val cal = Calendar.getInstance()
+                val currentDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+                val daysUntilNextMonday = (Calendar.MONDAY - currentDayOfWeek + 7) % 7.let { if (it == 0) 7 else it }
+                val nextMonday = (cal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, daysUntilNextMonday) }
+                val nextSunday = (nextMonday.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 6) }
+
+                val nextMondayStr = fmt.format(nextMonday.time)
+                val nextSundayStr = fmt.format(nextSunday.time)
+
+                // 1차적으로 다음주 월~일 범위 내의 계획 필터링
+                var targetTasks = _state.value.plannerTasks.filter { it.dateString in nextMondayStr..nextSundayStr }
+                    .sortedBy { it.dateString }
+
+                // 다음주 등록 일정이 없으면 오늘 이후 다가오는 일정으로 폴백
+                val isStrictNextWeek = targetTasks.isNotEmpty()
+                if (!isStrictNextWeek) {
+                    targetTasks = _state.value.plannerTasks.filter { it.dateString >= todayStr }
+                        .sortedBy { it.dateString }
+                        .take(15)
+                }
+
+                if (targetTasks.isEmpty()) return null
+
+                val dayOfWeekFmt = SimpleDateFormat("E", Locale.KOREAN)
+                fun formatDateWithDay(dateStr: String): String {
+                    return try {
+                        val d = fmt.parse(dateStr)
+                        if (d != null) "$dateStr (${dayOfWeekFmt.format(d)})" else dateStr
+                    } catch (e: Exception) {
+                        dateStr
+                    }
+                }
+
+                val header = if (isStrictNextWeek) {
+                    "[다음 주 일정 계획 (${formatDateWithDay(nextMondayStr)} ~ ${formatDateWithDay(nextSundayStr)}) - 총 ${targetTasks.size}건]"
+                } else {
+                    "[다가오는 일정 계획 - 총 ${targetTasks.size}건]"
+                }
+
+                val ctx = "$header\n" +
+                    targetTasks.joinToString("\n") { t ->
+                        val dateWithDay = formatDateWithDay(t.dateString)
+                        val time = if (!t.startTime.isNullOrBlank()) " [${t.startTime}${if (!t.endTime.isNullOrBlank()) "~${t.endTime}" else ""}]" else ""
+                        val loc = if (!t.location.isNullOrBlank()) " @${t.location}" else ""
+                        val status = if (t.isCompleted) " (완료)" else " (예정)"
+                        "- $dateWithDay$time: ${t.text}$loc$status"
+                    }
+
+                val prompt = "위 일정 목록을 바탕으로, 다음 주 계획을 날짜 및 요일별로 구분하여 일목요연하게 정리하고 주요 일정과 준비사항을 3~4문장으로 요약 안내해줘."
+                Triple("다음주 계획", prompt, ctx)
+            }
+            "GOALS_STATUS" -> {
+                val goals = _state.value.goals
+                if (goals.isEmpty()) return null
+                val active = goals.filter { !it.isCompleted }
+                val completed = goals.filter { it.isCompleted }
+                val ctx = "[현재 목표 현황 - 총 ${goals.size}개 (진행 중 ${active.size}개, 완료 ${completed.size}개)]\n" +
+                    "■ 진행 중 목표:\n" +
+                    (if (active.isEmpty()) " 없음\n" else active.joinToString("\n") { "- [${it.category}] ${it.text}" } + "\n") +
+                    "■ 달성 완료 목표:\n" +
+                    (if (completed.isEmpty()) " 없음" else completed.take(5).joinToString("\n") { "- [${it.category}] ${it.text} (달성)" })
+                Triple("현재 목표 현황", "위 장기 목표 진행 상황을 분석하고, 달성한 성과를 격려하며 진행 중인 목표를 이룰 수 있는 조언을 3~4문장으로 작성해줘.", ctx)
             }
             else -> null
         }

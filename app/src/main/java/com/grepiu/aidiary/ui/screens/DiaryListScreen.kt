@@ -368,6 +368,8 @@ fun DiaryListScreen(
     // 헤더/캘린더/탭셀렉터 숨김 (검색 포커스 시). AI는 바텀시트라 헤더에 영향 없음. TopAppBar는 항상 표시.
     val isHeaderHidden = isSearchActive
 
+    var showDatePickerModal by remember { mutableStateOf(false) }
+
     // 스크롤 기반 헤더 접힘(collapse). 스탯카드+캘린더만 접고 탭바는 sticky 유지.
     // isHeaderHidden(검색/챗 포커스) 와 별개로 동작한다.
     val headerCollapsed = remember { mutableStateOf(false) }
@@ -407,6 +409,9 @@ fun DiaryListScreen(
                 onSearchClose = {
                     isSearchFocused = false
                     onIntent(DiaryIntent.ClearDiarySearch)
+                },
+                onOpenDatePicker = {
+                    showDatePickerModal = true
                 }
             )
         },
@@ -646,6 +651,19 @@ fun DiaryListScreen(
                 }
             }
 
+            // 자체 커스텀 날짜 선택 달력 모달 (DatePickerDialog 대체)
+            if (showDatePickerModal) {
+                CustomDatePickerModal(
+                    initialDateString = state.selectedDateString,
+                    diaryDatesUnified = com.grepiu.aidiary.ui.util.unifiedDateSet(state.allDiaryMetas, state.plannerTasks, state.goals),
+                    onDismiss = { showDatePickerModal = false },
+                    onDateSelected = { dateStr ->
+                        onIntent(DiaryIntent.SelectDate(dateStr))
+                        showDatePickerModal = false
+                    }
+                )
+            }
+
             // AI 비서 바텀시트 — 헤더 좌측 버튼으로 열림. 프리셋 칩 + 기존 챗봇 UI 재사용.
             if (showAiSheet) {
                 AiAssistantSheet(
@@ -664,7 +682,7 @@ fun DiaryListScreen(
 /**
  * TopAppBar — 노멀 / 검색 / 채팅 모드 간 부드러운 애니메이션 전환
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiaryTopAppBar(
     state: DiaryState,
@@ -675,9 +693,9 @@ private fun DiaryTopAppBar(
     isChatFocused: Boolean,
     isDiaryTab: Boolean,
     onSearchClick: () -> Unit,
-    onSearchClose: () -> Unit
+    onSearchClose: () -> Unit,
+    onOpenDatePicker: () -> Unit
 ) {
-    // 모드 결정: 검색 > 채팅 > 노멀
     val barMode = when {
         isSearchActive && isDiaryTab -> "search"
         isChatFocused -> "chat"
@@ -686,15 +704,12 @@ private fun DiaryTopAppBar(
 
     val transitionSpec: AnimatedContentTransitionScope<String>.() -> ContentTransform = {
         when {
-            // 노멀 → 검색: 검색창이 오른쪽에서 슬라이드 인
             initialState == "normal" && targetState == "search" ->
                 (slideInHorizontally(tween(300)) { it / 3 } + fadeIn(tween(250))) togetherWith
                 (slideOutHorizontally(tween(250)) { -it / 4 } + fadeOut(tween(200)))
-            // 검색 → 노멀: 노멀 타이틀이 왼쪽에서 슬라이드 인
             initialState == "search" && targetState == "normal" ->
                 (slideInHorizontally(tween(300)) { -it / 4 } + fadeIn(tween(250))) togetherWith
                 (slideOutHorizontally(tween(250)) { it / 3 } + fadeOut(tween(200)))
-            // 그 외: 크로스페이드
             else ->
                 (fadeIn(tween(250)) togetherWith fadeOut(tween(200)))
         }
@@ -708,7 +723,7 @@ private fun DiaryTopAppBar(
         when (mode) {
             "search" -> SearchModeTopBar(state, onIntent, onSearchClose)
             "chat" -> ChatModeTopBar()
-            else -> NormalModeTopBar(state, onIntent, onShowBackupDialog, context, isDiaryTab, onSearchClick)
+            else -> NormalModeTopBar(state, onIntent, onShowBackupDialog, context, isDiaryTab, onSearchClick, onOpenDatePicker)
         }
     }
 }
@@ -793,7 +808,8 @@ private fun NormalModeTopBar(
     onShowBackupDialog: (Boolean) -> Unit,
     context: android.content.Context,
     isDiaryTab: Boolean,
-    onSearchClick: () -> Unit
+    onSearchClick: () -> Unit,
+    onOpenDatePicker: () -> Unit
 ) {
     val isToday = remember(state.selectedDateString) {
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) == state.selectedDateString
@@ -842,24 +858,8 @@ private fun NormalModeTopBar(
                     modifier = Modifier.height(32.dp)
                 ) { Text("오늘", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
-            IconButton(onClick = {
-                val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val cal = Calendar.getInstance()
-                try { format.parse(state.selectedDateString)?.let { cal.time = it } } catch (_: Exception) {}
-                val dialog = android.app.DatePickerDialog(
-                    context, { _, y, m, d ->
-                        val c = Calendar.getInstance()
-                        c.set(Calendar.YEAR, y); c.set(Calendar.MONTH, m); c.set(Calendar.DAY_OF_MONTH, d)
-                        onIntent(DiaryIntent.SelectDate(format.format(c.time)))
-                    },
-                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)
-                )
-                dialog.setButton(android.content.DialogInterface.BUTTON_NEUTRAL, "오늘") { _, _ ->
-                    onIntent(DiaryIntent.SelectDate(format.format(Date())))
-                }
-                dialog.show()
-            }) {
-                Icon(Icons.Default.DateRange, "날짜 선택", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            IconButton(onClick = onOpenDatePicker) {
+                Icon(Icons.Default.DateRange, "날짜 선택 모달", tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { onIntent(DiaryIntent.ToggleSettingsScreen(true)) }) {
                 Icon(Icons.Default.Settings, "설정", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1213,28 +1213,21 @@ fun WeeklyCalendarStrip(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp)
+            .padding(vertical = 8.dp)
     ) {
         LazyRow(
             state = listState,
-            contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             items(days, key = { it.dateString }) { day ->
                 val isSelected = day.dateString == selectedDateStr
                 
-                // 1. 해당 일자에 작성된 기록(일기)이 있는지 판별 (diaryDates: 전 기간, 페이지네이션 무관)
                 val hasDiary = diaryDates.contains(day.dateString)
-                
-                // 2. 해당 일자에 할 일(플래너)이 있는지 판별
                 val hasTask = remember(plannerTasks, day.dateString) {
-                    plannerTasks.any { task ->
-                        task.dateString == day.dateString
-                    }
+                    plannerTasks.any { task -> task.dateString == day.dateString }
                 }
-
-                // 3. 해당 일자에 목표가 등록되었는지 판별 (timestamp 변환 매칭)
                 val hasGoal = remember(goals, day.dateString) {
                     goals.any { goal ->
                         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
@@ -1242,9 +1235,18 @@ fun WeeklyCalendarStrip(
                     }
                 }
 
-                // 부드러운 스케일 및 색상 전환 애니메이션
+                val defaultSubColor = MaterialTheme.colorScheme.onSurfaceVariant
+                val dayOfWeekColor = remember(day.dayName, isSelected, defaultSubColor) {
+                    if (isSelected) Color.White.copy(alpha = 0.9f)
+                    else when (day.dayName) {
+                        "일" -> Color(0xFFE53935)
+                        "토" -> Color(0xFF3D7BB5)
+                        else -> defaultSubColor
+                    }
+                }
+
                 val scale by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = if (isSelected) 1.04f else 1f,
+                    targetValue = if (isSelected) 1.05f else 1f,
                     animationSpec = spring(
                         dampingRatio = Spring.DampingRatioMediumBouncy,
                         stiffness = Spring.StiffnessMedium
@@ -1256,59 +1258,43 @@ fun WeeklyCalendarStrip(
                     targetValue = if (isSelected) {
                         MaterialTheme.colorScheme.primary
                     } else if (day.isToday) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     },
                     animationSpec = tween(durationMillis = 250),
                     label = "CalendarBgColor"
                 )
 
                 val textColor by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        Color.White
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                    targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                     animationSpec = tween(durationMillis = 200),
                     label = "CalendarTextColor"
-                )
-
-                val subTextColor by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        Color.White.copy(alpha = 0.85f)
-                    } else if (day.isToday) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                    animationSpec = tween(durationMillis = 200),
-                    label = "CalendarSubTextColor"
                 )
 
                 Box(
                     modifier = Modifier
                         .scale(scale)
                         .width(52.dp)
-                        .height(74.dp)
+                        .height(76.dp)
                         .clip(RoundedCornerShape(18.dp))
                         .background(backgroundColor)
                         .then(
                             if (isSelected) Modifier.shadow(
                                 elevation = 4.dp,
                                 shape = RoundedCornerShape(18.dp),
-                                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
                             ) else Modifier
                         )
                         .then(
                             if (day.isToday && !isSelected) Modifier.border(
-                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
                                 RoundedCornerShape(18.dp)
                             ) else Modifier
                         )
                         .clickable { onDateSelect(day.dateString) }
-                        .padding(vertical = 10.dp),
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -1319,21 +1305,21 @@ fun WeeklyCalendarStrip(
                         Text(
                             text = if (day.isToday) "오늘" else day.dayName,
                             fontSize = 11.sp,
-                            color = if (day.isToday && !isSelected) MaterialTheme.colorScheme.primary else subTextColor,
-                            fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Medium
+                            color = if (day.isToday && !isSelected) MaterialTheme.colorScheme.primary else dayOfWeekColor,
+                            fontWeight = if (day.isToday || isSelected) FontWeight.Bold else FontWeight.Medium
                         )
                         Text(
                             text = day.dayOfMonth,
-                            fontSize = 18.sp,
+                            fontSize = 17.sp,
                             color = textColor,
                             fontWeight = FontWeight.Bold
                         )
                         
-                        // 하단 항목 존재 표시용 미니 컬러 도트 세트 (기록: 블루, 플래너: 오렌지, 목표: 그린)
+                        // 하단 3색 미니 도트 (기록/계획/목표)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(3.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 2.dp)
+                            modifier = Modifier.height(6.dp)
                         ) {
                             if (hasDiary) {
                                 Box(
@@ -1359,7 +1345,6 @@ fun WeeklyCalendarStrip(
                                         .background(if (isSelected) Color.White else GoalsAccent)
                                 )
                             }
-                            
                             if (!hasDiary && !hasTask && !hasGoal) {
                                 Spacer(modifier = Modifier.height(5.dp))
                             }
@@ -1886,29 +1871,17 @@ fun PlannerTabContent(
     var repeatEndDateStr by remember { mutableStateOf<String?>(null) }
     var taskPendingDelete by remember { mutableStateOf<PlannerTask?>(null) }
 
+    var showTimePickerModal by remember { mutableStateOf(false) }
+    var isPickingStartTime by remember { mutableStateOf(true) }
+    var showRepeatDatePickerModal by remember { mutableStateOf(false) }
+
     val showTimePicker = { isStart: Boolean ->
-        val cal = Calendar.getInstance()
-        val currentStr = if (isStart) startTime else endTime
-        if (!currentStr.isNullOrBlank()) {
-            currentStr.split(":").takeIf { it.size == 2 }?.let {
-                cal.set(Calendar.HOUR_OF_DAY, it[0].toIntOrNull() ?: 12)
-                cal.set(Calendar.MINUTE, it[1].toIntOrNull() ?: 0)
-            }
-        }
-        android.app.TimePickerDialog(context, { _, h, m ->
-            val fmt = String.format(Locale.getDefault(), "%02d:%02d", h, m)
-            if (isStart) startTime = fmt else endTime = fmt
-        }, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), true).show()
+        isPickingStartTime = isStart
+        showTimePickerModal = true
     }
 
     val showEndDatePicker = {
-        val cal = Calendar.getInstance()
-        if (!repeatEndDateStr.isNullOrBlank()) {
-            try { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(repeatEndDateStr)?.let { cal.time = it } } catch (_: Exception) {}
-        }
-        android.app.DatePickerDialog(context, { _, y, m, d ->
-            repeatEndDateStr = String.format(Locale.getDefault(), "%04d-%02d-%02d", y, m + 1, d)
-        }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+        showRepeatDatePickerModal = true
     }
 
     val resetForm = {
@@ -2267,6 +2240,34 @@ fun PlannerTabContent(
         }
 
         item { Spacer(Modifier.height(60.dp)) }
+    }
+
+    if (showTimePickerModal) {
+        CustomTimePickerModal(
+            title = if (isPickingStartTime) "시작 시간 설정" else "종료 시간 설정",
+            initialTime = if (isPickingStartTime) startTime else endTime,
+            onDismiss = { showTimePickerModal = false },
+            onTimeSelected = { timeFmt ->
+                if (isPickingStartTime) startTime = timeFmt else endTime = timeFmt
+                showTimePickerModal = false
+            },
+            onTimeCleared = {
+                if (isPickingStartTime) startTime = null else endTime = null
+                showTimePickerModal = false
+            }
+        )
+    }
+
+    if (showRepeatDatePickerModal) {
+        CustomDatePickerModal(
+            initialDateString = repeatEndDateStr ?: state.selectedDateString,
+            diaryDatesUnified = emptySet(),
+            onDismiss = { showRepeatDatePickerModal = false },
+            onDateSelected = { dateStr ->
+                repeatEndDateStr = dateStr
+                showRepeatDatePickerModal = false
+            }
+        )
     }
 
     taskPendingDelete?.let { pending ->
@@ -3111,7 +3112,9 @@ private fun AiAssistantSheet(
             val presets = listOf(
                 "WEEK_SUMMARY" to "이번주 써머리",
                 "MONTH_EMOTION" to "이번달 감정",
-                "RECENT" to "최근 기록"
+                "RECENT" to "최근 기록",
+                "NEXT_WEEK_PLAN" to "다음주 계획",
+                "GOALS_STATUS" to "현재 목표 현황"
             )
             FlowRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -3806,6 +3809,7 @@ fun getEmotionUI(emotion: String): Pair<String, Color> {
 /**
  * 콘텐츠 타입별 아이콘/라벨/색상 (목록·상세 공통).
  */
+@Composable
 fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Color> {
     return when (type) {
         ContentType.DIARY -> Triple(Icons.AutoMirrored.Filled.MenuBook, "일기", DiaryTypeColor)
@@ -4224,37 +4228,55 @@ private fun UnifiedCalendarView(
             }
         }
         item(key = "ucal_dow") {
-            Row(Modifier.fillMaxWidth()) {
-                listOf("일","월","화","수","목","금","토").forEach { d ->
-                    Text(d, fontSize = 11.sp, fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                listOf("일" to Color(0xFFE53935), "월" to MaterialTheme.colorScheme.onSurfaceVariant, "화" to MaterialTheme.colorScheme.onSurfaceVariant, "수" to MaterialTheme.colorScheme.onSurfaceVariant, "목" to MaterialTheme.colorScheme.onSurfaceVariant, "금" to MaterialTheme.colorScheme.onSurfaceVariant, "토" to Color(0xFF3D7BB5)).forEach { (d, color) ->
+                    Text(d, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        color = color,
                         textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                 }
             }
         }
         items(cells.chunked(7), key = { row -> "urow_" + row.joinToString("_") { it?.toString() ?: "x" } }) { week ->
             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                week.forEach { day ->
+                week.forEachIndexed { colIdx, day ->
                     if (day == null) {
                         Spacer(Modifier.weight(1f))
                     } else {
                         val dateStr = monthPrefix + "%02d".format(day)
+                        val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
+                        val isToday = dateStr == todayStr
                         val hasEntry = diaryDatesUnified.contains(dateStr)
                         val isSelected = dateStr == selectedDateString
+                        val dayColor = when {
+                            isSelected -> Color.White
+                            colIdx == 0 -> Color(0xFFE53935)
+                            colIdx == 6 -> Color(0xFF3D7BB5)
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
                         Box(
                             modifier = Modifier.weight(1f).aspectRatio(1f).padding(2.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary
+                                    else if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                                    else Color.Transparent
+                                )
+                                .then(
+                                    if (isToday && !isSelected) Modifier.border(
+                                        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                                        RoundedCornerShape(12.dp)
+                                    ) else Modifier
+                                )
                                 .clickable { onDateSelect(dateStr) },
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("$day", fontSize = 13.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface)
+                                    fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Medium,
+                                    color = dayColor)
                                 if (hasEntry) {
                                     Box(Modifier.padding(top = 2.dp).size(5.dp).clip(CircleShape)
-                                        .background(if (isSelected) Color.White else DiaryTypeColor))
+                                        .background(if (isSelected) Color.White else DiaryAccent))
                                 }
                             }
                         }
@@ -4282,6 +4304,507 @@ private fun UnifiedCalendarView(
                     is DayItem.DiaryItem -> DiaryListItemCard(diary = di.meta, onClick = { onSelectDiary(di.meta) })
                     is DayItem.TaskItem -> UnifiedTaskRow(di.task)
                     is DayItem.GoalDayItem -> UnifiedGoalRow(di.goal)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 안드로이드 레거시 DatePickerDialog를 대체하는 자체 프리미엄 캘린더 모달 다이얼로그.
+ * 앱 전체 디자인 시스템(Pretendard, 3색 도트, 요일 컬러링, 선택 링 등)과 100% 통일됩니다.
+ */
+@Composable
+private fun CustomDatePickerModal(
+    initialDateString: String,
+    diaryDatesUnified: Set<String>,
+    onDismiss: () -> Unit,
+    onDateSelected: (String) -> Unit
+) {
+    val fmt = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    val todayStr = remember { fmt.format(Date()) }
+
+    val initialCal = remember(initialDateString) {
+        Calendar.getInstance().apply {
+            try { time = fmt.parse(initialDateString) ?: Date() } catch (_: Exception) {}
+        }
+    }
+
+    var year by remember { mutableStateOf(initialCal.get(Calendar.YEAR)) }
+    var month by remember { mutableStateOf(initialCal.get(Calendar.MONTH) + 1) }
+    var tempSelectedDate by remember { mutableStateOf(initialDateString) }
+
+    val cells = remember(year, month) { buildMonthGrid(year, month) }
+    val monthPrefix = remember(year, month) { "%04d-%02d-".format(year, month) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 10.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // 1. 헤더 (아이콘 + 제목)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "날짜 선택",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // 2. 월 선택 컨트롤 (< 2026년 7월 >)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    IconButton(
+                        onClick = { if (month == 1) { month = 12; year-- } else month-- },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.ChevronLeft, "이전 달", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Text(
+                        text = "${year}년 ${month}월",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    IconButton(
+                        onClick = { if (month == 12) { month = 1; year++ } else month++ },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.ChevronRight, "다음 달", tint = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 3. 요일 라벨 (일: 빨강, 토: 파랑, 평일: onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                    listOf(
+                        "일" to Color(0xFFE53935),
+                        "월" to MaterialTheme.colorScheme.onSurfaceVariant,
+                        "화" to MaterialTheme.colorScheme.onSurfaceVariant,
+                        "수" to MaterialTheme.colorScheme.onSurfaceVariant,
+                        "목" to MaterialTheme.colorScheme.onSurfaceVariant,
+                        "금" to MaterialTheme.colorScheme.onSurfaceVariant,
+                        "토" to Color(0xFF3D7BB5)
+                    ).forEach { (d, color) ->
+                        Text(
+                            text = d,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = color,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // 4. 날짜 그리드
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    cells.chunked(7).forEach { week ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            week.forEachIndexed { colIdx, day ->
+                                if (day == null) {
+                                    Spacer(Modifier.weight(1f))
+                                } else {
+                                    val dateStr = monthPrefix + "%02d".format(day)
+                                    val isToday = dateStr == todayStr
+                                    val isSelected = dateStr == tempSelectedDate
+                                    val hasEntry = diaryDatesUnified.contains(dateStr)
+
+                                    val dayColor = when {
+                                        isSelected -> Color.White
+                                        colIdx == 0 -> Color(0xFFE53935)
+                                        colIdx == 6 -> Color(0xFF3D7BB5)
+                                        else -> MaterialTheme.colorScheme.onSurface
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f)
+                                            .padding(2.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isSelected) MaterialTheme.colorScheme.primary
+                                                else if (isToday) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                                else Color.Transparent
+                                            )
+                                            .then(
+                                                if (isToday && !isSelected) Modifier.border(
+                                                    BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                                                    CircleShape
+                                                ) else Modifier
+                                            )
+                                            .clickable { tempSelectedDate = dateStr },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = "$day",
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal,
+                                                color = dayColor
+                                            )
+                                            if (hasEntry) {
+                                                Box(
+                                                    Modifier
+                                                        .padding(top = 1.dp)
+                                                        .size(4.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) Color.White else DiaryAccent)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 5. 하단 버튼 영역 ("오늘로 이동" | "취소", "선택")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            val todayCal = Calendar.getInstance()
+                            year = todayCal.get(Calendar.YEAR)
+                            month = todayCal.get(Calendar.MONTH) + 1
+                            tempSelectedDate = todayStr
+                        }
+                    ) {
+                        Text("오늘", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onDismiss) {
+                            Text("취소", fontSize = 13.sp)
+                        }
+                        Button(
+                            onClick = { onDateSelected(tempSelectedDate) },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text("선택", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 안드로이드 레거시 TimePickerDialog를 대체하는 자체 프리미엄 시간 선택 모달 다이얼로그.
+ * 시작시간/종료시간을 직관적으로 선택하며 앱 전체 디자인 시스템과 100% 통합됩니다.
+ */
+@Composable
+private fun CustomTimePickerModal(
+    title: String,
+    initialTime: String?,
+    onDismiss: () -> Unit,
+    onTimeSelected: (String) -> Unit,
+    onTimeCleared: () -> Unit
+) {
+    var isAm by remember {
+        mutableStateOf(
+            if (initialTime.isNullOrBlank()) true
+            else {
+                val hour = initialTime.split(":").firstOrNull()?.toIntOrNull() ?: 9
+                hour < 12
+            }
+        )
+    }
+
+    var selectedHour12 by remember {
+        mutableStateOf(
+            if (initialTime.isNullOrBlank()) 9
+            else {
+                val hour24 = initialTime.split(":").firstOrNull()?.toIntOrNull() ?: 9
+                when {
+                    hour24 == 0 -> 12
+                    hour24 > 12 -> hour24 - 12
+                    else -> hour24
+                }
+            }
+        )
+    }
+
+    var selectedMinute by remember {
+        mutableStateOf(
+            if (initialTime.isNullOrBlank()) 0
+            else {
+                initialTime.split(":").getOrNull(1)?.toIntOrNull() ?: 0
+            }
+        )
+    }
+
+    val currentFormattedTime = remember(isAm, selectedHour12, selectedMinute) {
+        val hour24 = when {
+            isAm && selectedHour12 == 12 -> 0
+            isAm -> selectedHour12
+            !isAm && selectedHour12 == 12 -> 12
+            else -> selectedHour12 + 12
+        }
+        String.format(Locale.getDefault(), "%02d:%02d", hour24, selectedMinute)
+    }
+
+    val displayAmPm = if (isAm) "오전" else "오후"
+    val displayHour = String.format(Locale.getDefault(), "%02d", selectedHour12)
+    val displayMin = String.format(Locale.getDefault(), "%02d", selectedMinute)
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 10.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // 1. 모달 타이틀 헤더
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccessTime,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // 2. 실시간 시각 디스플레이 대형 카드
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(vertical = 14.dp)
+                    ) {
+                        Text(
+                            text = displayAmPm,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 12.dp)
+                        )
+                        Text(
+                            text = "$displayHour : $displayMin",
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 3. 오전 / 오후 (AM/PM) 토글 세그먼트
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                        .padding(3.dp)
+                ) {
+                    Surface(
+                        onClick = { isAm = true },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isAm) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "오전 (AM)",
+                                fontSize = 12.5.sp,
+                                fontWeight = if (isAm) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isAm) Color.White else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                    Surface(
+                        onClick = { isAm = false },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (!isAm) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                "오후 (PM)",
+                                fontSize = 12.5.sp,
+                                fontWeight = if (!isAm) FontWeight.Bold else FontWeight.Medium,
+                                color = if (!isAm) Color.White else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 4. 시(Hour) 선택 그리드 (1 ~ 12 시)
+                Text(
+                    text = "시 (Hour)",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.Start).padding(bottom = 6.dp)
+                )
+
+                val hours = (1..12).toList()
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    hours.chunked(6).forEach { rowHours ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                            rowHours.forEach { h ->
+                                val isSelected = h == selectedHour12
+                                Surface(
+                                    onClick = { selectedHour12 = h },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    modifier = Modifier.weight(1f).height(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "$h",
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 5. 분(Minute) 퀵 칩
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "분 (Minute)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { selectedMinute = (selectedMinute - 1 + 60) % 60 },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Text("-1", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Text(
+                            text = "${selectedMinute}분",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        IconButton(
+                            onClick = { selectedMinute = (selectedMinute + 1) % 60 },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Text("+1", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                val minuteChips = listOf(0, 10, 15, 20, 30, 45)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                    minuteChips.forEach { m ->
+                        val isSelected = m == selectedMinute
+                        Surface(
+                            onClick = { selectedMinute = m },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                            modifier = Modifier.weight(1f).height(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = String.format(Locale.getDefault(), "%02d분", m),
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 6. 하단 액션 버튼 바
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onTimeCleared) {
+                        Text("시간 해제", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.error)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = onDismiss) {
+                            Text("취소", fontSize = 13.sp)
+                        }
+                        Button(
+                            onClick = { onTimeSelected(currentFormattedTime) },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text("선택", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }

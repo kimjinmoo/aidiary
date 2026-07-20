@@ -92,9 +92,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            AIDiaryTheme {
-                val viewModel: DiaryViewModel = viewModel()
-                val state by viewModel.state.collectAsState()
+            val viewModel: DiaryViewModel = viewModel()
+            val state by viewModel.state.collectAsState()
+            AIDiaryTheme(appTheme = state.appTheme) {
                 val context = LocalContext.current
                 val view = androidx.compose.ui.platform.LocalView.current
 

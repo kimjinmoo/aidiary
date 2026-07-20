@@ -32,8 +32,10 @@
 | **콘텐츠 타입** | `ContentType` (DIARY / POST / NOTE) — AI 분석은 DIARY 에서만 |
 | **인라인 텍스트 서식** | `TextFormatting` (bold/italic/underline/strikethrough/color/size 6종) |
 | **기본 폰트** | Pretendard (Regular/Medium/SemiBold/Bold OTF) |
+| **색상 테마 (v4)** | `AppTheme` enum 3종 (ATLAS 기본 / BLOSSOM / ECLIPSE). 설정 화면 선택 + SharedPreferences 영속화 |
 | **온디바이스 AI** | 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM) |
 | | 음성 인식: Sherpa-Onnx SenseVoice (오프라인, 다국어: ko/en/ja/zh/yue + auto) |
+| **온디바이스 AI 챗봇** | 5종 원터치 프리셋 (이번주 써머리 / 이번달 감정 / 최근 기록 / 다음주 계획 / 현재 목표 현황) |
 | **2B 모델 컨텍스트 보강 (v2)** | 모든 보조 액션 프롬프트는 `LLMContextBuilder` 통일, 인접 블록 + 슬라이딩 윈도우 |
 | **입체 미디어 자동 감지 (v3.2)** | 사진/영상 첨부 시 3D 포맷(MPO/HEIC aux/Stereo EXIF/Stereo MP4/MOV spatial/MV-HEVC) 자동 감지. 2D 도 첨부 가능. 영상 30초 가드. VideoView 재생 |
 | **데이터 저장 (v3)** | Room DB (메인) + 파일 시스템 샌드박스. 향후 export 기능 추가 시 그대로 활용 |
@@ -129,6 +131,8 @@ app/src/main/java/com/grepiu/aidiary/
     │   ├── DiaryWriteScreen.kt      # 제목 + 글 타입 + 블록 작성 + AddBlockBar
     │   └── DiaryDetailScreen.kt     # 상세 + AI 멘토 리포트
     └── theme/                       # Material3 (Pretendard)
+                                     # [v4] AppTheme enum (BLOSSOM/ATLAS/ECLIPSE) + Color.kt v4 팔레트
+                                     # AIDiaryTheme(appTheme) 로 전달
 
 app/src/test/java/com/grepiu/aidiary/
 ├── data/

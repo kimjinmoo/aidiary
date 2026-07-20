@@ -1,6 +1,9 @@
 package com.grepiu.aidiary.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +43,7 @@ import java.util.Locale
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.OpenSourceLicenseModalDialog
+import com.grepiu.aidiary.ui.theme.AppTheme
 
 /**
  * 2030 세대 타깃의 프리미엄 전문가 수준 설정(Settings) 페이지입니다.
@@ -155,6 +160,15 @@ fun DiarySettingsScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
+            // 0. 색상 테마 섹션
+            SettingsSectionHeader(title = "색상 테마 🎨")
+            ThemePickerSection(
+                currentTheme = state.appTheme,
+                onThemeSelected = { onIntent(DiaryIntent.ChangeAppTheme(it)) }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // 1. 데이터 백업 및 복원 섹션
             SettingsSectionHeader(title = "데이터 백업 및 복원 📦")
             Surface(
@@ -575,6 +589,159 @@ private fun SettingsInfoRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(18.dp)
             )
+        }
+    }
+}
+
+// =============================================================================
+// 테마 선택 섹션
+// =============================================================================
+
+/** 각 테마의 프리뷰 색상 스와치 3종 (primary, secondary, tertiary 순) */
+private fun themeSwatchColors(theme: AppTheme): Triple<Color, Color, Color> = when (theme) {
+    AppTheme.BLOSSOM -> Triple(Color(0xFFC67A8E), Color(0xFF8B87C7), Color(0xFF5FA37E))
+    AppTheme.ATLAS   -> Triple(Color(0xFF3D7BB5), Color(0xFFB07D2A), Color(0xFF2A8C7B))
+    AppTheme.ECLIPSE -> Triple(Color(0xFF8B8FF8), Color(0xFFBB86FC), Color(0xFF4DCFB0))
+}
+
+@Composable
+private fun ThemePickerSection(
+    currentTheme: AppTheme,
+    onThemeSelected: (AppTheme) -> Unit
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        AppTheme.entries.forEach { theme ->
+            ThemeCard(
+                theme = theme,
+                isSelected = theme == currentTheme,
+                onSelected = { onThemeSelected(theme) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemeCard(
+    theme: AppTheme,
+    isSelected: Boolean,
+    onSelected: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val (c1, c2, c3) = themeSwatchColors(theme)
+    val isEclipse = theme == AppTheme.ECLIPSE
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = tween(300),
+        label = "theme_border"
+    )
+    val bgColor by animateColorAsState(
+        targetValue = if (isSelected)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+        else
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+        animationSpec = tween(300),
+        label = "theme_bg"
+    )
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = bgColor,
+        modifier = modifier
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) borderColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clip(RoundedCornerShape(18.dp))
+            .clickable { onSelected() }
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 14.dp)
+        ) {
+            // 색상 프리뷰: Eclipse는 다크 배경 위 스와치
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (isEclipse) Color(0xFF0F0F1A) else Color.Transparent
+                    )
+            ) {
+                // 3색 원형 스와치 (겹치기)
+                Box(modifier = Modifier.size(52.dp)) {
+                    // 배경 그라디언트
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.sweepGradient(
+                                    listOf(c1, c1, c2, c2, c3, c3, c1)
+                                )
+                            )
+                    )
+                    // 중앙 흰 점 (클린함)
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isEclipse) Color(0xFF0F0F1A)
+                                else MaterialTheme.colorScheme.surface
+                            )
+                            .align(Alignment.Center)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 테마 이름
+            Text(
+                text = "${theme.emoji} ${theme.label}",
+                fontSize = 12.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1
+            )
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // 테마 설명
+            Text(
+                text = theme.description,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                lineHeight = 13.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            // 선택 표시
+            if (isSelected) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = "✓ 적용 중",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
         }
     }
 }

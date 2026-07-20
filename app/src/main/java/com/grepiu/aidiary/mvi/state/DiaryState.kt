@@ -8,6 +8,7 @@ import com.grepiu.aidiary.data.model.extractPlainText
 import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
+import com.grepiu.aidiary.ui.theme.AppTheme
 
 /**
  * 일기 앱의 화면 단계(Phase)를 정의하는 열거형입니다.
@@ -65,6 +66,8 @@ data class DiaryState(
     val isLowRamDevice: Boolean = false,                     // 저사양 기기(RAM 6GB 이하) 여부
     val showWifiWarning: Boolean = false,                    // Wi-Fi 경고 창 표시 여부
     val isSettingsOpen: Boolean = false,                     // 설정 페이지 화면 표시 여부
+    /** 사용자가 선택한 색상 테마. SharedPreferences 에 영속화. */
+    val appTheme: AppTheme = AppTheme.ATLAS,
     val lastBackupDate: String? = null,                      // 마지막 성공 백업 일시
     val showLicenseDialog: Boolean = false,                  // 오픈소스 라이선스 고지 모달 표시 여부
     val isModelInitializing: Boolean = false,                // 모델 메모리 로드 진행 여부
