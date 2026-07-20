@@ -145,12 +145,16 @@ fun DiaryDetailScreen(
                 .imePadding()
                 .verticalScroll(scrollState)
         ) {
-            // 1) 본문 컨테이너 (첨부 이미지는 본문 ImageBlock 으로 인라인 표시 — hero 별도 노출 안 함)
-            Column(
+            // 통합 본문 카드 — 칩/제목/메타/본문을 하나의 Surface 카드로 묶어 "종이 일기" 느낌
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 24.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
+                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
                 // 2-1) 콘텐츠 타입 / 감정 칩
                 DetailChipsRow(
                     typeIcon = typeIcon,
@@ -176,16 +180,11 @@ fun DiaryDetailScreen(
                 // 2-3) 날짜 + 읽기 시간
                 DetailMetaRow(dateText = dateText, readTimeText = readTimeText)
 
-                Spacer(Modifier.height(24.dp))
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                    thickness = 0.5.dp
-                )
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(20.dp))
 
                 // 2-4) 본문 블록
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     finalBlocks.forEach { block ->
@@ -198,22 +197,37 @@ fun DiaryDetailScreen(
 
                 Spacer(Modifier.height(32.dp))
 
-                // 하단 수정 액션 버튼
-                Button(
+                Surface(
                     onClick = onEdit,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(46.dp)
                 ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("이 ${typeLabel} 수정하기", fontSize = 14.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Edit,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "이 ${typeLabel} 수정하기",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
-                Spacer(Modifier.height(40.dp))
+                Spacer(Modifier.height(32.dp))
+                }
             }
         }
     }
@@ -345,12 +359,11 @@ private fun MetaChip(
 ) {
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = color.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.28f))
+        color = color.copy(alpha = 0.12f)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
         ) {
             if (icon != null) {
                 Icon(
