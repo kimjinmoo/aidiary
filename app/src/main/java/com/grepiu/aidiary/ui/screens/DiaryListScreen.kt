@@ -85,6 +85,12 @@ import com.grepiu.aidiary.ui.theme.EmotionSadness
 import com.grepiu.aidiary.ui.theme.EmotionAnger
 import com.grepiu.aidiary.ui.theme.EmotionAnxiety
 import com.grepiu.aidiary.ui.theme.EmotionCalm
+import com.grepiu.aidiary.ui.theme.DiaryTypeColor
+import com.grepiu.aidiary.ui.theme.PostTypeColor
+import com.grepiu.aidiary.ui.theme.NoteTypeColor
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -346,6 +352,22 @@ fun DiaryListScreen(
     // 헤더/캘린더/탭셀렉터 숨김 (검색 또는 AI 비서 입력 포커스 시). TopAppBar는 항상 표시.
     val isHeaderHidden = isSearchActive || (isChatInputFocused && state.activeTab == "CHAT")
 
+    // 스크롤 기반 헤더 접힘(collapse). 스탯카드+캘린더만 접고 탭바는 sticky 유지.
+    // isHeaderHidden(검색/챗 포커스) 와 별개로 동작한다.
+    val headerCollapsed = remember { mutableStateOf(false) }
+    // 탭 전환 시엔 헤더를 다시 펼쳐 방향감 제공.
+    LaunchedEffect(state.activeTab) { headerCollapsed.value = false }
+    val collapseScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                // 아래로 스크롤(콘텐츠가 위로 이동, y<0) → 접기 / 위로 스크롤(y>0) → 펼치기
+                if (available.y < -4f) headerCollapsed.value = true
+                else if (available.y > 4f) headerCollapsed.value = false
+                return Offset.Zero
+            }
+        }
+    }
+
     // AI 가 추천한 플래너 할 일을 입력란에 1회성으로 반영하고, 사용 후엔 상태를 비웁니다.
     LaunchedEffect(state.suggestedPlannerTaskText) {
         val suggested = state.suggestedPlannerTaskText ?: return@LaunchedEffect
@@ -404,37 +426,45 @@ fun DiaryListScreen(
                     onUnsupportedDeviceClose = { onIntent(DiaryIntent.UnsupportedDeviceClose) }
                 )
 
-                // ── 데일리 스탯 카드 ──
-                DailyOverviewHeader(
-                    state = state,
-                    onIntent = onIntent,
-                    showBackupDialog = showBackupDialog,
-                    onShowBackupDialog = { showBackupDialog = it },
-                    context = context
-                )
+                // ── 데일리 스탯 카드 + 캘린더 (스크롤 시 접힘) ──
+                AnimatedVisibility(
+                    visible = !headerCollapsed.value,
+                    enter = expandVertically(tween(220), expandFrom = Alignment.Top) + fadeIn(tween(220)),
+                    exit = shrinkVertically(tween(200), shrinkTowards = Alignment.Top) + fadeOut(tween(160))
+                ) {
+                    Column {
+                        DailyOverviewHeader(
+                            state = state,
+                            onIntent = onIntent,
+                            showBackupDialog = showBackupDialog,
+                            onShowBackupDialog = { showBackupDialog = it },
+                            context = context
+                        )
 
-            // A. 글래스모피즘 캘린더 스트립 컨테이너
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                tonalElevation = 1.dp,
-                shadowElevation = 2.dp,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                WeeklyCalendarStrip(
-                    days = calendarDays,
-                    selectedDateStr = state.selectedDateString,
-                    diaries = state.diaries,
-                    plannerTasks = state.plannerTasks,
-                    goals = state.goals,
-                    onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
-                )
-            }
+                        // A. 글래스모피즘 캘린더 스트립 컨테이너
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                            tonalElevation = 1.dp,
+                            shadowElevation = 2.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            WeeklyCalendarStrip(
+                                days = calendarDays,
+                                selectedDateStr = state.selectedDateString,
+                                diaries = state.diaries,
+                                plannerTasks = state.plannerTasks,
+                                goals = state.goals,
+                                onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
+                            )
+                        }
+                    }
+                }
 
-            // B. 세그먼티드 탭 셀렉터 (다이어리, 플래너, 나의 목표, AI 비서)
+            // B. 세그먼티드 탭 셀렉터 (다이어리, 플래너, 나의 목표, AI 비서) — sticky (접히지 않음)
             TabSelector(
                 activeTab = state.activeTab,
                 onTabSelect = { onIntent(DiaryIntent.ChangeTab(it)) }
@@ -448,6 +478,7 @@ fun DiaryListScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .nestedScroll(collapseScrollConnection)
                     .padding(horizontal = 16.dp)
             ) {
                 when (state.activeTab) {
@@ -3336,7 +3367,7 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -3349,9 +3380,9 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
-                    .width(4.dp)
+                    .width(3.dp)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
+                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(typeColor, typeColor.copy(alpha = 0.5f))
@@ -3403,12 +3434,12 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = diary.title.ifBlank { "(제목 없음)" },
-                    fontSize = 16.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 22.sp
+                    lineHeight = 23.sp
                 )
                 if (previewText.isNotBlank()) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -3416,7 +3447,7 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                         text = previewText,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        maxLines = 3,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 19.sp
                     )
@@ -3642,12 +3673,12 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
  */
 fun getEmotionUI(emotion: String): Pair<String, Color> {
     return when (emotion) {
-        "Joy" -> Pair("😊 기쁨", Color(0xFFD4AF37))
-        "Calm" -> Pair("🌿 평온", Color(0xFF2E7D32))
-        "Sadness" -> Pair("😢 슬픔", Color(0xFF1565C0))
-        "Anxiety" -> Pair("😰 불안", Color(0xFF7B1FA2))
-        "Anger" -> Pair("😡 분노", Color(0xFFC62828))
-        else -> Pair("⚪ 보통", Color(0xFF555555))
+        "Joy" -> Pair("😊 기쁨", EmotionJoy)
+        "Calm" -> Pair("🌿 평온", EmotionCalm)
+        "Sadness" -> Pair("😢 슬픔", EmotionSadness)
+        "Anxiety" -> Pair("😰 불안", EmotionAnxiety)
+        "Anger" -> Pair("😡 분노", EmotionAnger)
+        else -> Pair("⚪ 보통", Color(0xFF8A7B78))
     }
 }
 
@@ -3656,9 +3687,9 @@ fun getEmotionUI(emotion: String): Pair<String, Color> {
  */
 fun getContentTypeUI(type: ContentType): Triple<androidx.compose.ui.graphics.vector.ImageVector, String, Color> {
     return when (type) {
-        ContentType.DIARY -> Triple(Icons.AutoMirrored.Filled.MenuBook, "일기", Color(0xFF1565C0))
-        ContentType.POST -> Triple(Icons.Default.EditNote, "새 글", Color(0xFF6A1B9A))
-        ContentType.NOTE -> Triple(Icons.Default.NoteAlt, "메모", Color(0xFF2E7D32))
+        ContentType.DIARY -> Triple(Icons.AutoMirrored.Filled.MenuBook, "일기", DiaryTypeColor)
+        ContentType.POST -> Triple(Icons.Default.EditNote, "새 글", PostTypeColor)
+        ContentType.NOTE -> Triple(Icons.Default.NoteAlt, "메모", NoteTypeColor)
     }
 }
 
