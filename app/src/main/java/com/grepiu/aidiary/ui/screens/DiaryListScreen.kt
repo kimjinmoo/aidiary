@@ -1715,12 +1715,11 @@ fun DiaryTabContent(
     }
             }
             DiaryViewMode.BLOG -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("블로그 보기 (다음 Task)", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                DiaryBlogView(
+                    diaries = filteredDiariesForBlog(state, selectedTypeFilter),
+                    onSelectDiary = onSelectDiary,
+                    onLoadMore = onLoadMore
+                )
             }
             DiaryViewMode.CALENDAR -> {
                 Box(
@@ -3918,3 +3917,79 @@ private fun ViewModeToggle(
         }
     }
 }
+
+/** 블로그 보기 — 전체 기록을 날짜 헤더로 묶어 최신순 피드로. 기존 페이지네이션 재사용. */
+@Composable
+private fun DiaryBlogView(
+    diaries: List<DiaryMeta>,
+    onSelectDiary: (DiaryMeta) -> Unit,
+    onLoadMore: () -> Unit
+) {
+    val listState = rememberLazyListState()
+    val groups = remember(diaries) { groupMetasByDate(diaries) }
+
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            last >= listState.layoutInfo.totalItemsCount - 3
+        }
+    }
+    LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
+
+    if (groups.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("아직 기록이 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
+    LazyColumn(
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        groups.forEach { (dateStr, metas) ->
+            item(key = "h_$dateStr") { BlogDateHeader(dateStr) }
+            items(metas, key = { it.id }) { meta ->
+                DiaryListItemCard(diary = meta, onClick = { onSelectDiary(meta) })
+            }
+        }
+    }
+}
+
+/** 블로그 날짜 구분 헤더 (오늘/어제 상대 표기 + M월 d일 (E)) */
+@Composable
+private fun BlogDateHeader(dateString: String) {
+    val label = remember(dateString) {
+        val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val today = fmt.format(Date())
+        val yesterday = fmt.format(Date(System.currentTimeMillis() - 86_400_000L))
+        val pretty = try {
+            SimpleDateFormat("M월 d일 (E)", Locale.KOREAN).format(fmt.parse(dateString) ?: Date())
+        } catch (_: Exception) { dateString }
+        when (dateString) {
+            today -> "오늘 · $pretty"
+            yesterday -> "어제 · $pretty"
+            else -> pretty
+        }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp)
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    }
+}
+
+private fun filteredDiariesForBlog(state: DiaryState, typeFilter: ContentType?): List<DiaryMeta> =
+    if (typeFilter == null) state.diaries
+    else state.diaries.filter { it.contentType == typeFilter }
