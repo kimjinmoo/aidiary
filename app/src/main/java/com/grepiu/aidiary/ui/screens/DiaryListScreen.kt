@@ -73,6 +73,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.grepiu.aidiary.analytics.AnalyticsManager
+import com.grepiu.aidiary.analytics.AnalyticsEvents
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.ContentType
 import com.grepiu.aidiary.data.model.DiaryEntry
@@ -446,7 +448,10 @@ fun DiaryListScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilledIconButton(
-                        onClick = { showAiSheet = true },
+                        onClick = {
+                            AnalyticsManager.logEvent(AnalyticsEvents.NAV_OPEN_AI_SHEET)
+                            showAiSheet = true
+                        },
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = MaterialTheme.colorScheme.primary
                         ),
@@ -4509,7 +4514,10 @@ private fun BlogThreadPostCard(
                 .weight(1f)
                 .padding(bottom = 10.dp)
                 .then(
-                    if (isDetailAvailable) Modifier.clickable { onSelectDiary((dayItem as DayItem.DiaryItem).meta) }
+                    if (isDetailAvailable) Modifier.clickable {
+                        AnalyticsManager.logEvent(AnalyticsEvents.BLOG_ITEM_CLICK)
+                        onSelectDiary((dayItem as DayItem.DiaryItem).meta)
+                    }
                     else Modifier
                 )
         ) {
@@ -4690,6 +4698,7 @@ private fun BlogThreadPostCard(
                                 val clip = android.content.ClipData.newPlainText("쓰레드 텍스트", textToCopy)
                                 clipboard.setPrimaryClip(clip)
                                 android.widget.Toast.makeText(context, "쓰레드가 복사되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                                AnalyticsManager.logEvent(AnalyticsEvents.BLOG_COPY)
                             }
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
@@ -4718,6 +4727,7 @@ private fun BlogThreadPostCard(
                                     type = "text/plain"
                                 }
                                 context.startActivity(android.content.Intent.createChooser(sendIntent, "쓰레드 공유"))
+                                AnalyticsManager.logEvent(AnalyticsEvents.BLOG_SHARE)
                             }
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {

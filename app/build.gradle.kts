@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -98,6 +99,10 @@ dependencies {
 
     // Sherpa-Onnx (온디바이스 음성인식) - libs/jniLibs/에 .so 파일 복사 필요
     implementation("org.apache.commons:commons-compress:1.27.1")
+
+    // Firebase
+    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
+    implementation("com.google.firebase:firebase-analytics")
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

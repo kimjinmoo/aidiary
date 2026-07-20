@@ -16,6 +16,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.grepiu.aidiary.analytics.AnalyticsManager
+import com.grepiu.aidiary.analytics.AnalyticsEvents
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
@@ -204,22 +206,29 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.ToggleSettingsScreen -> {
                 _state.update { it.copy(isSettingsOpen = intent.isOpen) }
+                if (intent.isOpen) {
+                    AnalyticsManager.logEvent(AnalyticsEvents.NAV_OPEN_SETTINGS)
+                }
             }
             is DiaryIntent.ShowLicenseDialog -> {
                 _state.update { it.copy(showLicenseDialog = intent.show) }
+                if (intent.show) AnalyticsManager.logEvent(AnalyticsEvents.SETTINGS_LICENSE_OPEN)
             }
             is DiaryIntent.ChangeAppTheme -> {
                 saveTheme(intent.theme)
                 _state.update { it.copy(appTheme = intent.theme) }
+                AnalyticsManager.logEvent(AnalyticsEvents.SETTINGS_THEME_CHANGE, mapOf("theme" to intent.theme.name))
             }
             is DiaryIntent.SelectViewMode -> {
                 _state.update { it.copy(viewMode = intent.mode) }
+                AnalyticsManager.logEvent(AnalyticsEvents.NAV_VIEW_MODE, mapOf(AnalyticsEvents.PARAM_VIEW_MODE to intent.mode.name))
             }
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
             }
             is DiaryIntent.LoadMoreDiaries -> {
                 loadMoreDiaryPage()
+                AnalyticsManager.logEvent(AnalyticsEvents.NAV_PAGE_LOAD_MORE)
             }
             is DiaryIntent.LoadFullDiary -> {
                 viewModelScope.launch {
@@ -241,18 +250,22 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.SearchDiaries -> {
                 handleSearch(intent.query)
+                AnalyticsManager.logEvent(AnalyticsEvents.NAV_SEARCH)
             }
             is DiaryIntent.ClearDiarySearch -> {
                 searchJob?.cancel()
                 loadFirstDiaryPage()
+                AnalyticsManager.logEvent(AnalyticsEvents.NAV_SEARCH_CLEAR)
             }
             is DiaryIntent.StartDownload -> {
                 startModelDownload()
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_MODEL_DOWNLOAD_START)
             }
             is DiaryIntent.CancelDownload -> {
                 downloadJob?.cancel()
                 _state.update { it.copy(isDownloadingModel = false, modelDownloadSizeText = null) }
                 sendEffect(DiaryEffect.ShowToast("다운로드가 취소되었습니다."))
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_MODEL_DOWNLOAD_CANCEL)
             }
             is DiaryIntent.NavigateTo -> {
                 val targetPhase = if (intent.phase == DiaryPhase.LIST && !isTermsAccepted()) {
@@ -276,6 +289,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         isGeneratingAnalysis = if (targetPhase == DiaryPhase.WRITE) false else currentState.isGeneratingAnalysis
                     )
                 }
+                when (targetPhase) {
+                    DiaryPhase.LIST -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_LIST)
+                    DiaryPhase.WRITE -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_WRITE)
+                    DiaryPhase.DETAIL -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_DETAIL)
+                    DiaryPhase.SPLASH -> AnalyticsManager.logScreenView(AnalyticsEvents.SCREEN_DIARY_SPLASH)
+                    else -> {}
+                }
             }
             is DiaryIntent.AcceptTermsAndProceed -> {
                 acceptTerms()
@@ -293,6 +313,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.SaveDiary -> {
                 saveDiaryDraft()
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_DIARY_CREATE, mapOf(
+                    AnalyticsEvents.PARAM_CONTENT_TYPE to _state.value.draftContentType.name
+                ))
             }
             is DiaryIntent.EditDiary -> {
                 val d = intent.diary
@@ -308,6 +331,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         phase = DiaryPhase.WRITE
                     )
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_DIARY_EDIT, mapOf(
+                    AnalyticsEvents.PARAM_CONTENT_TYPE to d.contentType.name
+                ))
             }
             is DiaryIntent.DeleteDiary -> {
                 viewModelScope.launch {
@@ -317,6 +343,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     _state.update { it.copy(phase = DiaryPhase.LIST, selectedDiary = null) }
                     sendEffect(DiaryEffect.ShowToast("일기가 삭제되었습니다."))
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_DIARY_DELETE)
             }
             is DiaryIntent.ConfirmContentTypeChange -> {
                 val pending = _state.value.pendingContentTypeChange ?: return
@@ -366,18 +393,23 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             // ===== 작성 보조 AI 액션 =====
             is DiaryIntent.SuggestTitle -> {
                 suggestTitleFromBody()
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_SUGGEST_TITLE)
             }
             is DiaryIntent.ClassifyContentType -> {
                 classifyDraftContentType()
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_CLASSIFY_TYPE)
             }
             is DiaryIntent.ProofreadBlock -> {
                 proofreadBlock(intent.blockId)
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_PROOFREAD, mapOf("block_id" to intent.blockId))
             }
             is DiaryIntent.DecorateBlock -> {
                 decorateBlock(intent.blockId)
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_DECORATE, mapOf("block_id" to intent.blockId))
             }
             is DiaryIntent.SuggestHashtags -> {
                 suggestHashtags(intent.targetBlockId)
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_SUGGEST_HASHTAG)
             }
             is DiaryIntent.ShowDownloadNotice -> {
                 if (!intent.show && _state.value.wifiWarningSource == null) {
@@ -409,13 +441,16 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 startSherpaDownload()
             }
             is DiaryIntent.StartRecording -> {
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_VOICE_RECORD_START)
                 startRecording()
             }
             is DiaryIntent.StopRecording -> {
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_VOICE_RECORD_STOP)
                 stopRecording()
             }
             is DiaryIntent.UpdateVoiceLanguage -> {
                 val newLang = intent.language
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_VOICE_LANGUAGE_CHANGE, mapOf(AnalyticsEvents.PARAM_LANGUAGE to newLang))
                 // 같은 언어 클릭(로딩 중 포함) 은 무시 — 사용자가 같은 칩을 연타해도 재로딩하지 않음
                 if (_state.value.voiceLanguage == newLang) return
 
@@ -458,6 +493,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             }
             is DiaryIntent.TranslateDraftToKorean -> {
                 translateDraftToKorean()
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_TRANSLATE)
             }
             is DiaryIntent.ApplyTranslatedDraft -> {
                 applyTranslatedDraft()
@@ -494,6 +530,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     return
                 }
                 _state.update { it.copy(draftBlocks = it.draftBlocks + intent.block) }
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_BLOCK_ADD, mapOf(
+                    AnalyticsEvents.PARAM_BLOCK_TYPE to intent.block::class.simpleName.orEmpty()
+                ))
             }
             is DiaryIntent.InsertBlock -> {
                 _state.update { current ->
@@ -538,6 +577,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { current ->
                     current.copy(draftBlocks = current.draftBlocks.filter { it.id != intent.blockId })
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_BLOCK_REMOVE)
             }
             is DiaryIntent.MoveBlock -> {
                 _state.update { current ->
@@ -631,20 +671,24 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             // ===== 이미지 픽업/촬영 =====
             is DiaryIntent.ImagesPicked -> {
                 if (intent.uris.isNotEmpty()) importPickedImages(intent.uris)
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_MEDIA_PHOTO_ADD, mapOf("count" to intent.uris.size.toString()))
             }
             is DiaryIntent.CameraImageCaptured -> {
                 importCapturedImage(intent.capturedUri)
             }
             is DiaryIntent.VideoPicked -> {
                 importPickedVideo(intent.uri)
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_MEDIA_VIDEO_ADD)
             }
             is DiaryIntent.RequestCloudImport -> {
                 sendEffect(DiaryEffect.LaunchCloudPicker)
             }
             is DiaryIntent.CloudFilesPicked -> {
                 if (intent.uris.isNotEmpty()) importCloudFiles(intent.uris)
+                AnalyticsManager.logEvent(AnalyticsEvents.WRITE_MEDIA_CLOUD_ADD)
             }
             is DiaryIntent.RequestExportBackup -> {
+                AnalyticsManager.logEvent(AnalyticsEvents.BACKUP_EXPORT_REQUEST)
                 val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
                 sendEffect(DiaryEffect.LaunchExportBackupPicker("aidiary_backup_$timeStamp.zip"))
             }
@@ -671,6 +715,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             is DiaryIntent.RequestImportBackup -> {
+                AnalyticsManager.logEvent(AnalyticsEvents.BACKUP_IMPORT_REQUEST)
                 sendEffect(DiaryEffect.LaunchImportBackupPicker)
             }
             is DiaryIntent.ImportBackup -> {
@@ -725,9 +770,11 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     val metas = repository.metasForDate(intent.dateString)
                     _state.update { it.copy(selectedDateDiaries = metas) }
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.NAV_DATE_SELECT)
             }
             is DiaryIntent.ChangeTab -> {
                 _state.update { it.copy(activeTab = intent.tab) }
+                AnalyticsManager.logEvent(AnalyticsEvents.NAV_TAB, mapOf(AnalyticsEvents.PARAM_TAB to intent.tab))
             }
             is DiaryIntent.AddGoal -> {
                 _state.update { current ->
@@ -735,6 +782,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveGoals(updatedGoals)
                     current.copy(goals = updatedGoals)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.GOALS_ADD, mapOf("category" to intent.category))
             }
             is DiaryIntent.ToggleGoal -> {
                 _state.update { current ->
@@ -759,6 +807,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     
                     current.copy(goals = updatedGoals)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.GOALS_TOGGLE)
             }
             is DiaryIntent.DeleteGoal -> {
                 _state.update { current ->
@@ -766,6 +815,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveGoals(updatedGoals)
                     current.copy(goals = updatedGoals)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.GOALS_DELETE)
             }
             is DiaryIntent.AddPlannerTask -> {
                 _state.update { current ->
@@ -819,6 +869,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.PLANNER_TASK_ADD, mapOf("has_time" to (intent.startTime != null).toString()))
             }
             is DiaryIntent.TogglePlannerTask -> {
                 _state.update { current ->
@@ -828,6 +879,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.PLANNER_TASK_TOGGLE)
             }
             is DiaryIntent.DeletePlannerTask -> {
                 _state.update { current ->
@@ -835,6 +887,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.PLANNER_TASK_DELETE)
             }
             is DiaryIntent.DeletePlannerTaskSeries -> {
                 _state.update { current ->
@@ -842,6 +895,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     plannerRepository.saveTasks(updatedTasks)
                     current.copy(plannerTasks = updatedTasks)
                 }
+                AnalyticsManager.logEvent(AnalyticsEvents.PLANNER_TASK_SERIES_DELETE)
             }
             is DiaryIntent.SuggestPlannerTask -> {
                 suggestPlannerTaskName(
@@ -852,24 +906,29 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     repeatDays = intent.repeatDays,
                     repeatEndDateString = intent.repeatEndDateString
                 )
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_SUGGEST_PLANNER_TASK)
             }
             is DiaryIntent.ClearSuggestedPlannerTask -> {
                 _state.update { it.copy(suggestedPlannerTaskText = null) }
             }
             is DiaryIntent.RequestBriefing -> {
                 requestBriefing(intent.tab)
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_BRIEFING_REQUEST, mapOf(AnalyticsEvents.PARAM_TAB to intent.tab))
             }
 
             // ===== 온디바이스 AI 챗봇 =====
             is DiaryIntent.SendChatMessage -> {
                 runOnDeviceChat(intent.text)
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_CHAT_SEND)
             }
             is DiaryIntent.ClearChatHistory -> {
                 llmEngine?.clearChat()
                 _state.update { it.copy(chatMessages = emptyList()) }
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_CHAT_CLEAR)
             }
             is DiaryIntent.RequestAiPreset -> {
                 runAiPreset(intent.kind)
+                AnalyticsManager.logEvent(AnalyticsEvents.AI_PRESET, mapOf(AnalyticsEvents.PARAM_PRESET_KIND to intent.kind))
             }
         }
     }

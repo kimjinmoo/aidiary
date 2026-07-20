@@ -67,6 +67,7 @@ import androidx.xr.compose.subspace.layout.height
 import androidx.xr.compose.subspace.layout.movable
 import androidx.xr.compose.subspace.layout.resizable
 import androidx.xr.compose.subspace.layout.width
+import com.grepiu.aidiary.analytics.AnalyticsManager
 import com.grepiu.aidiary.data.model.ContentBlock
 import com.grepiu.aidiary.mvi.effect.DiaryEffect
 import com.grepiu.aidiary.mvi.intent.DiaryIntent
@@ -90,6 +91,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        AnalyticsManager.init(this)
 
         setContent {
             val viewModel: DiaryViewModel = viewModel()
