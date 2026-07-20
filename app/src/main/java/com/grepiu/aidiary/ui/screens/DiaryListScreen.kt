@@ -11,6 +11,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -461,8 +463,32 @@ fun DiaryListScreen(
                 }
             }
 
-            when (globalViewMode) {
-                DiaryViewMode.LIST -> {
+            // 보기 모드 전환: LIST ↔ BLOG ↔ CALENDAR.
+            // 방향성 슬라이드 + 페이드 + 미세 스케일로 Material 3 페이지 전환 스타일을 적용하여
+            // 모드가 '앞/뒤로 자연스럽게 미끄러지는' 전문가 수준 UX 제공.
+            val modeOrder = remember { listOf(DiaryViewMode.LIST, DiaryViewMode.BLOG, DiaryViewMode.CALENDAR) }
+            AnimatedContent(
+                targetState = globalViewMode,
+                transitionSpec = {
+                    val fromIdx = modeOrder.indexOf(initialState).coerceAtLeast(0)
+                    val toIdx = modeOrder.indexOf(targetState).coerceAtLeast(0)
+                    val dir = if (toIdx >= fromIdx) 1 else -1
+                    val easing = FastOutSlowInEasing
+                    (slideInHorizontally(tween(360, easing = easing)) { w -> dir * w / 7 } +
+                        fadeIn(tween(260, easing = easing)) +
+                        scaleIn(initialScale = 0.96f, animationSpec = tween(360, easing = easing))) togetherWith
+                    (slideOutHorizontally(tween(300, easing = easing)) { w -> -dir * w / 7 } +
+                        fadeOut(tween(220, easing = easing)) +
+                        scaleOut(targetScale = 0.98f, animationSpec = tween(300, easing = easing)))
+                },
+                label = "ViewModeTransition",
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) { mode ->
+                when (mode) {
+                    DiaryViewMode.LIST -> {
+                        // AnimatedContent 컨텐츠 람다는 BoxScope 이므로,
+                        // weight(1f) 가 outer Column 의 weight 시스템에 잡히도록 별도 Column 으로 감싼다.
+                        Column(modifier = Modifier.fillMaxSize()) {
             if (!isHeaderHidden) {
                 // ── AI 상태 표시줄 ──
                 AiStatusBar(
@@ -626,9 +652,9 @@ fun DiaryListScreen(
                     }
                 }
             }
-                }
-                DiaryViewMode.BLOG -> {
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        }
+                    }
+                    DiaryViewMode.BLOG -> {
                         UnifiedBlogView(
                             diaries = state.allDiaryMetas,
                             tasks = state.plannerTasks,
@@ -636,9 +662,7 @@ fun DiaryListScreen(
                             onSelectDiary = onSelectDiary
                         )
                     }
-                }
-                DiaryViewMode.CALENDAR -> {
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                    DiaryViewMode.CALENDAR -> {
                         UnifiedCalendarView(
                             diaries = state.allDiaryMetas,
                             tasks = state.plannerTasks,
@@ -4180,7 +4204,12 @@ private fun DiaryTypeFilterRow(
     }
 }
 
-/** 리스트/블로그/달력 세그먼트 토글 */
+/**
+ * 리스트/블로그/달력 세그먼트 토글.
+ * - 활성 아이템: spring 기반 미세 스케일 업(1.0 → 1.08) + 부드러운 색상 보간.
+ * - 아이콘 tint: 선택 시 흰색으로 페이드 인.
+ * - Material 3 페이지 전환과 톤을 맞추기 위해 FastOutSlowInEasing 사용.
+ */
 @Composable
 private fun ViewModeToggle(
     mode: DiaryViewMode,
@@ -4198,10 +4227,35 @@ private fun ViewModeToggle(
         Row(modifier = Modifier.padding(2.dp)) {
             items.forEach { (m, icon, desc) ->
                 val selected = m == mode
+                // 활성 항목에 미세한 바운스 스케일(스프링) — 누르는 듯한 자연스러운 피드백
+                val scale by animateFloatAsState(
+                    targetValue = if (selected) 1.08f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    ),
+                    label = "viewModeToggleScale"
+                )
+                // 배경색 부드러운 보간
+                val bgColor by animateColorAsState(
+                    targetValue = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    label = "viewModeToggleBg"
+                )
+                // 아이콘 틴트 부드러운 보간
+                val iconTint by animateColorAsState(
+                    targetValue = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    label = "viewModeToggleTint"
+                )
                 Box(
                     modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                        }
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        .background(bgColor)
                         .clickable { onModeChange(m) }
                         .semantics { this.selected = selected; role = Role.Tab }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -4209,7 +4263,7 @@ private fun ViewModeToggle(
                 ) {
                     Icon(
                         icon, desc,
-                        tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = iconTint,
                         modifier = Modifier.size(18.dp)
                     )
                 }
