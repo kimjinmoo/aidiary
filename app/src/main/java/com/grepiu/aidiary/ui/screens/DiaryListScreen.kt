@@ -88,6 +88,13 @@ import com.grepiu.aidiary.ui.theme.EmotionCalm
 import com.grepiu.aidiary.ui.theme.DiaryTypeColor
 import com.grepiu.aidiary.ui.theme.PostTypeColor
 import com.grepiu.aidiary.ui.theme.NoteTypeColor
+import com.grepiu.aidiary.ui.util.DiaryViewMode
+import com.grepiu.aidiary.ui.util.dateStringOf
+import com.grepiu.aidiary.ui.util.groupMetasByDate
+import com.grepiu.aidiary.ui.util.buildMonthGrid
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -1485,6 +1492,7 @@ fun DiaryTabContent(
 
     val focusManager = LocalFocusManager.current
     val lazyListState = rememberLazyListState()
+    var viewMode by rememberSaveable { mutableStateOf(DiaryViewMode.LIST) }
 
     LaunchedEffect(lazyListState.isScrollInProgress) {
         if (lazyListState.isScrollInProgress) {
@@ -1495,6 +1503,8 @@ fun DiaryTabContent(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
+        when (viewMode) {
+            DiaryViewMode.LIST -> {
         LazyColumn(
             state = lazyListState,
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -1534,6 +1544,8 @@ fun DiaryTabContent(
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                             )
                         }
+                        Spacer(Modifier.weight(1f))
+                        ViewModeToggle(mode = viewMode, onModeChange = { viewMode = it })
                     }
 
                     Spacer(Modifier.height(12.dp))
@@ -1701,6 +1713,24 @@ fun DiaryTabContent(
             Spacer(modifier = Modifier.height(60.dp))
         }
     }
+            }
+            DiaryViewMode.BLOG -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("블로그 보기 (다음 Task)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            DiaryViewMode.CALENDAR -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("달력 보기 (다음 Task)", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
 }
 }
 
@@ -3848,6 +3878,43 @@ fun WriteActionBar(
 
             // 시스템 네비게이션 바 여백
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/** 리스트/블로그/달력 세그먼트 토글 */
+@Composable
+private fun ViewModeToggle(
+    mode: DiaryViewMode,
+    onModeChange: (DiaryViewMode) -> Unit
+) {
+    val items = listOf(
+        Triple(DiaryViewMode.LIST, Icons.Default.ViewList, "리스트"),
+        Triple(DiaryViewMode.BLOG, Icons.Default.ViewAgenda, "블로그"),
+        Triple(DiaryViewMode.CALENDAR, Icons.Default.CalendarMonth, "달력"),
+    )
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+    ) {
+        Row(modifier = Modifier.padding(2.dp)) {
+            items.forEach { (m, icon, desc) ->
+                val selected = m == mode
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        .clickable { onModeChange(m) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        icon, desc,
+                        tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
     }
 }
