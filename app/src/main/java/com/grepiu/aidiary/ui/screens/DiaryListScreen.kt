@@ -58,6 +58,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -1473,7 +1477,9 @@ fun DiaryTabContent(
     onCancelSearch: () -> Unit,
     onDateSelectFromCalendar: (String) -> Unit
 ) {
-    LaunchedEffect(Unit) { onDateSelectFromCalendar(state.selectedDateString) }
+    LaunchedEffect(viewMode) {
+        if (viewMode == DiaryViewMode.CALENDAR) onDateSelectFromCalendar(state.selectedDateString)
+    }
 
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
     val parsedDateText = remember(state.selectedDateString) {
@@ -3938,6 +3944,7 @@ private fun ViewModeToggle(
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
                         .clickable { onModeChange(m) }
+                        .semantics { this.selected = selected; role = Role.Tab }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -3962,6 +3969,13 @@ private fun DiaryBlogView(
     val listState = rememberLazyListState()
     val groups = remember(diaries) { groupMetasByDate(diaries) }
 
+    if (groups.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("아직 기록이 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
     val shouldLoadMore by remember {
         derivedStateOf {
             val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -3969,13 +3983,6 @@ private fun DiaryBlogView(
         }
     }
     LaunchedEffect(shouldLoadMore) { if (shouldLoadMore) onLoadMore() }
-
-    if (groups.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("아직 기록이 없어요", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        return
-    }
 
     LazyColumn(
         state = listState,
@@ -4046,6 +4053,15 @@ private fun DiaryCalendarView(
     }
     var year by remember { mutableStateOf(initCal.get(Calendar.YEAR)) }
     var month by remember { mutableStateOf(initCal.get(Calendar.MONTH) + 1) } // 1-12
+
+    // 외부에서 선택일이 바뀌면(오늘 버튼/날짜 피커) 그리드도 그 달로 이동
+    LaunchedEffect(selectedDateString) {
+        runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(selectedDateString) }
+            .getOrNull()?.let {
+                val c = Calendar.getInstance().apply { time = it }
+                year = c.get(Calendar.YEAR); month = c.get(Calendar.MONTH) + 1
+            }
+    }
 
     val cells = remember(year, month) { buildMonthGrid(year, month) }
     val monthPrefix = remember(year, month) { "%04d-%02d-".format(year, month) }
