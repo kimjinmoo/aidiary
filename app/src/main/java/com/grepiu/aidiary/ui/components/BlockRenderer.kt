@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
@@ -364,34 +365,36 @@ private fun TableBlockView(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp)
-            .border(0.5.dp, cellBorder, RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp))
     ) {
-        block.cells.forEachIndexed { rowIdx, row ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                row.forEachIndexed { colIdx, cellText ->
-                    val isHeader = rowIdx == 0
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(if (isHeader) headerBg else Color.Transparent)
-                            .border(
-                                width = 0.5.dp,
-                                color = cellBorder
-                            )
-                            .padding(horizontal = 10.dp, vertical = 10.dp)
-                    ) {
-                        Text(
-                            text = cellText.ifBlank { if (isHeader) "열 ${colIdx + 1}" else "" },
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (isHeader) headerTextColor
-                            else if (cellText.isBlank() && !isHeader) bodyTextColor.copy(alpha = 0.35f)
-                            else bodyTextColor,
-                            maxLines = 6,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            Column {
+                block.cells.forEachIndexed { rowIdx, row ->
+                    Row {
+                        row.forEachIndexed { colIdx, cellText ->
+                            val isHeader = rowIdx == 0
+                            Box(
+                                modifier = Modifier
+                                    .widthIn(min = 100.dp)
+                                    .background(if (isHeader) headerBg else Color.Transparent)
+                                    .border(
+                                        width = 0.5.dp,
+                                        color = cellBorder
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 10.dp)
+                            ) {
+                                Text(
+                                    text = cellText.ifBlank { if (isHeader) "열 ${colIdx + 1}" else "" },
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (isHeader) headerTextColor
+                                    else if (cellText.isBlank() && !isHeader) bodyTextColor.copy(alpha = 0.35f)
+                                    else bodyTextColor,
+                                    maxLines = 6,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -724,26 +725,30 @@ private fun TableBlockEditor(
             )
         }
 
-        // 헤더 (첫 행)
-        TableRowEditor(
-            row = block.cells.firstOrNull().orEmpty(),
-            rowIndex = 0,
-            isHeader = true,
-            border = cellBorder,
-            headerBg = headerBg,
-            onCellChange = onCellChange
-        )
+        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            Column {
+                // 헤더 (첫 행)
+                TableRowEditor(
+                    row = block.cells.firstOrNull().orEmpty(),
+                    rowIndex = 0,
+                    isHeader = true,
+                    border = cellBorder,
+                    headerBg = headerBg,
+                    onCellChange = onCellChange
+                )
 
-        // 본문 행
-        block.cells.drop(1).forEachIndexed { idx, row ->
-            TableRowEditor(
-                row = row,
-                rowIndex = idx + 1,
-                isHeader = false,
-                border = cellBorder,
-                headerBg = headerBg,
-                onCellChange = onCellChange
-            )
+                // 본문 행
+                block.cells.drop(1).forEachIndexed { idx, row ->
+                    TableRowEditor(
+                        row = row,
+                        rowIndex = idx + 1,
+                        isHeader = false,
+                        border = cellBorder,
+                        headerBg = headerBg,
+                        onCellChange = onCellChange
+                    )
+                }
+            }
         }
     }
 }
@@ -757,10 +762,10 @@ private fun TableRowEditor(
     headerBg: Color,
     onCellChange: (Int, Int, String) -> Unit
 ) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row {
         row.forEachIndexed { colIdx, cellText ->
             val cellModifier = Modifier
-                .weight(1f)
+                .widthIn(min = 100.dp)
                 .background(if (isHeader) headerBg else Color.Transparent)
                 .border(width = 0.5.dp, color = border)
             TableCellEditor(
