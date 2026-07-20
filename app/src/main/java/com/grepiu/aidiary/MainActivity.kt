@@ -18,14 +18,28 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.grepiu.aidiary.ui.util.WindowSizeClass
+import com.grepiu.aidiary.ui.util.rememberWindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -385,8 +399,16 @@ fun DiaryAppNavigationRouter(
     onPickCloud: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 태블릿/XR(EXPANDED)에서는 목록+상세 2-pane. 그 외엔 기존 phase 단일 화면.
+    val twoPane = rememberWindowSizeClass() == WindowSizeClass.EXPANDED
+    // 2-pane 에서는 LIST/DETAIL 이 한 화면(좌 목록·우 상세)이므로 전환 애니메이션을 묶는다.
+    val animTarget = if (twoPane && (state.phase == DiaryPhase.LIST || state.phase == DiaryPhase.DETAIL)) {
+        DiaryPhase.LIST
+    } else {
+        state.phase
+    }
     AnimatedContent(
-        targetState = state.phase,
+        targetState = animTarget,
         transitionSpec = {
             val fromDepth = initialState.depth()
             val toDepth   = targetState.depth()
@@ -442,37 +464,11 @@ fun DiaryAppNavigationRouter(
                 )
             }
             DiaryPhase.LIST -> {
-                DiaryListScreen(
-                    state = state,
-                    onSelectDiary = { meta ->
-                        viewModel.processIntent(DiaryIntent.LoadFullDiary(meta.id))
-                    },
-                    onWriteDiary = { contentType ->
-                        viewModel.processIntent(
-                            DiaryIntent.NavigateTo(DiaryPhase.WRITE, initialContentType = contentType)
-                        )
-                    },
-                    onStartDownload = {
-                        viewModel.processIntent(DiaryIntent.StartDownload)
-                    },
-                    onCancelDownload = {
-                        viewModel.processIntent(DiaryIntent.CancelDownload)
-                    },
-                    onDismissNotice = {
-                        viewModel.processIntent(DiaryIntent.ShowDownloadNotice(false))
-                    },
-                    onDismissWifiWarning = {
-                        viewModel.processIntent(DiaryIntent.ShowWifiWarning(false))
-                    },
-                    onStartSherpaDownload = {
-                        viewModel.processIntent(DiaryIntent.StartSherpaDownload)
-                    },
-                    onDismissSherpaNotice = {
-                        viewModel.processIntent(DiaryIntent.DismissSherpaDownloadNotice)
-                    },
-                    onIntent = { intent -> viewModel.processIntent(intent) },
-                    modifier = Modifier.fillMaxSize()
-                )
+                if (twoPane) {
+                    ExpandedListDetail(state = state, viewModel = viewModel)
+                } else {
+                    ListRoute(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+                }
             }
             DiaryPhase.WRITE -> {
                 DiaryWriteScreen(
@@ -543,19 +539,108 @@ fun DiaryAppNavigationRouter(
                 )
             }
             DiaryPhase.DETAIL -> {
-                state.selectedDiary?.let { diary ->
-                    DiaryDetailScreen(
-                        diary = diary,
-                        onDelete = {
-                            viewModel.processIntent(DiaryIntent.DeleteDiary(diary.id))
-                        },
-                        onBack = {
-                            viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST))
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                DetailRoute(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
             }
+        }
+    }
+}
+
+/**
+ * 목록 화면 라우트 — DiaryListScreen 에 ViewModel 콜백을 배선. 2-pane/단일 화면 양쪽에서 재사용.
+ */
+@Composable
+private fun ListRoute(
+    state: DiaryState,
+    viewModel: DiaryViewModel,
+    modifier: Modifier = Modifier
+) {
+    DiaryListScreen(
+        state = state,
+        onSelectDiary = { meta -> viewModel.processIntent(DiaryIntent.LoadFullDiary(meta.id)) },
+        onWriteDiary = { contentType ->
+            viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.WRITE, initialContentType = contentType))
+        },
+        onStartDownload = { viewModel.processIntent(DiaryIntent.StartDownload) },
+        onCancelDownload = { viewModel.processIntent(DiaryIntent.CancelDownload) },
+        onDismissNotice = { viewModel.processIntent(DiaryIntent.ShowDownloadNotice(false)) },
+        onDismissWifiWarning = { viewModel.processIntent(DiaryIntent.ShowWifiWarning(false)) },
+        onStartSherpaDownload = { viewModel.processIntent(DiaryIntent.StartSherpaDownload) },
+        onDismissSherpaNotice = { viewModel.processIntent(DiaryIntent.DismissSherpaDownloadNotice) },
+        onIntent = { intent -> viewModel.processIntent(intent) },
+        modifier = modifier
+    )
+}
+
+/**
+ * 상세 화면 라우트 — 선택된 기록이 있을 때만 렌더. 2-pane/단일 화면 양쪽에서 재사용.
+ */
+@Composable
+private fun DetailRoute(
+    state: DiaryState,
+    viewModel: DiaryViewModel,
+    modifier: Modifier = Modifier
+) {
+    state.selectedDiary?.let { diary ->
+        DiaryDetailScreen(
+            diary = diary,
+            onDelete = { viewModel.processIntent(DiaryIntent.DeleteDiary(diary.id)) },
+            onBack = { viewModel.processIntent(DiaryIntent.NavigateTo(DiaryPhase.LIST)) },
+            modifier = modifier
+        )
+    }
+}
+
+/**
+ * 태블릿/XR(EXPANDED) 2-pane: 좌측 고정폭 목록 + 우측 상세(또는 안내 플레이스홀더).
+ * 목록에서 기록 선택 시 phase=DETAIL 이 되어 우측 pane 이 채워지고, 뒤로가기 시 플레이스홀더로 복귀.
+ */
+@Composable
+private fun ExpandedListDetail(
+    state: DiaryState,
+    viewModel: DiaryViewModel
+) {
+    Row(modifier = Modifier.fillMaxSize()) {
+        ListRoute(
+            state = state,
+            viewModel = viewModel,
+            modifier = Modifier
+                .width(dimensionResource(id = R.dimen.list_pane_width))
+                .fillMaxHeight()
+        )
+        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            if (state.phase == DiaryPhase.DETAIL && state.selectedDiary != null) {
+                DetailRoute(state = state, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+            } else {
+                DetailPlaceholder()
+            }
+        }
+    }
+}
+
+/**
+ * 2-pane 우측 빈 상태 — 목록에서 기록을 고르라는 안내.
+ */
+@Composable
+private fun DetailPlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(64.dp)
+            )
+            Text(
+                text = "왼쪽 목록에서 기록을 선택하세요",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 16.dp)
+            )
         }
     }
 }

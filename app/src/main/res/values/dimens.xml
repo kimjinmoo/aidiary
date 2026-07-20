@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 태블릿/XR 2-pane 좌측 목록 pane 고정 폭 (기본: 폰 폭 기준) -->
+    <dimen name="list_pane_width">380dp</dimen>
+</resources>

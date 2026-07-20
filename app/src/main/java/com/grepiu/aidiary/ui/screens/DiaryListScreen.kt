@@ -1085,7 +1085,7 @@ fun FloatingWritePill(
             color = MaterialTheme.colorScheme.primary,
             shadowElevation = 12.dp,
             tonalElevation = 4.dp,
-            modifier = Modifier.width(220.dp).height(52.dp).scale(scale)
+            modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp).height(54.dp).scale(scale)
         ) {
             Row(
                 modifier = Modifier.fillMaxSize().clickable(interactionSource = interaction, indication = null) {
@@ -1328,6 +1328,8 @@ fun TabSelector(
         ) {
             val maxWidth = this.maxWidth
             val tabWidth = maxWidth / 4
+            // 소형/저해상도 폰에서 긴 라벨(AI 비서)이 잘리지 않도록 축약
+            val narrowTabs = maxWidth < 380.dp
 
             // 슬라이딩 백그라운드 인디케이터
             val indicatorOffset by androidx.compose.animation.core.animateDpAsState(
@@ -1397,11 +1399,12 @@ fun TabSelector(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = label,
+                                text = if (narrowTabs && tabId == "CHAT") "AI" else label,
                                 fontSize = 12.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                 color = itemTextColor,
                                 maxLines = 1,
+                                softWrap = false,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -3270,7 +3273,7 @@ fun ChatTabContent(
 
                             Column(
                                 horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-                                modifier = Modifier.widthIn(max = 280.dp)
+                                modifier = Modifier.widthIn(max = 520.dp)
                             ) {
                                 Card(
                                     shape = if (isUser) RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp)

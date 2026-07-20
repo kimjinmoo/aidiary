@@ -54,7 +54,10 @@ fun DiaryWelcomeScreen(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .align(Alignment.TopCenter)
+                .fillMaxHeight()
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
                 .verticalScroll(scrollState)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -150,7 +153,6 @@ fun DiaryWelcomeScreen(
                 lineHeight = 16.sp
             )
 
-            Spacer(modifier = Modifier.weight(1f))
             Spacer(modifier = Modifier.height(32.dp))
 
             // 3. 약관 동의 영역

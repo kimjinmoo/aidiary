@@ -144,6 +144,7 @@ fun OpenSourceLicenseModalDialog(
             elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
             modifier = Modifier
                 .fillMaxWidth(0.92f)
+                .widthIn(max = 640.dp)
                 .fillMaxHeight(0.85f)
                 .padding(vertical = 16.dp)
         ) {
@@ -336,6 +337,7 @@ private fun LicenseDetailModalDialog(
             elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
             modifier = Modifier
                 .fillMaxWidth(0.90f)
+                .widthIn(max = 600.dp)
                 .fillMaxHeight(0.75f)
                 .padding(16.dp)
         ) {

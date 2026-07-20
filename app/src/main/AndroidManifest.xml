@@ -14,6 +14,14 @@
     <!-- OpenGL ES 3.2 이상 요구 -->
     <uses-feature android:glEsVersion="0x00030002" android:required="true" />
 
+    <!-- 대화면(태블릿·폴더블·Android XR 패널) 지원 명시 -->
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -30,9 +38,12 @@
         <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
         <uses-native-library android:name="libOpenCL-car.so" android:required="false" />
 
+        <!-- resizeableActivity: 태블릿 멀티윈도우/폴더블/Android XR 패널에서 크기 조절·2-pane 대응.
+             XR 공간 UI(홈스페이스/풀스페이스)는 Jetpack XR(LocalSpatialConfiguration)로 런타임 처리. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:resizeableActivity="true"
             android:theme="@style/Theme.AIDiary"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 태블릿(smallestWidth ≥ 600dp): 목록 pane 을 살짝 넓혀 카드 가독성 확보 -->
+    <dimen name="list_pane_width">400dp</dimen>
+</resources>

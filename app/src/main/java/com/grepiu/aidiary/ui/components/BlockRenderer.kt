@@ -36,6 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import com.grepiu.aidiary.ui.theme.EmotionJoy
+import com.grepiu.aidiary.ui.theme.EmotionCalm
+import com.grepiu.aidiary.ui.theme.EmotionSadness
+import com.grepiu.aidiary.ui.theme.EmotionAnxiety
+import com.grepiu.aidiary.ui.theme.EmotionAnger
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
@@ -424,12 +429,12 @@ private fun TagAiBlockView(
  * 감정 라벨을 한글 표시용 문자열과 테마 색상으로 매핑합니다.
  */
 private fun emotionUi(label: String): Pair<String, Color> = when (label.trim()) {
-    "기쁨" -> "😊 기쁨" to Color(0xFFD4AF37)
-    "평온" -> "🌿 평온" to Color(0xFF2E7D32)
-    "슬픔" -> "😢 슬픔" to Color(0xFF1565C0)
-    "불안" -> "😰 불안" to Color(0xFF7B1FA2)
-    "분노" -> "😡 분노" to Color(0xFFC62828)
-    else -> "평온" to Color(0xFF2E7D32)
+    "기쁨" -> "😊 기쁨" to EmotionJoy
+    "평온" -> "🌿 평온" to EmotionCalm
+    "슬픔" -> "😢 슬픔" to EmotionSadness
+    "불안" -> "😰 불안" to EmotionAnxiety
+    "분노" -> "😡 분노" to EmotionAnger
+    else -> "평온" to EmotionCalm
 }
 
 /**

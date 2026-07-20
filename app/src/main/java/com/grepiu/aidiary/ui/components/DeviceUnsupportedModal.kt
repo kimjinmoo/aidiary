@@ -39,6 +39,7 @@ fun DeviceUnsupportedModalDialog(
             elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
             modifier = Modifier
                 .fillMaxWidth(0.88f)
+                .widthIn(max = 480.dp)
                 .padding(vertical = 16.dp)
         ) {
             Column(
