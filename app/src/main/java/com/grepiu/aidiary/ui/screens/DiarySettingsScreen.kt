@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -611,6 +612,7 @@ private fun themeSwatchColors(theme: AppTheme): Triple<Color, Color, Color> = wh
     AppTheme.BLOSSOM -> Triple(Color(0xFFC67A8E), Color(0xFF8B87C7), Color(0xFF5FA37E))
     AppTheme.ATLAS   -> Triple(Color(0xFF3D7BB5), Color(0xFFB07D2A), Color(0xFF2A8C7B))
     AppTheme.ECLIPSE -> Triple(Color(0xFF8B8FF8), Color(0xFFBB86FC), Color(0xFF4DCFB0))
+    AppTheme.KIDS    -> Triple(Color(0xFFFF6B81), Color(0xFFFFA502), Color(0xFF2ED573))
 }
 
 @Composable
@@ -620,14 +622,16 @@ private fun ThemePickerSection(
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
     ) {
         AppTheme.entries.forEach { theme ->
             ThemeCard(
                 theme = theme,
                 isSelected = theme == currentTheme,
                 onSelected = { onThemeSelected(theme) },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.width(106.dp)
             )
         }
     }

@@ -23,6 +23,7 @@ enum class AppTheme(val label: String, val emoji: String, val description: Strin
     ATLAS(  "아틀라스", "🗺️", "차분하고 중성적인 블루 톤"),
     BLOSSOM("블라섬", "🌸", "소프트 & 따뜻한 로즈 톤"),
     ECLIPSE("이클립스", "🌑", "세련된 딥 다크 블랙 테마"),
+    KIDS(   "키즈 캔디", "🧸", "8~13세 아이들을 위한 톡톡 튀는 캔디 무지개 파스텔 테마")
 }
 
 // =============================================================================
@@ -156,6 +157,58 @@ private val EclipseColorScheme = darkColorScheme(
     outline             = EclipseOutline,
     outlineVariant      = EclipseOutlineVariant,
 )
+// =============================================================================
+// KIDS ColorScheme (8~13세 아이들 타깃, 캔디 무지개 핑크 + 바나나 옐로우 + 라임)
+// =============================================================================
+private val KidsLightColorScheme = lightColorScheme(
+    primary             = androidx.compose.ui.graphics.Color(0xFFFF6B81),
+    onPrimary           = androidx.compose.ui.graphics.Color.White,
+    primaryContainer    = androidx.compose.ui.graphics.Color(0xFFFFF0F5),
+    onPrimaryContainer  = androidx.compose.ui.graphics.Color(0xFFD63031),
+    secondary           = androidx.compose.ui.graphics.Color(0xFFFFA502),
+    onSecondary         = androidx.compose.ui.graphics.Color.White,
+    secondaryContainer  = androidx.compose.ui.graphics.Color(0xFFFFECC4),
+    onSecondaryContainer= androidx.compose.ui.graphics.Color(0xFFE67E22),
+    tertiary            = androidx.compose.ui.graphics.Color(0xFF2ED573),
+    onTertiary          = androidx.compose.ui.graphics.Color.White,
+    tertiaryContainer   = androidx.compose.ui.graphics.Color(0xFFE8FAEB),
+    onTertiaryContainer = androidx.compose.ui.graphics.Color(0xFF10AC84),
+    error               = ErrorLight,
+    onError             = OnErrorLight,
+    background          = androidx.compose.ui.graphics.Color(0xFFFFFDF9),
+    onBackground        = androidx.compose.ui.graphics.Color(0xFF2D3436),
+    surface             = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+    onSurface           = androidx.compose.ui.graphics.Color(0xFF2D3436),
+    surfaceVariant      = androidx.compose.ui.graphics.Color(0xFFFFF5EE),
+    onSurfaceVariant    = androidx.compose.ui.graphics.Color(0xFF636E72),
+    outline             = androidx.compose.ui.graphics.Color(0xFFFFBE76),
+    outlineVariant      = androidx.compose.ui.graphics.Color(0xFFFFEAA7),
+)
+
+private val KidsDarkColorScheme = darkColorScheme(
+    primary             = androidx.compose.ui.graphics.Color(0xFFFF7675),
+    onPrimary           = androidx.compose.ui.graphics.Color(0xFF2D3436),
+    primaryContainer    = androidx.compose.ui.graphics.Color(0xFF632B30),
+    onPrimaryContainer  = androidx.compose.ui.graphics.Color(0xFFFFD8D8),
+    secondary           = androidx.compose.ui.graphics.Color(0xFFFFBE76),
+    onSecondary         = androidx.compose.ui.graphics.Color(0xFF2D3436),
+    secondaryContainer  = androidx.compose.ui.graphics.Color(0xFF5C431A),
+    onSecondaryContainer= androidx.compose.ui.graphics.Color(0xFFFFEAA7),
+    tertiary            = androidx.compose.ui.graphics.Color(0xFF55E6C1),
+    onTertiary          = androidx.compose.ui.graphics.Color(0xFF2D3436),
+    tertiaryContainer   = androidx.compose.ui.graphics.Color(0xFF1B4D3E),
+    onTertiaryContainer = androidx.compose.ui.graphics.Color(0xFFC7FCEB),
+    error               = ErrorDark,
+    onError             = OnErrorDark,
+    background          = androidx.compose.ui.graphics.Color(0xFF1E1E24),
+    onBackground        = androidx.compose.ui.graphics.Color(0xFFF5F6FA),
+    surface             = androidx.compose.ui.graphics.Color(0xFF25252E),
+    onSurface           = androidx.compose.ui.graphics.Color(0xFFF5F6FA),
+    surfaceVariant      = androidx.compose.ui.graphics.Color(0xFF2F2F3D),
+    onSurfaceVariant    = androidx.compose.ui.graphics.Color(0xFFDFE4EA),
+    outline             = androidx.compose.ui.graphics.Color(0xFFFF7675),
+    outlineVariant      = androidx.compose.ui.graphics.Color(0xFF57606F),
+)
 
 /** 현재 앱 테마를 Composable 트리에 전달하는 CompositionLocal */
 val LocalAppTheme = compositionLocalOf { AppTheme.ATLAS }
@@ -181,6 +234,7 @@ fun AIDiaryTheme(
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
         appTheme == AppTheme.ECLIPSE -> EclipseColorScheme
+        appTheme == AppTheme.KIDS    -> if (darkTheme) KidsDarkColorScheme else KidsLightColorScheme
         appTheme == AppTheme.ATLAS   -> if (darkTheme) AtlasDarkColorScheme else AtlasLightColorScheme
         else                         -> if (darkTheme) BlossomDarkColorScheme else BlossomLightColorScheme
     }

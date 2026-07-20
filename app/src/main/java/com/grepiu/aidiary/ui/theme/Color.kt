@@ -167,24 +167,28 @@ fun themeDiaryAccent(theme: AppTheme): Color = when (theme) {
     AppTheme.ATLAS   -> Color(0xFF3D7BB5) // 스틸 블루
     AppTheme.BLOSSOM -> Color(0xFFC67A8E) // 더스티 로즈
     AppTheme.ECLIPSE -> Color(0xFF8B8FF8) // 라이트 인디고 네온
+    AppTheme.KIDS    -> Color(0xFFFF6B81) // 캔디 버블검 핑크
 }
 
 fun themePlannerAccent(theme: AppTheme): Color = when (theme) {
     AppTheme.ATLAS   -> Color(0xFFB07D2A) // 앰버 골드
     AppTheme.BLOSSOM -> Color(0xFFE8945C) // 웜 피치
     AppTheme.ECLIPSE -> Color(0xFFFFB74D) // 앰버 글로우
+    AppTheme.KIDS    -> Color(0xFFFFA502) // 캔디 바나나 오렌지
 }
 
 fun themeGoalsAccent(theme: AppTheme): Color = when (theme) {
     AppTheme.ATLAS   -> Color(0xFF2A8C7B) // 틸 그린
     AppTheme.BLOSSOM -> Color(0xFF5FA37E) // 세이지 그린
     AppTheme.ECLIPSE -> Color(0xFF4DCFB0) // 아쿠아 민트
+    AppTheme.KIDS    -> Color(0xFF2ED573) // 캔디 라임 민트
 }
 
 fun themeChatAccent(theme: AppTheme): Color = when (theme) {
     AppTheme.ATLAS   -> Color(0xFF5C6BC0) // 스마트 인디고
     AppTheme.BLOSSOM -> Color(0xFF8B87C7) // 모브
     AppTheme.ECLIPSE -> Color(0xFFBB86FC) // 네온 바이올렛
+    AppTheme.KIDS    -> Color(0xFF70A1FF) // 캔디 스카이 블루
 }
 
 // =============================================================================
