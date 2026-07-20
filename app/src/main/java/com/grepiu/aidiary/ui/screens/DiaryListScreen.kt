@@ -1254,8 +1254,8 @@ fun WeeklyCalendarStrip(
                 val cardBgColor by animateColorAsState(
                     targetValue = when {
                         isSelected -> MaterialTheme.colorScheme.primary
-                        day.isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        day.isToday -> MaterialTheme.colorScheme.primaryContainer
+                        else -> MaterialTheme.colorScheme.surface
                     },
                     animationSpec = tween(durationMillis = 200),
                     label = "CalendarBgColor"
@@ -1268,43 +1268,47 @@ fun WeeklyCalendarStrip(
                 )
 
                 val borderStroke = when {
-                    day.isToday && !isSelected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
-                    isSelected -> null
-                    else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f))
+                    isSelected -> BorderStroke(1.5.dp, Color.White.copy(alpha = 0.6f))
+                    day.isToday -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.7f))
+                    else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
                 }
 
                 Surface(
                     onClick = { onDateSelect(day.dateString) },
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(22.dp),
                     color = cardBgColor,
                     border = borderStroke,
-                    shadowElevation = if (isSelected) 4.dp else 0.dp,
+                    shadowElevation = if (isSelected) 6.dp else if (day.isToday) 2.dp else 0.5.dp,
                     modifier = Modifier
                         .scale(scale)
-                        .width(54.dp)
-                        .height(78.dp)
+                        .width(58.dp)
+                        .height(82.dp)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(vertical = 9.dp, horizontal = 4.dp)
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
                     ) {
-                        // 요일 라벨
+                        // 요일 라벨 (이중 Surface 중첩 박스 완전 제거 -> 1자 사각형 잔상 100% 소멸)
                         Text(
                             text = if (day.isToday) "오늘" else day.dayName,
-                            fontSize = 11.5.sp,
-                            color = if (day.isToday && !isSelected) MaterialTheme.colorScheme.primary else dayOfWeekColor,
-                            fontWeight = if (day.isToday || isSelected) FontWeight.Bold else FontWeight.Medium
+                            fontSize = 12.sp,
+                            color = when {
+                                isSelected -> Color.White.copy(alpha = 0.9f)
+                                day.isToday -> MaterialTheme.colorScheme.primary
+                                else -> dayOfWeekColor
+                            },
+                            fontWeight = if (day.isToday || isSelected) FontWeight.Bold else FontWeight.SemiBold
                         )
 
-                        // 일자 수치
+                        // 일자 수치 (여백 확보로 시원한 가독성)
                         Text(
                             text = day.dayOfMonth,
-                            fontSize = 18.sp,
+                            fontSize = 19.sp,
                             color = dayTextColor,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold
                         )
 
                         // 하단 3색 미니 도트 (기록/계획/목표)

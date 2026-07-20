@@ -186,6 +186,18 @@ data class DiaryState(
      */
     val hasHeadingBlock: Boolean
         get() = draftBlocks.any { it is ContentBlock.HeadingBlock }
+
+    /**
+     * 본문 블록 내에 '해시태그' 블록 존재 여부 (글당 최대 1개 제한).
+     */
+    val hasHashtagBlock: Boolean
+        get() = draftBlocks.any { it is ContentBlock.HashtagBlock }
+
+    /**
+     * 본문 블록 내에 '위치' 블록 존재 여부 (글당 최대 1개 제한).
+     */
+    val hasLocationBlock: Boolean
+        get() = draftBlocks.any { it is ContentBlock.LocationBlock }
 }
 
 /**

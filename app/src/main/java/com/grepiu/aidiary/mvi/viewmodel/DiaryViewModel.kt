@@ -471,12 +471,26 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
             // ===== 블록 기반 콘텐츠 =====
             is DiaryIntent.RequestLocationBlock -> {
+                if (_state.value.hasLocationBlock) {
+                    sendEffect(DiaryEffect.ShowToast("위치 블록은 한 글에 1개만 추가할 수 있어요."))
+                    return
+                }
                 requestLocationBlock()
             }
             is DiaryIntent.AddBlock -> {
                 // HeadingBlock 은 단일만 허용 (두 번째 추가는 무시 + 토스트)
                 if (intent.block is ContentBlock.HeadingBlock && _state.value.hasHeadingBlock) {
                     sendEffect(DiaryEffect.ShowToast("제목 블록은 한 글에 1개만 추가할 수 있어요."))
+                    return
+                }
+                // HashtagBlock 도 단일만 허용 (두 번째 추가는 무시 + 토스트)
+                if (intent.block is ContentBlock.HashtagBlock && _state.value.hasHashtagBlock) {
+                    sendEffect(DiaryEffect.ShowToast("해시태그 블록은 한 글에 1개만 추가할 수 있어요."))
+                    return
+                }
+                // LocationBlock 도 단일만 허용 (두 번째 추가는 무시 + 토스트)
+                if (intent.block is ContentBlock.LocationBlock && _state.value.hasLocationBlock) {
+                    sendEffect(DiaryEffect.ShowToast("위치 블록은 한 글에 1개만 추가할 수 있어요."))
                     return
                 }
                 _state.update { it.copy(draftBlocks = it.draftBlocks + intent.block) }

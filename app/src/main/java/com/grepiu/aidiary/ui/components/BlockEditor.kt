@@ -1133,6 +1133,8 @@ fun AddBlockBar(
     onPickVideo: (() -> Unit)? = null,
     onPickCloud: (() -> Unit)? = null,
     hasHeading: Boolean = false,
+    hasHashtag: Boolean = false,
+    hasLocation: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -1208,15 +1210,17 @@ fun AddBlockBar(
             )
             AddChip(
                 icon = Icons.Default.Label,
-                label = "해시태그",
+                label = if (hasHashtag) "해시태그(추가됨)" else "해시태그",
                 accent = Color(0xFF26A69A),
-                onClick = { onAdd(ContentBlock.HashtagBlock()) }
+                onClick = { onAdd(ContentBlock.HashtagBlock()) },
+                enabled = !hasHashtag
             )
             AddChip(
                 icon = Icons.Default.Place,
-                label = "위치",
+                label = if (hasLocation) "위치(추가됨)" else "위치",
                 accent = MaterialTheme.colorScheme.secondary,
-                onClick = onAddLocation
+                onClick = onAddLocation,
+                enabled = !hasLocation
             )
         }
     }

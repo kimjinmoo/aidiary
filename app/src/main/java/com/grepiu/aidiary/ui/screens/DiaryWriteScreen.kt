@@ -388,6 +388,8 @@ fun DiaryWriteScreen(
                 onPickVideo = onPickVideo,
                 onPickCloud = onPickCloud,
                 hasHeading = state.hasHeadingBlock,
+                hasHashtag = state.hasHashtagBlock,
+                hasLocation = state.hasLocationBlock,
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
             if (state.isImportingImage) {
