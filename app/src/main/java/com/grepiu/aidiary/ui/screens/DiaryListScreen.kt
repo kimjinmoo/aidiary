@@ -2131,7 +2131,7 @@ fun PlannerTabContent(
                                     Text("시간 설정 ⏰", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Spacer(Modifier.height(8.dp))
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         // 시작 시간 선택 버튼
@@ -3266,17 +3266,35 @@ private fun AiAssistantSheet(
                 )
             }
 
+            val context = LocalContext.current
+            val prefs = remember { context.getSharedPreferences("preset_clicks", android.content.Context.MODE_PRIVATE) }
+            var clickCounts by remember {
+                mutableStateOf(
+                    presets.associate { it.kind to prefs.getInt(it.kind, 0) }
+                )
+            }
+            val sortedPresets = remember(clickCounts, presets) {
+                presets.sortedByDescending { clickCounts[it.kind] ?: 0 }
+            }
+
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(presets.size, key = { presets[it].kind }) { idx ->
-                    val item = presets[idx]
+                items(sortedPresets.size, key = { sortedPresets[it].kind }) { idx ->
+                    val item = sortedPresets[idx]
                     val isEnabled = !state.isGeneratingChat
 
                     Surface(
-                        onClick = { if (isEnabled) onPreset(item.kind) },
+                        onClick = {
+                            if (isEnabled) {
+                                val newCount = (clickCounts[item.kind] ?: 0) + 1
+                                clickCounts = clickCounts + (item.kind to newCount)
+                                prefs.edit().putInt(item.kind, newCount).apply()
+                                onPreset(item.kind)
+                            }
+                        },
                         enabled = isEnabled,
                         shape = RoundedCornerShape(14.dp),
                         color = item.bgColor,
