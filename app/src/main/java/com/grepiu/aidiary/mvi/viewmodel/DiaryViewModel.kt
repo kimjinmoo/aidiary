@@ -3097,7 +3097,8 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * 실제 영구 저장 + 상태 리셋. TAG AI 블록이 있으면 본문 끝에 append 합니다.
+     * 실제 영구 저장 + 상태 리셋.
+     * 수정 시에는 기존 TagAiBlock을 제거하고, AI 분석 성공 시에만 새 TagAiBlock을 추가합니다.
      */
     private suspend fun persistDiary(
         currentState: DiaryState,
@@ -3106,12 +3107,13 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         tagAiBlock: ContentBlock.TagAiBlock?
     ) {
         pendingEmotionLabel = null
-        val finalBlocks = if (tagAiBlock != null) {
-            currentState.draftBlocks + tagAiBlock
+        val isEditing = currentState.editingDiaryId != null
+        val baseBlocks = if (isEditing) {
+            currentState.draftBlocks.filter { it !is ContentBlock.TagAiBlock }
         } else {
             currentState.draftBlocks
         }
-        val isEditing = currentState.editingDiaryId != null
+        val finalBlocks = if (tagAiBlock != null) baseBlocks + tagAiBlock else baseBlocks
         val existing = currentState.selectedDiary
 
         val newEntry = if (isEditing) {

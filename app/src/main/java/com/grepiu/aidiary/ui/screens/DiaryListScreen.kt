@@ -4365,7 +4365,6 @@ private fun BlogThreadPostCard(
     onSelectDiary: (DiaryMeta) -> Unit
 ) {
     val context = LocalContext.current
-    var isLiked by remember { mutableStateOf(false) }
 
     val avatarIcon = when (dayItem) {
         is DayItem.DiaryItem -> "✨"
@@ -4422,17 +4421,19 @@ private fun BlogThreadPostCard(
         Spacer(Modifier.width(8.dp))
 
         // 2. 우측 쓰레드 포스트 카드 본문
+        val isDetailAvailable = dayItem is DayItem.DiaryItem
         Surface(
-            onClick = {
-                if (dayItem is DayItem.DiaryItem) onSelectDiary(dayItem.meta)
-            },
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-            shadowElevation = 0.5.dp,
+            shadowElevation = if (isDetailAvailable) 0.5.dp else 0.dp,
             modifier = Modifier
                 .weight(1f)
                 .padding(bottom = 10.dp)
+                .then(
+                    if (isDetailAvailable) Modifier.clickable { onSelectDiary((dayItem as DayItem.DiaryItem).meta) }
+                    else Modifier
+                )
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 // (1) 핸들 헤더 (@my.diary · 뱃지)
@@ -4479,6 +4480,17 @@ private fun BlogThreadPostCard(
                         Text(
                             text = dayItem.meta.emotion,
                             fontSize = 12.sp
+                        )
+                    }
+
+                    // 상세보기 가능한 일기 아이템은 우측 화살표 표시
+                    if (isDetailAvailable) {
+                        Spacer(Modifier.weight(1f))
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "상세보기",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -4580,46 +4592,10 @@ private fun BlogThreadPostCard(
 
                 // (3) 하단 X / Threads 소셜 반응 바 (Social Action Bar)
                 Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
                 ) {
-                    // 💬 대화
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                android.widget.Toast.makeText(context, "AI 비서에서 더 자세히 질문해 보세요 ✨", android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ChatBubbleOutline,
-                            contentDescription = "댓글/소통",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text("AI 대화", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                    }
-
-                    // ❤️ 좋아요 토글
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { isLiked = !isLiked }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = "좋아요",
-                            tint = if (isLiked) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
-
                     // 📋 텍스트 복사
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
