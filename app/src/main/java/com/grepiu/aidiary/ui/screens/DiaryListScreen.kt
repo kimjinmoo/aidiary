@@ -3693,6 +3693,9 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
     val previewText = diary.contentPreview.replace("\n", " ").trim()
         .ifBlank { "(본문 없음)" }
     val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
+    val titleColor = diary.titleStyle.color?.let {
+        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+    } ?: MaterialTheme.colorScheme.onSurface
 
     Card(
         modifier = Modifier
@@ -3765,7 +3768,7 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = titleColor,
                     lineHeight = 23.sp
                 )
                 if (previewText.isNotBlank()) {
@@ -3849,6 +3852,9 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
     val attachmentCount = remember(diary.id) {
         diary.blocks.count { it is ContentBlock.ImageBlock }
     }
+    val blogTitleColor = diary.titleStyle.color?.let {
+        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+    } ?: MaterialTheme.colorScheme.onSurface
 
     Card(
         shape = RoundedCornerShape(24.dp),
@@ -3940,7 +3946,7 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
                     text = diary.title,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = blogTitleColor,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -4583,12 +4589,15 @@ private fun BlogThreadPostCard(
                 // (2) 포스트 본문 텍스트
                 when (dayItem) {
                     is DayItem.DiaryItem -> {
+                        val calTitleColor = dayItem.meta.titleStyle.color?.let {
+                            runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+                        } ?: MaterialTheme.colorScheme.onSurface
                         if (dayItem.meta.title.isNotBlank()) {
                             Text(
                                 text = dayItem.meta.title,
                                 fontSize = 14.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = calTitleColor
                             )
                             Spacer(Modifier.height(3.dp))
                         }

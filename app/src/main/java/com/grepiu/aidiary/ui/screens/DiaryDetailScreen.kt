@@ -113,6 +113,10 @@ fun DiaryDetailScreen(
 
     val (typeIcon, typeLabel, typeColor) = getContentTypeUI(diary.contentType)
     val (emotionText, emotionColor) = getEmotionUI(diary.emotion)
+    val titleTextColor = diary.titleStyle.color?.let {
+        runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
+    } ?: MaterialTheme.colorScheme.onSurface
+    val titleTextSize = (diary.titleStyle.sizeSp ?: 24).coerceIn(18, 34)
 
     if (showDeleteDialog) {
         DeleteConfirmDialog(
@@ -171,8 +175,9 @@ fun DiaryDetailScreen(
                     text = diary.title.ifBlank { "제목 없음" },
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 34.sp
+                    fontSize = titleTextSize.sp,
+                    color = titleTextColor,
+                    lineHeight = (titleTextSize + 10).sp
                 )
 
                 Spacer(Modifier.height(14.dp))

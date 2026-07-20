@@ -61,5 +61,6 @@ data class DiaryMetaRow(
     @androidx.room.ColumnInfo(name = "title") val title: String,
     @androidx.room.ColumnInfo(name = "emotion") val emotion: String,
     @androidx.room.ColumnInfo(name = "content_type") val contentType: String,
-    @androidx.room.ColumnInfo(name = "content_preview") val contentPreview: String
+    @androidx.room.ColumnInfo(name = "content_preview") val contentPreview: String,
+    @androidx.room.ColumnInfo(name = "title_style_json") val titleStyleJson: String? = null
 )

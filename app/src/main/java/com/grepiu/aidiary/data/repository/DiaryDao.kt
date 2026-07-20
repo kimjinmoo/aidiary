@@ -91,23 +91,23 @@ interface DiaryDao {
      * 화면 표시용 경량 메타만. 본문 / 서식 JSON / 블록 제외.
      * 2만건 이상에서도 Flow 가 흘려보내도 부담이 적다.
      */
-    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary ORDER BY timestamp DESC")
+    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview, title_style_json FROM diary ORDER BY timestamp DESC")
     fun observeMetas(): Flow<List<DiaryMetaRow>>
 
-    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary WHERE timestamp >= :start AND timestamp < :end ORDER BY timestamp DESC")
+    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview, title_style_json FROM diary WHERE timestamp >= :start AND timestamp < :end ORDER BY timestamp DESC")
     suspend fun metasForDateRange(start: Long, end: Long): List<DiaryMetaRow>
 
-    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview, title_style_json FROM diary ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
     suspend fun pagedMetas(limit: Int, offset: Int): List<DiaryMetaRow>
 
-    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary WHERE id = :id")
+    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview, title_style_json FROM diary WHERE id = :id")
     suspend fun metaRow(id: String): DiaryMetaRow?
 
     /**
      * 폴백 LIKE 검색 (FTS5 미지원 OEM 기기용). 제목 또는 미리보기에서 부분 매칭.
      */
     @Query("""
-        SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary
+        SELECT id, timestamp, title, emotion, content_type, content_preview, title_style_json FROM diary
         WHERE title LIKE :pattern OR content_preview LIKE :pattern
         ORDER BY timestamp DESC
         LIMIT :limit
@@ -119,7 +119,7 @@ interface DiaryDao {
      * 토큰은 OR 결합. 한국어 본문도 substring 매칭이 동작한다.
      */
     @Query("""
-        SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary
+        SELECT id, timestamp, title, emotion, content_type, content_preview, title_style_json FROM diary
         WHERE title LIKE :p1 OR content_preview LIKE :p1
            OR title LIKE :p2 OR content_preview LIKE :p2
            OR title LIKE :p3 OR content_preview LIKE :p3

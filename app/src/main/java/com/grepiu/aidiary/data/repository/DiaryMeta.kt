@@ -1,6 +1,7 @@
 package com.grepiu.aidiary.data.repository
 
 import com.grepiu.aidiary.data.model.ContentType
+import com.grepiu.aidiary.data.model.TitleStyle
 
 /**
  * 일기 1건의 화면 표시용 메타데이터. 본문 블록은 포함하지 않는다.
@@ -18,4 +19,5 @@ data class DiaryMeta(
     val emotion: String,
     val contentType: ContentType,
     val contentPreview: String,
+    val titleStyle: TitleStyle = TitleStyle.Default
 )

@@ -410,7 +410,8 @@ private fun DiaryMetaRow.toDiaryMeta(): DiaryMeta = DiaryMeta(
     title = title,
     emotion = emotion,
     contentType = ContentType.fromStorageKey(contentType),
-    contentPreview = contentPreview
+    contentPreview = contentPreview,
+    titleStyle = titleStyleJson?.let { runCatching { TitleStyle.fromJson(org.json.JSONObject(it)) }.getOrDefault(TitleStyle.Default) } ?: TitleStyle.Default
 )
 
 private fun DiaryEntry.toDiaryEntity(previewChars: Int): DiaryEntity {
