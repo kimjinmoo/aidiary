@@ -367,8 +367,6 @@ fun DiaryListScreen(
     // 스크롤 기반 헤더 접힘(collapse). 스탯카드+캘린더만 접고 탭바는 sticky 유지.
     // isHeaderHidden(검색/챗 포커스) 와 별개로 동작한다.
     val headerCollapsed = remember { mutableStateOf(false) }
-    // 탭 전환 시엔 헤더를 다시 펼쳐 방향감 제공.
-    LaunchedEffect(state.activeTab) { headerCollapsed.value = false }
     val collapseScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
