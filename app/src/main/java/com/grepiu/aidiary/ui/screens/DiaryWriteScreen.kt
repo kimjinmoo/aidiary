@@ -249,6 +249,7 @@ fun DiaryWriteScreen(
                 .imePadding()
                 .verticalScroll(scrollState)
         ) {
+            Spacer(Modifier.height(8.dp))
             // 1) 글 타입 선택
             SectionLabel(
                 icon = Icons.Outlined.Lightbulb,
@@ -1479,7 +1480,7 @@ private fun InlineAiAction(
             .clip(RoundedCornerShape(999.dp))
             .background(containerColor)
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 4.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
     ) {
         if (loading) {
             CircularProgressIndicator(
