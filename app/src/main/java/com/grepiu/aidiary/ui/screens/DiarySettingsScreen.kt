@@ -398,9 +398,9 @@ fun DiarySettingsScreen(
                         else -> Color(0xFFE65100)
                     }
                     val sherpaSubtitle = when {
-                        isSherpaReady -> "Sherpa-Onnx Zipformer (v1.13.4)"
-                        isDownloadingAny -> "Sherpa-Onnx Zipformer (다른 다운로드 진행 중)"
-                        else -> "Sherpa-Onnx Zipformer (약 1.0GB - 터치하여 다운로드)"
+                        isSherpaReady -> "Sherpa-ONNX SenseVoice (2024-07-17, 준비 완료)"
+                        isDownloadingAny -> "Sherpa-ONNX SenseVoice (다른 다운로드 진행 중)"
+                        else -> "Sherpa-ONNX SenseVoice (약 1.0GB - 터치하여 다운로드)"
                     }
 
                     SettingsInfoRow(
