@@ -94,6 +94,9 @@ interface DiaryDao {
     @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary ORDER BY timestamp DESC")
     fun observeMetas(): Flow<List<DiaryMetaRow>>
 
+    @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary WHERE timestamp >= :start AND timestamp < :end ORDER BY timestamp DESC")
+    suspend fun metasForDateRange(start: Long, end: Long): List<DiaryMetaRow>
+
     @Query("SELECT id, timestamp, title, emotion, content_type, content_preview FROM diary ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
     suspend fun pagedMetas(limit: Int, offset: Int): List<DiaryMetaRow>
 

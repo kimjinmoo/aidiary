@@ -9,6 +9,7 @@ import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TextFormatting
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.data.model.extractPlainText
+import com.grepiu.aidiary.ui.util.dayRangeMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -76,6 +77,12 @@ class DiaryRepository(
      */
     suspend fun pagedMetas(limit: Int, offset: Int): List<DiaryMeta> =
         dao.pagedMetas(limit, offset).map { it.toDiaryMeta() }
+
+    /** 특정 날짜(yyyy-MM-dd)의 기록 메타. 페이지네이션과 무관하게 그날 전체를 조회. */
+    suspend fun metasForDate(dateString: String): List<DiaryMeta> {
+        val (start, end) = dayRangeMillis(dateString)
+        return dao.metasForDateRange(start, end).map { it.toDiaryMeta() }
+    }
 
     /**
      * 단건 메타. 존재하지 않으면 null.
