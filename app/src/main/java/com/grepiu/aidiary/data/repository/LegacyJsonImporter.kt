@@ -69,7 +69,7 @@ class LegacyJsonImporter(
         val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
         entries.chunked(BATCH_SIZE).forEach { batch ->
-            withContext(Dispatchers.IO) {
+            withContext<Unit>(Dispatchers.IO) {
                 database.runInTransaction {
                     val diaryRows = batch.map { it.toDiaryEntity(previewChars = PREVIEW_CHARS) }
                     val blockRows = batch.flatMap { it.toBlockEntities() }

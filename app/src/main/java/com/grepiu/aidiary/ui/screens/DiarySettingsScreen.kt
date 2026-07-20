@@ -53,47 +53,22 @@ fun DiarySettingsScreen(
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
-
     // 시스템 파일 관리자 백업 생성 런처 (Google Drive / 클라우드 / 내장메모리 저장 위치 선택)
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) {
-            try {
-                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-                val jsonContent = org.json.JSONObject().apply {
-                    put("version", "1.0")
-                    put("exportedAt", timestamp)
-                    put("diaryCount", state.diaries.size)
-                    put("plannerCount", state.plannerTasks.size)
-                    put("goalCount", state.goals.size)
-                }.toString(2)
-
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(jsonContent.toByteArray(Charsets.UTF_8))
-                }
-                onIntent(DiaryIntent.ExportBackupData)
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "백업 저장 실패: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            onIntent(DiaryIntent.ExportBackup(uri))
         }
     }
+
 
     // 시스템 파일 관리자 복원 열기 런처 (Google Drive / 클라우드 / 내장메모리 파일 가져오기)
     val openDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            try {
-                val jsonContent = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    inputStream.bufferedReader().use { it.readText() }
-                }
-                if (!jsonContent.isNullOrBlank()) {
-                    onIntent(DiaryIntent.ImportBackupData(jsonContent))
-                }
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "파일 가져오기 실패: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            onIntent(DiaryIntent.ImportBackup(uri))
         }
     }
 
@@ -194,7 +169,7 @@ fun DiarySettingsScreen(
                         title = "다이어리 데이터 백업하기",
                         subtitle = "Google Drive 또는 원하는 클라우드/스토리지에 백업합니다.",
                         onClick = {
-                            val fileName = "AIDiary_Backup_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.json"
+                            val fileName = "AIDiary_Backup_${SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())}.zip"
                             createDocumentLauncher.launch(fileName)
                         }
                     )
@@ -208,7 +183,7 @@ fun DiarySettingsScreen(
                         title = "데이터 복원하기",
                         subtitle = "Google Drive 또는 백업 파일 위치에서 가져와 복구합니다.",
                         onClick = {
-                            openDocumentLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                            openDocumentLauncher.launch(arrayOf("application/zip"))
                         }
                     )
                 }

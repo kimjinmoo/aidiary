@@ -191,12 +191,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
             is DiaryIntent.ShowLicenseDialog -> {
                 _state.update { it.copy(showLicenseDialog = intent.show) }
             }
-            is DiaryIntent.ExportBackupData -> {
-                performExportBackup()
-            }
-            is DiaryIntent.ImportBackupData -> {
-                performImportBackup(intent.jsonContent)
-            }
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
             }
@@ -3099,30 +3093,6 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         llmEngine?.dispose()
         sherpaEngine?.dispose()
         super.onCleared()
-    }
-
-    private fun performExportBackup() {
-        viewModelScope.launch {
-            try {
-                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-                prefs.edit().putString("last_backup_date", timestamp).apply()
-                _state.update { it.copy(lastBackupDate = timestamp) }
-                sendEffect(DiaryEffect.ShowToast("다이어리 데이터 백업이 완료되었습니다. ($timestamp)"))
-            } catch (e: Exception) {
-                sendEffect(DiaryEffect.ShowToast("백업 실패: ${e.localizedMessage}"))
-            }
-        }
-    }
-
-    private fun performImportBackup(jsonContent: String) {
-        viewModelScope.launch {
-            try {
-                loadFirstDiaryPage()
-                sendEffect(DiaryEffect.ShowToast("백업 데이터 복원이 성공적으로 완료되었습니다."))
-            } catch (e: Exception) {
-                sendEffect(DiaryEffect.ShowToast("복원 실패: 올바른 백업 파일 형식이 아닙니다."))
-            }
-        }
     }
 
     companion object {
