@@ -119,7 +119,7 @@ fun DeviceUnsupportedModalDialog(
                 // 4. 활성화되어 이용 가능한 기능 카드 (소프트 힐링 그린 톤)
                 Surface(
                     shape = RoundedCornerShape(18.dp),
-                    color = Color(0xFFE8F5E9),
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
@@ -127,7 +127,7 @@ fun DeviceUnsupportedModalDialog(
                             Icon(
                                 imageVector = Icons.Default.Mic,
                                 contentDescription = null,
-                                tint = Color(0xFF2E7D32),
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -135,7 +135,7 @@ fun DeviceUnsupportedModalDialog(
                                 text = "지금도 마음껏 이용할 수 있어요",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -143,7 +143,7 @@ fun DeviceUnsupportedModalDialog(
                             text = "• 🎤 오프라인 음성 입력 (말하며 쓰는 일기)\n• 📸 사진 & 3D 입체 미디어 영상 기록\n• 📅 할 일 플래너 & 목표 다이어리 관리",
                             fontSize = 12.sp,
                             lineHeight = 18.sp,
-                            color = Color(0xFF1B5E20)
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
                 }

@@ -180,7 +180,7 @@ fun DiarySettingsScreen(
     if (state.showSherpaDownloadNotice) {
         AlertDialog(
             onDismissRequest = { onIntent(DiaryIntent.DismissSherpaDownloadNotice) },
-            icon = { Icon(Icons.Default.Mic, null, tint = Color(0xFF2E7D32)) },
+            icon = { Icon(Icons.Default.Mic, null, tint = MaterialTheme.colorScheme.tertiary) },
             title = { Text("Sherpa 음성 인식 모델 다운로드 🎙️", fontWeight = FontWeight.Bold) },
             text = {
                 Text(
@@ -195,7 +195,7 @@ fun DiarySettingsScreen(
                         onIntent(DiaryIntent.DismissSherpaDownloadNotice)
                         onIntent(DiaryIntent.StartSherpaDownload)
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                 ) {
                     Text("다운로드 시작", fontWeight = FontWeight.Bold)
                 }
@@ -351,7 +351,7 @@ fun DiarySettingsScreen(
                     }
                     val llmBadgeColor = when {
                         isLlmUnsupported -> MaterialTheme.colorScheme.error
-                        state.isModelReady -> Color(0xFF2E7D32)
+                        state.isModelReady -> MaterialTheme.colorScheme.tertiary
                         isDownloadingAny -> Color.Gray
                         else -> Color(0xFFE65100)
                     }
@@ -393,7 +393,7 @@ fun DiarySettingsScreen(
                         else -> "설치 필요"
                     }
                     val sherpaBadgeColor = when {
-                        isSherpaReady -> Color(0xFF2E7D32)
+                        isSherpaReady -> MaterialTheme.colorScheme.tertiary
                         isDownloadingAny -> Color.Gray
                         else -> Color(0xFFE65100)
                     }
@@ -500,10 +500,10 @@ fun DiarySettingsScreen(
                     )
                     SettingsInfoRow(
                         icon = Icons.Default.Security,
-                        iconTint = Color(0xFF1976D2),
+                        iconTint = MaterialTheme.colorScheme.secondary,
                         title = "개인정보 처리방침 🔒",
                         badgeText = "온디바이스 100%",
-                        badgeColor = Color(0xFF1976D2),
+                        badgeColor = MaterialTheme.colorScheme.secondary,
                         value = "grepiu.com/ai_diary_privacy.html (터치하여 열기)",
                         onClick = {
                             runCatching {

@@ -393,7 +393,7 @@ private fun SherpaNoticeSection(
 private fun ReadySection() {
     Card(
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -403,14 +403,14 @@ private fun ReadySection() {
                 modifier = Modifier
                     .size(10.dp)
                     .clip(RoundedCornerShape(5.dp))
-                    .background(Color(0xFF4CAF50))
+                    .background(MaterialTheme.colorScheme.tertiary)
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = "온디바이스 AI 사용 가능 (100% 오프라인)",
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color(0xFF2E7D32)
+                color = MaterialTheme.colorScheme.onTertiaryContainer
             )
         }
     }

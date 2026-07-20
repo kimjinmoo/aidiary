@@ -481,7 +481,21 @@ fun DiaryListScreen(
                     .nestedScroll(collapseScrollConnection)
                     .padding(horizontal = 16.dp)
             ) {
-                when (state.activeTab) {
+                val tabOrder = remember { listOf("DIARY", "PLANNER", "GOALS", "CHAT") }
+                AnimatedContent(
+                    targetState = state.activeTab,
+                    transitionSpec = {
+                        // 탭 순서에 따라 좌/우 방향 슬라이드 + 페이드 (세그먼트 페이저 느낌)
+                        val fromIdx = tabOrder.indexOf(initialState).coerceAtLeast(0)
+                        val toIdx = tabOrder.indexOf(targetState).coerceAtLeast(0)
+                        val dir = if (toIdx >= fromIdx) 1 else -1
+                        (slideInHorizontally(tween(240)) { w -> dir * w / 6 } + fadeIn(tween(220))) togetherWith
+                            (slideOutHorizontally(tween(200)) { w -> -dir * w / 6 } + fadeOut(tween(160)))
+                    },
+                    label = "TabContentTransition",
+                    modifier = Modifier.fillMaxSize()
+                ) { activeTab ->
+                    when (activeTab) {
                     "DIARY" -> {
                         // 일기 탭 렌더링
                         DiaryTabContent(
@@ -568,6 +582,7 @@ fun DiaryListScreen(
                             onInputFocusChange = { isChatInputFocused = it },
                             onStartDownload = onStartDownload
                         )
+                    }
                     }
                 }
             }
