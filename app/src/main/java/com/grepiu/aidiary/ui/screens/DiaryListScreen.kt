@@ -1477,8 +1477,10 @@ fun DiaryTabContent(
     onCancelSearch: () -> Unit,
     onDateSelectFromCalendar: (String) -> Unit
 ) {
+    // 리스트/달력은 선택일 기록(selectedDateDiaries, 페이지네이션 무관 조회)을 쓰므로 진입 시 로드.
+    // 블로그는 전체 피드(state.diaries)라 불필요.
     LaunchedEffect(viewMode) {
-        if (viewMode == DiaryViewMode.CALENDAR) onDateSelectFromCalendar(state.selectedDateString)
+        if (viewMode != DiaryViewMode.BLOG) onDateSelectFromCalendar(state.selectedDateString)
     }
 
     // 선택된 날짜의 포맷 변환 (예: 2026-07-18 -> 7월 18일)
@@ -1493,20 +1495,14 @@ fun DiaryTabContent(
 
     val isSearchMode = state.searchQuery.isNotBlank()
 
-    // 선택된 날짜에 쓴 일기 및 유형(ContentType) 중첩 필터링.
-    // 검색 모드일 땐 날짜/타입 필터 무시하고 검색 결과 그대로 노출.
-    val filteredDiaries = remember(state.diaries, state.selectedDateString, selectedTypeFilter, isSearchMode) {
-        if (isSearchMode) state.diaries
-        else state.diaries.filter { diary ->
-            val dateMatch = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                .format(Date(diary.timestamp)) == state.selectedDateString
-
-            val typeMatch = if (selectedTypeFilter != null) {
-                diary.contentType == selectedTypeFilter
-            } else {
-                true
-            }
-            dateMatch && typeMatch
+    // 선택된 날짜에 쓴 일기 및 유형(ContentType) 필터링.
+    // 검색 모드: 검색 결과(state.diaries) 그대로.
+    // 날짜 모드: selectedDateDiaries(날짜 범위 조회 결과, 페이지네이션 무관 → 오래된 날짜도 정상) + 타입 필터.
+    val filteredDiaries = remember(state.selectedDateDiaries, state.diaries, selectedTypeFilter, isSearchMode) {
+        when {
+            isSearchMode -> state.diaries
+            selectedTypeFilter != null -> state.selectedDateDiaries.filter { it.contentType == selectedTypeFilter }
+            else -> state.selectedDateDiaries
         }
     }
 
@@ -1660,29 +1656,8 @@ fun DiaryTabContent(
                     DiaryListItemCard(diary = diary, onClick = { onSelectDiary(diary) })
                 }
             }
-            // 페이지네이션: 검색 모드가 아니고, 더 보기 가능할 때만 끝에 도달하면 추가 로드
-            if (!isSearchMode && state.diaryHasMore) {
-                item {
-                    LaunchedEffect(Unit) { onLoadMore() }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (state.isLoadingMoreDiaries) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Text(
-                                text = "더 보기 (${filteredDiaries.size}/${state.diaryTotalCount})",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.clickable { onLoadMore() }
-                            )
-                        }
-                    }
-                }
-            }
+            // 날짜 모드는 selectedDateDiaries(그날 전체 조회)라 페이지네이션 불필요.
+            // 검색 모드 결과 페이지네이션이 필요하면 별도 처리(현재 검색은 단일 결과 세트).
         }
 
         // 여백 공간 확보

@@ -666,7 +666,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
             // ===== 플래너 및 목표 기록 =====
             is DiaryIntent.SelectDate -> {
-                _state.update { it.copy(selectedDateString = intent.dateString) }
+                // 날짜가 실제로 바뀌면 이전 날짜 목록을 즉시 비워 stale(이전 날짜 기록이 새 날짜 헤더 아래 잠깐 보임) 방지.
+                val dateChanged = _state.value.selectedDateString != intent.dateString
+                _state.update {
+                    it.copy(
+                        selectedDateString = intent.dateString,
+                        selectedDateDiaries = if (dateChanged) emptyList() else it.selectedDateDiaries
+                    )
+                }
                 viewModelScope.launch {
                     val metas = repository.metasForDate(intent.dateString)
                     _state.update { it.copy(selectedDateDiaries = metas) }
