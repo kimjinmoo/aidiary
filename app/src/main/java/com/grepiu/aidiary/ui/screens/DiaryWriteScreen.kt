@@ -359,7 +359,6 @@ fun DiaryWriteScreen(
                 onAddLocation = { onIntent(DiaryIntent.RequestLocationBlock) },
                 onPickVideo = onPickVideo,
                 onPickCloud = onPickCloud,
-                hasHeading = state.hasHeadingBlock,
                 hasHashtag = state.hasHashtagBlock,
                 hasLocation = state.hasLocationBlock,
                 modifier = Modifier.padding(horizontal = 24.dp)

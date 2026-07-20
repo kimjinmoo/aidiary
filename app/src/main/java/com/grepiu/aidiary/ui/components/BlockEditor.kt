@@ -1137,7 +1137,6 @@ fun AddBlockBar(
     onAddLocation: () -> Unit,
     onPickVideo: (() -> Unit)? = null,
     onPickCloud: (() -> Unit)? = null,
-    hasHeading: Boolean = false,
     hasHashtag: Boolean = false,
     hasLocation: Boolean = false,
     modifier: Modifier = Modifier
@@ -1146,10 +1145,9 @@ fun AddBlockBar(
         BlockCategoryRow(caption = "텍스트") {
             AddChip(
                 icon = Icons.Default.Title,
-                label = if (hasHeading) "섹션 제목(추가됨)" else "섹션 제목",
+                label = "섹션 제목",
                 accent = Color(0xFF1565C0),
-                onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) },
-                enabled = !hasHeading
+                onClick = { onAdd(ContentBlock.HeadingBlock(text = "")) }
             )
             AddChip(
                 icon = Icons.AutoMirrored.Filled.Notes,
