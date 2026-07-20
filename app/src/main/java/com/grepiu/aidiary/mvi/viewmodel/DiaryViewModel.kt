@@ -141,7 +141,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.observeMetas().collect { metas ->
                 val dates = metas.mapTo(HashSet()) { dateStringOf(it.timestamp) }
-                _state.update { it.copy(diaryDates = dates) }
+                _state.update { it.copy(allDiaryMetas = metas, diaryDates = dates) }
             }
         }
     }

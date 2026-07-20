@@ -33,6 +33,8 @@ data class DiaryState(
     val diaries: List<DiaryMeta> = emptyList(),
     /** 기록이 1건 이상 있는 날짜(yyyy-MM-dd) 집합 — 달력 도트용. observeMetas 파생. */
     val diaryDates: Set<String> = emptySet(),
+    /** 전체 기록 메타(경량, 페이지네이션 무관) — 전역 블로그/달력 통합 보기용. observeMetas 파생. */
+    val allDiaryMetas: List<DiaryMeta> = emptyList(),
     /** 달력에서 선택한 날짜의 기록(페이지네이션 무관 조회 결과). */
     val selectedDateDiaries: List<DiaryMeta> = emptyList(),
     val selectedDiary: DiaryEntry? = null,                   // 상세 보기용 풀 DiaryEntry (lazy)

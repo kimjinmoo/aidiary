@@ -1,6 +1,8 @@
 package com.grepiu.aidiary.ui.util
 
 import com.grepiu.aidiary.data.repository.DiaryMeta
+import com.grepiu.aidiary.data.repository.PlannerTask
+import com.grepiu.aidiary.data.repository.Goal
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -47,4 +49,69 @@ fun buildMonthGrid(year: Int, month1to12: Int): List<Int?> {
     for (d in 1..daysInMonth) cells.add(d)
     while (cells.size % 7 != 0) cells.add(null)
     return cells
+}
+
+// =============================================================================
+// 전역 통합 보기(블로그/달력) — 일기 + 계획(할 일) + 목표를 날짜 기준으로 합침
+// =============================================================================
+
+/** 통합 보기 항목: 일기/할 일/목표를 한 타입으로 감싸 날짜별로 섞어 표시. */
+sealed interface DayItem {
+    val date: String   // yyyy-MM-dd
+    val sortTs: Long
+
+    data class DiaryItem(val meta: DiaryMeta) : DayItem {
+        override val date get() = dateStringOf(meta.timestamp)
+        override val sortTs get() = meta.timestamp
+    }
+    data class TaskItem(val task: PlannerTask) : DayItem {
+        override val date get() = task.dateString
+        override val sortTs get() = task.timestamp
+    }
+    data class GoalDayItem(val goal: Goal) : DayItem {
+        override val date get() = dateStringOf(goal.timestamp)
+        override val sortTs get() = goal.timestamp
+    }
+}
+
+/** 일기+할 일+목표를 날짜 내림차순으로 그룹. 각 그룹 내부도 최신순. */
+fun buildUnifiedByDate(
+    diaries: List<DiaryMeta>,
+    tasks: List<PlannerTask>,
+    goals: List<Goal>
+): List<Pair<String, List<DayItem>>> {
+    val items = ArrayList<DayItem>(diaries.size + tasks.size + goals.size)
+    diaries.forEach { items.add(DayItem.DiaryItem(it)) }
+    tasks.forEach { items.add(DayItem.TaskItem(it)) }
+    goals.forEach { items.add(DayItem.GoalDayItem(it)) }
+    return items.groupBy { it.date }
+        .toSortedMap(reverseOrder())
+        .map { (date, list) -> date to list.sortedByDescending { it.sortTs } }
+}
+
+/** 일기·할 일·목표 중 하나라도 있는 날짜 집합 (통합 달력 도트용). */
+fun unifiedDateSet(
+    diaries: List<DiaryMeta>,
+    tasks: List<PlannerTask>,
+    goals: List<Goal>
+): Set<String> {
+    val set = HashSet<String>()
+    diaries.forEach { set.add(dateStringOf(it.timestamp)) }
+    tasks.forEach { set.add(it.dateString) }
+    goals.forEach { set.add(dateStringOf(it.timestamp)) }
+    return set
+}
+
+/** 특정 날짜의 통합 항목만 추출(달력 선택일 하단용), 최신순. */
+fun unifiedForDate(
+    date: String,
+    diaries: List<DiaryMeta>,
+    tasks: List<PlannerTask>,
+    goals: List<Goal>
+): List<DayItem> {
+    val items = ArrayList<DayItem>()
+    diaries.forEach { if (dateStringOf(it.timestamp) == date) items.add(DayItem.DiaryItem(it)) }
+    tasks.forEach { if (it.dateString == date) items.add(DayItem.TaskItem(it)) }
+    goals.forEach { if (dateStringOf(it.timestamp) == date) items.add(DayItem.GoalDayItem(it)) }
+    return items.sortedByDescending { it.sortTs }
 }
