@@ -3792,20 +3792,32 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
  */
 @Composable
 private fun EmotionChipSmall(emotion: String) {
-    val color = when (emotion) {
-        "Joy" -> EmotionJoy
-        "Sadness" -> EmotionSadness
-        "Anger" -> EmotionAnger
-        "Anxiety" -> EmotionAnxiety
-        "Calm" -> EmotionCalm
-        else -> Color.Gray
+    val (label, color) = when (emotion.trim()) {
+        "Joy", "기쁨" -> "😊 기쁨" to EmotionJoy
+        "Sadness", "슬픔" -> "😢 슬픔" to EmotionSadness
+        "Anger", "분노" -> "😡 분노" to EmotionAnger
+        "Anxiety", "불안" -> "😰 불안" to EmotionAnxiety
+        "Calm", "평온" -> "🌿 평온" to EmotionCalm
+        "Neutral", "보통" -> "⚪ 보통" to Color.Gray
+        else -> {
+            val localized = when (emotion.trim()) {
+                "Joy" -> "😊 기쁨"
+                "Calm" -> "🌿 평온"
+                "Sadness" -> "😢 슬픔"
+                "Anxiety" -> "😰 불안"
+                "Anger" -> "😡 분노"
+                "Neutral" -> "⚪ 보통"
+                else -> emotion
+            }
+            localized to Color.Gray
+        }
     }
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = color.copy(alpha = 0.12f),
     ) {
         Text(
-            text = emotion,
+            text = label,
             fontSize = 10.sp,
             color = color,
             fontWeight = FontWeight.SemiBold,
@@ -4002,13 +4014,25 @@ fun DiaryListItemCard(diary: DiaryEntry, onClick: () -> Unit) {
  * 영어 감정 코드명에 상응하는 한글 라벨과 색상 테마를 정의하는 헬퍼 함수
  */
 fun getEmotionUI(emotion: String): Pair<String, Color> {
-    return when (emotion) {
-        "Joy" -> Pair("😊 기쁨", EmotionJoy)
-        "Calm" -> Pair("🌿 평온", EmotionCalm)
-        "Sadness" -> Pair("😢 슬픔", EmotionSadness)
-        "Anxiety" -> Pair("😰 불안", EmotionAnxiety)
-        "Anger" -> Pair("😡 분노", EmotionAnger)
-        else -> Pair("⚪ 보통", Color(0xFF8A7B78))
+    return when (emotion.trim()) {
+        "Joy", "기쁨" -> Pair("😊 기쁨", EmotionJoy)
+        "Calm", "평온" -> Pair("🌿 평온", EmotionCalm)
+        "Sadness", "슬픔" -> Pair("😢 슬픔", EmotionSadness)
+        "Anxiety", "불안" -> Pair("😰 불안", EmotionAnxiety)
+        "Anger", "분노" -> Pair("😡 분노", EmotionAnger)
+        "Neutral", "보통" -> Pair("⚪ 보통", Color(0xFF8A7B78))
+        else -> {
+            val localized = when (emotion.trim()) {
+                "Joy" -> "😊 기쁨"
+                "Calm" -> "🌿 평온"
+                "Sadness" -> "😢 슬픔"
+                "Anxiety" -> "😰 불안"
+                "Anger" -> "😡 분노"
+                "Neutral" -> "⚪ 보통"
+                else -> if (emotion.isNotBlank()) emotion else "⚪ 보통"
+            }
+            Pair(localized, Color(0xFF8A7B78))
+        }
     }
 }
 
@@ -4528,11 +4552,12 @@ private fun BlogThreadPostCard(
                         )
                     }
 
-                    // 일기 감정 표출
-                    if (dayItem is DayItem.DiaryItem && dayItem.meta.emotion.isNotBlank()) {
+                    // 일기 감정 표출 (영어가 아닌 한글 표출)
+                    if (dayItem is DayItem.DiaryItem && dayItem.meta.emotion.isNotBlank() && dayItem.meta.emotion != "Neutral") {
+                        val (emotionText, _) = getEmotionUI(dayItem.meta.emotion)
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            text = dayItem.meta.emotion,
+                            text = emotionText,
                             fontSize = 12.sp
                         )
                     }

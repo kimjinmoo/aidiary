@@ -641,12 +641,12 @@ private fun TagAiBlockEditor(
 }
 
 private fun tagEmotionUi(label: String): Pair<String, Color> = when (label.trim()) {
-    "기쁨" -> "😊 기쁨" to EmotionJoy
-    "평온" -> "🌿 평온" to EmotionCalm
-    "슬픔" -> "😢 슬픔" to EmotionSadness
-    "불안" -> "😰 불안" to EmotionAnxiety
-    "분노" -> "😡 분노" to EmotionAnger
-    else -> "평온" to EmotionCalm
+    "기쁨", "Joy" -> "😊 기쁨" to EmotionJoy
+    "평온", "Calm" -> "🌿 평온" to EmotionCalm
+    "슬픔", "Sadness" -> "😢 슬픔" to EmotionSadness
+    "불안", "Anxiety" -> "😰 불안" to EmotionAnxiety
+    "분노", "Anger" -> "😡 분노" to EmotionAnger
+    else -> "🌿 평온" to EmotionCalm
 }
 
 /* ========================== 표 블록 ========================== */
