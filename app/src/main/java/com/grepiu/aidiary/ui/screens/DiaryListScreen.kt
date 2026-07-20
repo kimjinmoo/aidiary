@@ -1409,7 +1409,8 @@ fun TabSelector(
                             Icon(
                                 imageVector = icon,
                                 contentDescription = label,
-                                tint = itemTextColor,
+                                // 선택: 흰색(액센트 배경 위) / 미선택: 탭별 고유 액센트색 → 4색 구분 유지
+                                tint = if (isSelected) itemTextColor else tabAccentColor(tabId),
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
@@ -1549,18 +1550,39 @@ fun DiaryTabContent(
                         )
                         chips.forEach { (type, label, icon) ->
                             val selected = selectedTypeFilter == type
+                            // 콘텐츠 타입별 고유색으로 필터칩 구분 (전체=primary, 일기=로즈, 새글=모브, 메모=세이지)
+                            val chipColor = when (type) {
+                                ContentType.DIARY -> DiaryTypeColor
+                                ContentType.POST -> PostTypeColor
+                                ContentType.NOTE -> NoteTypeColor
+                                else -> MaterialTheme.colorScheme.primary
+                            }
                             FilterChip(
                                 selected = selected,
                                 onClick = { onTypeFilterChange(type) },
-                                label = { Text(label, fontSize = 13.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal) },
+                                label = {
+                                    Text(
+                                        label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                        // 미선택 라벨도 타입색으로 은은하게 물들여 구분
+                                        color = if (selected) Color.White else chipColor
+                                    )
+                                },
                                 leadingIcon = {
-                                    Icon(icon, label, modifier = Modifier.size(if (selected) 16.dp else 14.dp))
+                                    Icon(
+                                        icon,
+                                        label,
+                                        // 선택: 흰색(타입색 배경 위) / 미선택: 타입색 아이콘
+                                        tint = if (selected) Color.White else chipColor,
+                                        modifier = Modifier.size(if (selected) 16.dp else 14.dp)
+                                    )
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                                    selectedContainerColor = chipColor,
+                                    selectedLabelColor = Color.White,
+                                    selectedLeadingIconColor = Color.White,
                                 ),
                             )
                         }
