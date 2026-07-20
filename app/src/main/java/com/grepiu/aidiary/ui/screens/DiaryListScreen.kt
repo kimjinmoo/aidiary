@@ -471,7 +471,7 @@ fun DiaryListScreen(
                                 WeeklyCalendarStrip(
                                     days = calendarDays,
                                     selectedDateStr = state.selectedDateString,
-                                    diaries = state.diaries,
+                                    diaryDates = state.diaryDates,
                                     plannerTasks = state.plannerTasks,
                                     goals = state.goals,
                                     onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
@@ -1144,7 +1144,7 @@ fun FloatingWritePill(
 fun WeeklyCalendarStrip(
     days: List<CalendarDay>,
     selectedDateStr: String,
-    diaries: List<DiaryMeta>,
+    diaryDates: Set<String>,
     plannerTasks: List<PlannerTask>,
     goals: List<Goal>,
     onDateSelect: (String) -> Unit
@@ -1173,13 +1173,8 @@ fun WeeklyCalendarStrip(
             items(days, key = { it.dateString }) { day ->
                 val isSelected = day.dateString == selectedDateStr
                 
-                // 1. 해당 일자에 작성된 기록(일기)이 있는지 판별
-                val hasDiary = remember(diaries, day.dateString) {
-                    diaries.any { diary ->
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                            .format(Date(diary.timestamp)) == day.dateString
-                    }
-                }
+                // 1. 해당 일자에 작성된 기록(일기)이 있는지 판별 (diaryDates: 전 기간, 페이지네이션 무관)
+                val hasDiary = diaryDates.contains(day.dateString)
                 
                 // 2. 해당 일자에 할 일(플래너)이 있는지 판별
                 val hasTask = remember(plannerTasks, day.dateString) {
