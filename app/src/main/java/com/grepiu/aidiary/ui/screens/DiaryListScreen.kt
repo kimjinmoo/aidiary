@@ -501,36 +501,14 @@ fun DiaryListScreen(
                     enter = expandVertically(tween(220), expandFrom = Alignment.Top) + fadeIn(tween(220)),
                     exit = shrinkVertically(tween(200), shrinkTowards = Alignment.Top) + fadeOut(tween(160))
                 ) {
-                    Column {
-                        DailyOverviewHeader(
-                            state = state,
-                            onIntent = onIntent,
-                            showBackupDialog = showBackupDialog,
-                            onShowBackupDialog = { showBackupDialog = it },
-                            context = context
-                        )
-
-                        // A. 글래스모피즘 캘린더 스트립 컨테이너 (LIST 모드에서 항상 표시)
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                            tonalElevation = 1.dp,
-                            shadowElevation = 2.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                        ) {
-                            WeeklyCalendarStrip(
-                                days = calendarDays,
-                                selectedDateStr = state.selectedDateString,
-                                diaryDates = state.diaryDates,
-                                plannerTasks = state.plannerTasks,
-                                goals = state.goals,
-                                onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
-                            )
-                        }
-                    }
+                    DailyOverviewHeader(
+                        state = state,
+                        onIntent = onIntent,
+                        showBackupDialog = showBackupDialog,
+                        onShowBackupDialog = { showBackupDialog = it },
+                        context = context,
+                        calendarDays = calendarDays
+                    )
                 }
 
             // B. 세그먼티드 탭 셀렉터 (다이어리, 플래너, 나의 목표) — sticky (접히지 않음). AI는 헤더 버튼으로 분리.
@@ -1116,7 +1094,8 @@ private fun DailyOverviewHeader(
     onIntent: (DiaryIntent) -> Unit,
     showBackupDialog: Boolean,
     onShowBackupDialog: (Boolean) -> Unit,
-    context: android.content.Context
+    context: android.content.Context,
+    calendarDays: List<CalendarDay>
 ) {
     val todayEntryCount = remember(state.diaries, state.selectedDateString) {
         state.diaries.count {
@@ -1136,12 +1115,13 @@ private fun DailyOverviewHeader(
         } catch (_: Exception) { false }
     }
 
-    val (dateIcon, dateLabel, dateValue) = when {
-        isToday -> Triple(Icons.Default.WbSunny, "오늘", "기록 중")
-        isFuture -> Triple(Icons.Default.Event, "예정", "미래")
-        else -> Triple(Icons.Default.History, "탐색", "과거")
+    val (dateIcon, dateLabel, _) = when {
+        isToday -> Triple(Icons.Default.WbSunny, "오늘", GoalsAccent)
+        isFuture -> Triple(Icons.Default.Event, "예정", ChatAccent)
+        else -> Triple(Icons.Default.History, "탐색", PlannerAccent)
     }
 
+    // 통합 카드 — 상단: 날짜/스탈 한 줄, 하단: 주간 캘린더
     Card(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1149,18 +1129,65 @@ private fun DailyOverviewHeader(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.padding(16.dp)
-        ) {
-            StatChip(Icons.AutoMirrored.Filled.MenuBook, "오늘 기록", "${todayEntryCount}개", DiaryAccent, Modifier.weight(1f))
-            StatChip(Icons.Default.CollectionsBookmark, "전체 기록", "${totalEntries}개", PlannerAccent, Modifier.weight(1f))
-            StatChip(
-                dateIcon, dateLabel, dateValue,
-                if (isToday || isFuture) GoalsAccent else ChatAccent,
-                Modifier.weight(1f)
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            // (1) 상단: 날짜 라벨 + 스탈 2종 (한 줄 콤펩트)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    dateIcon,
+                    contentDescription = null,
+                    tint = if (isToday || isFuture) GoalsAccent else PlannerAccent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = dateLabel,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DiaryAccent.copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        text = "오늘 ${todayEntryCount}개",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DiaryAccent,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = PlannerAccent.copy(alpha = 0.1f)
+                ) {
+                    Text(
+                        text = "전체 ${totalEntries}개",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PlannerAccent,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // (2) 하단: 주간 캘린더 스트립 (별도 박스 없이 카드 내부에 직접)
+            WeeklyCalendarStrip(
+                days = calendarDays,
+                selectedDateStr = state.selectedDateString,
+                diaryDates = state.diaryDates,
+                plannerTasks = state.plannerTasks,
+                goals = state.goals,
+                onDateSelect = { onIntent(DiaryIntent.SelectDate(it)) }
             )
         }
     }
@@ -1588,7 +1615,7 @@ fun DiaryTabContent(
 
         LazyColumn(
             state = lazyListState,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.weight(1f)
         ) {
             // 선택일 날짜 타이틀 + 기록 수 배지 (보기 모드 토글/타입 필터는 공통 헤더로 이동됨)
@@ -3507,7 +3534,7 @@ fun ChatTabContent(
                 // 채팅 메시지 리스트
                 LazyColumn(
                     state = listState,
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -3673,24 +3700,24 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = BorderStroke(
             width = 1.dp,
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
         )
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
                     .background(
-                        Brush.verticalGradient(
+                        Brush.horizontalGradient(
                             colors = listOf(typeColor, typeColor.copy(alpha = 0.5f))
                         )
                     )
@@ -3699,7 +3726,7 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, end = 16.dp, top = 14.dp, bottom = 14.dp)
+                    .padding(start = 16.dp, end = 18.dp, top = 16.dp, bottom = 16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
@@ -3732,10 +3759,6 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
-                    if (diary.emotion.isNotBlank() && diary.emotion != "Neutral") {
-                        Spacer(modifier = Modifier.weight(1f))
-                        EmotionChipSmall(diary.emotion)
-                    }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
@@ -3753,10 +3776,14 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                         text = previewText,
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        maxLines = 2,
+                        maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                         lineHeight = 19.sp
                     )
+                }
+                if (diary.emotion.isNotBlank() && diary.emotion != "Neutral") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    EmotionChipSmall(diary.emotion)
                 }
             }
         }
