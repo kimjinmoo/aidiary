@@ -814,11 +814,7 @@ private fun NormalModeTopBar(
     val isToday = remember(state.selectedDateString) {
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) == state.selectedDateString
     }
-    val title = remember(state.selectedDateString) {
-        val format = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        val todayStr = format.format(Date())
-        if (state.selectedDateString == todayStr) "오늘의 기록" else "기록 탐색"
-    }
+    val title = "오늘의 기록"
 
     TopAppBar(
         title = {
@@ -1213,17 +1209,17 @@ fun WeeklyCalendarStrip(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(vertical = 4.dp)
     ) {
         LazyRow(
             state = listState,
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             items(days, key = { it.dateString }) { day ->
                 val isSelected = day.dateString == selectedDateStr
-                
+
                 val hasDiary = diaryDates.contains(day.dateString)
                 val hasTask = remember(plannerTasks, day.dateString) {
                     plannerTasks.any { task -> task.dateString == day.dateString }
@@ -1237,7 +1233,7 @@ fun WeeklyCalendarStrip(
 
                 val defaultSubColor = MaterialTheme.colorScheme.onSurfaceVariant
                 val dayOfWeekColor = remember(day.dayName, isSelected, defaultSubColor) {
-                    if (isSelected) Color.White.copy(alpha = 0.9f)
+                    if (isSelected) Color.White.copy(alpha = 0.85f)
                     else when (day.dayName) {
                         "일" -> Color(0xFFE53935)
                         "토" -> Color(0xFF3D7BB5)
@@ -1245,8 +1241,8 @@ fun WeeklyCalendarStrip(
                     }
                 }
 
-                val scale by androidx.compose.animation.core.animateFloatAsState(
-                    targetValue = if (isSelected) 1.05f else 1f,
+                val scale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.04f else 1f,
                     animationSpec = spring(
                         dampingRatio = Spring.DampingRatioMediumBouncy,
                         stiffness = Spring.StiffnessMedium
@@ -1254,72 +1250,67 @@ fun WeeklyCalendarStrip(
                     label = "CalendarScale"
                 )
 
-                val backgroundColor by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
-                    } else if (day.isToday) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                val cardBgColor by animateColorAsState(
+                    targetValue = when {
+                        isSelected -> MaterialTheme.colorScheme.primary
+                        day.isToday -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                     },
-                    animationSpec = tween(durationMillis = 250),
+                    animationSpec = tween(durationMillis = 200),
                     label = "CalendarBgColor"
                 )
 
-                val textColor by animateColorAsState(
+                val dayTextColor by animateColorAsState(
                     targetValue = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
                     animationSpec = tween(durationMillis = 200),
                     label = "CalendarTextColor"
                 )
 
-                Box(
+                val borderStroke = when {
+                    day.isToday && !isSelected -> BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))
+                    isSelected -> null
+                    else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f))
+                }
+
+                Surface(
+                    onClick = { onDateSelect(day.dateString) },
+                    shape = RoundedCornerShape(20.dp),
+                    color = cardBgColor,
+                    border = borderStroke,
+                    shadowElevation = if (isSelected) 4.dp else 0.dp,
                     modifier = Modifier
                         .scale(scale)
-                        .width(52.dp)
-                        .height(76.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(backgroundColor)
-                        .then(
-                            if (isSelected) Modifier.shadow(
-                                elevation = 4.dp,
-                                shape = RoundedCornerShape(18.dp),
-                                ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-                                spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                            ) else Modifier
-                        )
-                        .then(
-                            if (day.isToday && !isSelected) Modifier.border(
-                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-                                RoundedCornerShape(18.dp)
-                            ) else Modifier
-                        )
-                        .clickable { onDateSelect(day.dateString) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
+                        .width(54.dp)
+                        .height(78.dp)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxHeight()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 9.dp, horizontal = 4.dp)
                     ) {
+                        // 요일 라벨
                         Text(
                             text = if (day.isToday) "오늘" else day.dayName,
-                            fontSize = 11.sp,
+                            fontSize = 11.5.sp,
                             color = if (day.isToday && !isSelected) MaterialTheme.colorScheme.primary else dayOfWeekColor,
                             fontWeight = if (day.isToday || isSelected) FontWeight.Bold else FontWeight.Medium
                         )
+
+                        // 일자 수치
                         Text(
                             text = day.dayOfMonth,
-                            fontSize = 17.sp,
-                            color = textColor,
+                            fontSize = 18.sp,
+                            color = dayTextColor,
                             fontWeight = FontWeight.Bold
                         )
-                        
+
                         // 하단 3색 미니 도트 (기록/계획/목표)
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.5.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.height(6.dp)
+                            modifier = Modifier.height(7.dp)
                         ) {
                             if (hasDiary) {
                                 Box(
@@ -1334,7 +1325,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else PlannerAccent)
+                                        .background(if (isSelected) Color.White.copy(alpha = 0.85f) else PlannerAccent)
                                 )
                             }
                             if (hasGoal) {
@@ -1342,7 +1333,7 @@ fun WeeklyCalendarStrip(
                                     modifier = Modifier
                                         .size(5.dp)
                                         .clip(CircleShape)
-                                        .background(if (isSelected) Color.White else GoalsAccent)
+                                        .background(if (isSelected) Color.White.copy(alpha = 0.7f) else GoalsAccent)
                                 )
                             }
                             if (!hasDiary && !hasTask && !hasGoal) {
@@ -3059,6 +3050,15 @@ fun GoalItemRow(
     }
 }
 
+private data class AiPresetChipItem(
+    val kind: String,
+    val label: String,
+    val icon: String,
+    val bgColor: Color,
+    val borderColor: Color,
+    val textColor: Color
+)
+
 /**
  * AI 비서 바텀시트 — 헤더 좌측 AI 버튼으로 열림. 상단 프리셋 칩 + 기존 [ChatTabContent] 재사용.
  * 어느 보기 모드(목록/블로그/달력)에서든 접근 가능.
@@ -3077,67 +3077,148 @@ private fun AiAssistantSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
         Column(
             modifier = Modifier
-                .fillMaxHeight(0.92f)
+                .fillMaxHeight(0.93f)
                 .fillMaxWidth()
                 .imePadding()
         ) {
-            // 헤더: 타이틀 + 대화 초기화
+            // 헤더: 타이틀 + 뱃지 + 액션 버튼 (대화 초기화, 닫기)
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "AI 비서",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(Modifier.weight(1f))
-                if (state.chatMessages.isNotEmpty()) {
-                    TextButton(onClick = onClearHistory) { Text("대화 초기화") }
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("✨", fontSize = 18.sp)
+                    }
                 }
-            }
-
-            // 프리셋 칩 — 원터치 요약 질의
-            val presets = listOf(
-                "WEEK_SUMMARY" to "이번주 써머리",
-                "MONTH_EMOTION" to "이번달 감정",
-                "RECENT" to "최근 기록",
-                "NEXT_WEEK_PLAN" to "다음주 계획",
-                "GOALS_STATUS" to "현재 목표 현황"
-            )
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                presets.forEach { (kind, label) ->
-                    AssistChip(
-                        onClick = { if (!state.isGeneratingChat) onPreset(kind) },
-                        enabled = !state.isGeneratingChat,
-                        label = { Text(label) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "AI 비서",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "On-Device",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                             )
                         }
+                    }
+                    Text(
+                        text = if (state.isModelReady) "100% 오프라인 · 개인정보 보호" else "모델 준비 필요",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(Modifier.weight(1f))
+
+                if (state.chatMessages.isNotEmpty()) {
+                    IconButton(
+                        onClick = onClearHistory,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = "대화 초기화",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "닫기",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f),
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            // 프리셋 칩 — 파스텔 컬러 톤과 1:1 매칭된 가로 퀵 칩 모음 (원터치 요약 질의)
+            val primary = MaterialTheme.colorScheme.primary
+            val secondary = MaterialTheme.colorScheme.secondary
+            val tertiary = MaterialTheme.colorScheme.tertiary
+            val goalsAccentColor = GoalsAccent
+            val diaryAccentColor = DiaryAccent
+
+            val presets = remember(primary, secondary, tertiary, goalsAccentColor, diaryAccentColor) {
+                listOf(
+                    AiPresetChipItem("WEEK_SUMMARY", "이번주 써머리", "📊", primary.copy(alpha = 0.12f), primary.copy(alpha = 0.28f), primary),
+                    AiPresetChipItem("MONTH_EMOTION", "이번달 감정 분석", "🎭", tertiary.copy(alpha = 0.12f), tertiary.copy(alpha = 0.28f), tertiary),
+                    AiPresetChipItem("NEXT_WEEK_PLAN", "다음주 계획 정리", "📅", secondary.copy(alpha = 0.12f), secondary.copy(alpha = 0.28f), secondary),
+                    AiPresetChipItem("GOALS_STATUS", "현재 목표 현황", "🎯", goalsAccentColor.copy(alpha = 0.12f), goalsAccentColor.copy(alpha = 0.28f), goalsAccentColor),
+                    AiPresetChipItem("RECENT", "최근 기록 브리핑", "📝", diaryAccentColor.copy(alpha = 0.12f), diaryAccentColor.copy(alpha = 0.28f), diaryAccentColor)
+                )
+            }
+
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(presets.size, key = { presets[it].kind }) { idx ->
+                    val item = presets[idx]
+                    val isEnabled = !state.isGeneratingChat
+
+                    Surface(
+                        onClick = { if (isEnabled) onPreset(item.kind) },
+                        enabled = isEnabled,
+                        shape = RoundedCornerShape(14.dp),
+                        color = item.bgColor,
+                        border = BorderStroke(1.dp, item.borderColor),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Text(item.icon, fontSize = 13.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = item.label,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = item.textColor
+                            )
+                        }
+                    }
+                }
+            }
+
             // 기존 챗봇 UI 재사용 (메시지 스트림 + 입력창 + 모델 다운로드 CTA)
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp)) {
                 ChatTabContent(
                     state = state,
                     onSendChat = onSendChat,
@@ -3369,8 +3450,8 @@ fun ChatTabContent(
                 // 채팅 메시지 리스트
                 LazyColumn(
                     state = listState,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(vertical = 10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(state.chatMessages.size, key = { it }) { index ->
@@ -3379,12 +3460,13 @@ fun ChatTabContent(
 
                         Row(
                             horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = if (isUser) 0.dp else 0.dp)
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             if (!isUser) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = ChatAccent.copy(alpha = 0.1f),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
                                     modifier = Modifier.size(34.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) { Text("✨", fontSize = 14.sp) }
@@ -3401,26 +3483,63 @@ fun ChatTabContent(
                                             else RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (isUser) MaterialTheme.colorScheme.primary
-                                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                                     ),
-                                    border = if (!isUser) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.12f)) else null,
+                                    border = if (!isUser) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)) else null,
+                                    elevation = CardDefaults.cardElevation(defaultElevation = if (isUser) 1.dp else 0.dp)
                                 ) {
-                                    Text(
-                                        msg.text,
-                                        fontSize = 14.sp, lineHeight = 20.sp,
-                                        color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                                    )
+                                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                        Text(
+                                            text = msg.text,
+                                            fontSize = 14.sp,
+                                            lineHeight = 21.sp,
+                                            color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface
+                                        )
+
+                                        if (!isUser) {
+                                            Spacer(Modifier.height(4.dp))
+                                            Row(
+                                                modifier = Modifier.align(Alignment.End),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                val context = LocalContext.current
+                                                IconButton(
+                                                    onClick = {
+                                                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                        val clip = android.content.ClipData.newPlainText("AI 답변", msg.text)
+                                                        clipboard.setPrimaryClip(clip)
+                                                        android.widget.Toast.makeText(context, "답변이 복사되었습니다.", android.widget.Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ContentCopy,
+                                                        contentDescription = "복사",
+                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // AI 응답 생성 중 표시
+                        // AI 응답 생성 중 표시 (마지막 AI 메시지 하단)
                         if (!isUser && index == state.chatMessages.lastIndex && state.isGeneratingChat) {
-                            Row(modifier = Modifier.padding(start = 42.dp, top = 4.dp)) {
-                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = ChatAccent)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 42.dp, top = 6.dp)
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text("답변 생성 중...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "AI가 다이어리 기록을 기반으로 답변 작성 중...",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
@@ -3430,23 +3549,25 @@ fun ChatTabContent(
 
         // ── 입력 바 ──
         Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            shape = RoundedCornerShape(26.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)
             ) {
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = { inputText = it },
-                    placeholder = { Text("AI 비서에게 물어보세요...", fontSize = 14.sp) },
+                    placeholder = { Text("AI 비서에게 질문을 입력하세요...", fontSize = 13.5.sp) },
                     singleLine = true,
+                    enabled = !state.isGeneratingChat,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Color.Transparent,
                         unfocusedBorderColor = Color.Transparent,
+                        disabledBorderColor = Color.Transparent
                     ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { sendMessage() }),
@@ -3454,7 +3575,11 @@ fun ChatTabContent(
                 )
 
                 if (state.isGeneratingChat) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp), strokeWidth = 2.dp, color = ChatAccent)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp).padding(4.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 } else {
                     IconButton(
                         onClick = { sendMessage() },
@@ -3463,9 +3588,9 @@ fun ChatTabContent(
                             containerColor = if (inputText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
                             contentColor = if (inputText.isNotBlank()) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, "보내기", modifier = Modifier.size(18.dp))
+                        Icon(Icons.AutoMirrored.Filled.Send, "보내기", modifier = Modifier.size(16.dp))
                     }
                 }
             }
