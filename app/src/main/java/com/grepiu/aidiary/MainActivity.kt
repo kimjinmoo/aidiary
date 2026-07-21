@@ -275,9 +275,13 @@ class MainActivity : ComponentActivity() {
                             is DiaryEffect.LaunchImportBackupPicker -> {
                                 importBackupLauncher.launch(arrayOf("application/zip"))
                             }
+                            is DiaryEffect.LaunchPlayStore -> {
+                                openPlayStoreMarket(context)
+                            }
                         }
                     }
                 }
+
 
                 val spatialConfiguration = LocalSpatialConfiguration.current
                 if (LocalSpatialCapabilities.current.isSpatialUiEnabled) {
@@ -710,3 +714,25 @@ fun My2dContentPreview() {
         )
     }
 }
+
+private fun openPlayStoreMarket(context: android.content.Context) {
+    val packageName = "com.grepiu.aidiary"
+    val marketUri = android.net.Uri.parse("market://details?id=$packageName")
+    val webUri = android.net.Uri.parse("https://play.google.com/store/apps/details?id=$packageName")
+
+    val marketIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, marketUri).apply {
+        setPackage("com.android.vending")
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    runCatching {
+        context.startActivity(marketIntent)
+    }.onFailure {
+        runCatching {
+            val webIntent = android.content.Intent(android.content.Intent.ACTION_VIEW, webUri).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(webIntent)
+        }
+    }
+}

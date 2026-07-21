@@ -250,8 +250,12 @@ fun DiaryListScreen(
                 }
             },
             confirmText = "지금 업데이트",
-            onConfirm = { onIntent(DiaryIntent.DismissUpdateDialog) },
+            onConfirm = {
+                onIntent(DiaryIntent.OpenPlayStore)
+                onIntent(DiaryIntent.DismissUpdateDialog)
+            },
             dismissText = "나중에"
+
         )
     }
 

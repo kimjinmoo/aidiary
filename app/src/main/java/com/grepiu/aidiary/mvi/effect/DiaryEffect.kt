@@ -21,4 +21,7 @@ sealed interface DiaryEffect {
     data class LaunchExportBackupPicker(val fileName: String) : DiaryEffect
     /** 백업 ZIP 파일 불러오기를 위한 OpenDocument 런처 호출 이펙트 */
     data object LaunchImportBackupPicker : DiaryEffect
+    /** 구글 플레이 스토어 마켓으로 이동하는 이펙트 */
+    data object LaunchPlayStore : DiaryEffect
 }
+

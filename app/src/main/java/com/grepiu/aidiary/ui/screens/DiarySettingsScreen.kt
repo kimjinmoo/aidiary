@@ -342,8 +342,12 @@ fun DiarySettingsScreen(
                         title = "앱 버전 정보",
                         badgeText = versionBadgeText,
                         badgeColor = versionBadgeColor,
-                        value = "v$appVersionName (Build $appVersionCode)"
+                        value = "v$appVersionName (Build $appVersionCode)",
+                        onClick = {
+                            onIntent(DiaryIntent.OpenPlayStore)
+                        }
                     )
+
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                         modifier = Modifier.padding(horizontal = 14.dp)

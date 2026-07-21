@@ -285,6 +285,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+            is DiaryIntent.OpenPlayStore -> {
+                viewModelScope.launch {
+                    _effect.send(DiaryEffect.LaunchPlayStore)
+                }
+            }
+
 
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()

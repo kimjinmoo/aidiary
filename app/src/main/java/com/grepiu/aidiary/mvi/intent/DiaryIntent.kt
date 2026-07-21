@@ -260,5 +260,8 @@ sealed interface DiaryIntent {
     data class SetAppLockedState(val locked: Boolean) : DiaryIntent
     /** 자물쇠 PIN 입력 다이얼로그 닫기 (생성/해제 취소) */
     data object DismissLockDialogs : DiaryIntent
+    /** 구글 플레이 스토어 마켓 페이지로 이동 */
+    data object OpenPlayStore : DiaryIntent
 }
+
 
