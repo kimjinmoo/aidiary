@@ -19,11 +19,13 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -117,6 +119,45 @@ fun DiarySettingsScreen(
             dismissText = "취소"
         )
     }
+
+    // 2) 비밀번호 분실 복구 불가 경고 다이얼로그
+    if (state.showLockWarningDialog) {
+        AppWarningDialog(
+            onDismiss = { onIntent(DiaryIntent.CancelLockWarning) },
+            title = "비밀번호 분실 주의 ⚠️",
+            icon = androidx.compose.material.icons.Icons.Default.Lock,
+            text = {
+                Text(
+                    "비밀번호를 분실하실 경우 소중한 다이어리 기록을 복구할 수 없습니다.\n" +
+                    "비밀번호 4자리를 잘 기억해 주세요.\n\n" +
+                    "계속 진행하시겠습니까?",
+                    fontSize = 14.sp, lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmText = "비밀번호 만들기",
+            onConfirm = { onIntent(DiaryIntent.ConfirmLockWarning) },
+            dismissText = "취소"
+        )
+    }
+
+    // 3) 4자리 PIN 생성 다이얼로그
+    if (state.showLockPinSetupDialog) {
+        com.grepiu.aidiary.ui.components.PinSetupDialog(
+            isDisableMode = false,
+            onPinCompleted = { pin -> onIntent(DiaryIntent.SetAppLockPin(pin)) },
+            onDismiss = { onIntent(DiaryIntent.DismissLockDialogs) }
+        )
+    }
+
+    // 4) 자물쇠 해제 PIN 확인 다이얼로그
+    if (state.showLockPinDisableDialog) {
+        com.grepiu.aidiary.ui.components.PinSetupDialog(
+            isDisableMode = true,
+            onPinCompleted = { pin -> onIntent(DiaryIntent.DisableAppLock(pin)) },
+            onDismiss = { onIntent(DiaryIntent.DismissLockDialogs) }
+        )
+    }
+
 
     // NOTE: LLM(Gemma)/Sherpa 다운로드 안내는 설정 진입 시 자동 모달로 띄우지 않는다.
     // 안내는 (1) 목록 상단 알림 배너(AiStatusBar), (2) 각 페이지 다운로드, (3) 아래 설정 모델 카드 탭으로 제공.
@@ -237,7 +278,31 @@ fun DiarySettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // 보안 & 잠금 설정 섹션
+            SettingsSectionHeader(title = "보안 & 다이어리 잠금 🔒")
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(6.dp)) {
+                    SettingsSwitchRow(
+                        icon = Icons.Default.Security,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "다이어리 앱 잠금 (4자리 비밀번호)",
+                        subtitle = "앱 시작 및 백그라운드 복귀 시 비밀번호를 확인합니다.",
+                        checked = state.isAppLockEnabled,
+                        onCheckedChange = { enabled ->
+                            onIntent(DiaryIntent.ToggleAppLock(enabled))
+                        }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // 2. 앱 및 온디바이스 AI 시스템 정보 섹션
+
             val packageInfo = remember(context) {
                 runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
             }
@@ -533,6 +598,66 @@ private fun SettingsActionRow(
         )
     }
 }
+
+@Composable
+private fun SettingsSwitchRow(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(iconTint.copy(alpha = 0.12f))
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+                uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        )
+    }
+}
+
 
 @Composable
 private fun SettingsInfoRow(

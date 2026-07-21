@@ -242,4 +242,23 @@ sealed interface DiaryIntent {
     data object LoadMoreDiaries : DiaryIntent
     /** 특정 일기 1건의 풀 [com.grepiu.aidiary.data.model.DiaryEntry] 를 lazy 로드. */
     data class LoadFullDiary(val id: String) : DiaryIntent
+
+    // ===== 다이어리 자물쇠 (비밀번호 잠금) =====
+    /** 자물쇠 스위치 토글 (켤 때 경고창 / 끄려할 때 PIN 확인 다이얼로그) */
+    data class ToggleAppLock(val enabled: Boolean) : DiaryIntent
+    /** 비밀번호 복구 불가능 경고 다이얼로그 확인 */
+    data object ConfirmLockWarning : DiaryIntent
+    /** 비밀번호 복구 불가능 경고 다이얼로그 취소 */
+    data object CancelLockWarning : DiaryIntent
+    /** 4자리 신규 비밀번호 생성 및 활성화 */
+    data class SetAppLockPin(val pin: String) : DiaryIntent
+    /** 잠금 화면에서 4자리 비밀번호 확인 및 앱 잠금 해제 */
+    data class UnlockApp(val pin: String) : DiaryIntent
+    /** 자물쇠 기능 끄기 전 비밀번호 확인 */
+    data class DisableAppLock(val pin: String) : DiaryIntent
+    /** 앱 수명주기(포그라운드/백그라운드)에 따른 잠금 상태 변경 */
+    data class SetAppLockedState(val locked: Boolean) : DiaryIntent
+    /** 자물쇠 PIN 입력 다이얼로그 닫기 (생성/해제 취소) */
+    data object DismissLockDialogs : DiaryIntent
 }
+

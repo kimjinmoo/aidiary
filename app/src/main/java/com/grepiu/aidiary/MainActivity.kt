@@ -104,7 +104,22 @@ class MainActivity : ComponentActivity() {
                 // 모델 다운로드/압축해제 중 화면 꺼짐 방지 (대용량 작업 중단 방지)
                 view.keepScreenOn = state.isDownloadingModel || state.isExtractingModel
 
+                // 앱 백그라운드-포그라운드 수명주기 감지하여 앱 복귀 시 자물쇠 잠금 적용
+                val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+                androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                            viewModel.processIntent(DiaryIntent.SetAppLockedState(true))
+                        }
+                    }
+                    lifecycleOwner.lifecycle.addObserver(observer)
+                    onDispose {
+                        lifecycleOwner.lifecycle.removeObserver(observer)
+                    }
+                }
+
                 // 오디오 권한 요청 런처
+
                 val audioPermissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { granted ->
@@ -306,10 +321,21 @@ class MainActivity : ComponentActivity() {
                         onRequestFullSpaceMode = spatialConfiguration::requestFullSpaceMode
                     )
                 }
+
+                // 다이어리 앱 자물쇠 풀스크린 잠금 오버레이
+                if (state.isAppLocked) {
+                    com.grepiu.aidiary.ui.screens.AppLockScreen(
+                        errorText = state.lockErrorText,
+                        onUnlock = { pin ->
+                            viewModel.processIntent(DiaryIntent.UnlockApp(pin))
+                        }
+                    )
+                }
             }
         }
     }
 }
+
 
 @SuppressLint("RestrictedApi")
 @Composable

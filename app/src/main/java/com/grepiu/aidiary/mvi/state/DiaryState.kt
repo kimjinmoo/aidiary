@@ -177,6 +177,21 @@ data class DiaryState(
     /** 다이얼로그를 닫아도 유지되는 실제 업데이트 가능 여부 (설정 화면 등에서 참조). */
     val appUpdateAvailable: Boolean = false,
 
+    // ===== 다이어리 자물쇠 (비밀번호 잠금) =====
+    /** 자물쇠(비밀번호 잠금) 옵션 활성화 여부. */
+    val isAppLockEnabled: Boolean = false,
+    /** 현재 앱이 잠금 상태인지 여부 (앱 시작 또는 백그라운드 전환 시 true). */
+    val isAppLocked: Boolean = false,
+    /** 비밀번호 생성 전 복구 불가능 안내 다이얼로그 노출 여부. */
+    val showLockWarningDialog: Boolean = false,
+    /** 4자리 PIN 생성/확인 다이얼로그 노출 여부. */
+    val showLockPinSetupDialog: Boolean = false,
+    /** 자물쇠 해제 전 기존 PIN 확인 다이얼로그 노출 여부. */
+    val showLockPinDisableDialog: Boolean = false,
+    /** PIN 입력 시 오류 텍스트 메시지 (1회성 안내). */
+    val lockErrorText: String? = null,
+
+
 ) {
     /**
      * AI 분석에 넘길 평문. 블록에서 자동 추출.

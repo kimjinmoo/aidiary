@@ -83,6 +83,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     private val imageStore = ImageStorageManager(application)
     private val videoStore = com.grepiu.aidiary.data.repository.VideoStorageManager(application)
     private val plannerRepository = PlannerRepository(application)
+    private val lockManager = com.grepiu.aidiary.data.repository.AppLockManager(application)
     private var llmEngine: DiaryLLMEngine? = null
     private var sherpaEngine: SherpaEngine? = null
 
@@ -133,9 +134,18 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         // 최초 실행 사용자만 SPLASH → WELCOME → LIST 플로우를 거침.
         val initialPhase = if (isTermsAccepted()) DiaryPhase.LIST else DiaryPhase.SPLASH
 
-        // 저장된 테마 복원
+        // 저장된 테마 복원 및 자물쇠(비밀번호 잠금) 영속화 상태 복원
         val savedTheme = loadSavedTheme()
-        _state.update { it.copy(appTheme = savedTheme, phase = initialPhase) }
+        val isLockedEnabled = lockManager.isLockEnabled
+        _state.update {
+            it.copy(
+                appTheme = savedTheme,
+                phase = initialPhase,
+                isAppLockEnabled = isLockedEnabled,
+                isAppLocked = isLockedEnabled
+            )
+        }
+
 
         // 앱 구동 시 일기 메타 페이지 1 로드 (Flow 자동 갱신은 별도 collect)
         processIntent(DiaryIntent.LoadDiaries)
@@ -229,6 +239,53 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(viewMode = intent.mode) }
                 AnalyticsManager.logEvent(AnalyticsEvents.NAV_VIEW_MODE, mapOf(AnalyticsEvents.PARAM_VIEW_MODE to intent.mode.name))
             }
+            // ===== 다이어리 자물쇠 (비밀번호 잠금) =====
+            is DiaryIntent.ToggleAppLock -> {
+                if (intent.enabled) {
+                    _state.update { it.copy(showLockWarningDialog = true) }
+                } else {
+                    _state.update { it.copy(showLockPinDisableDialog = true, lockErrorText = null) }
+                }
+            }
+            is DiaryIntent.ConfirmLockWarning -> {
+                _state.update { it.copy(showLockWarningDialog = false, showLockPinSetupDialog = true, lockErrorText = null) }
+            }
+            is DiaryIntent.CancelLockWarning -> {
+                _state.update { it.copy(showLockWarningDialog = false) }
+            }
+            is DiaryIntent.SetAppLockPin -> {
+                lockManager.savePin(intent.pin)
+                _state.update { it.copy(isAppLockEnabled = true, showLockPinSetupDialog = false, lockErrorText = null) }
+            }
+            is DiaryIntent.UnlockApp -> {
+                if (lockManager.verifyPin(intent.pin)) {
+                    _state.update { it.copy(isAppLocked = false, lockErrorText = null) }
+                } else {
+                    _state.update { it.copy(lockErrorText = "비밀번호가 올바르지 않습니다.") }
+                }
+            }
+            is DiaryIntent.DisableAppLock -> {
+                if (lockManager.verifyPin(intent.pin)) {
+                    lockManager.clearLock()
+                    _state.update { it.copy(isAppLockEnabled = false, showLockPinDisableDialog = false, lockErrorText = null) }
+                } else {
+                    _state.update { it.copy(lockErrorText = "비밀번호가 올바르지 않습니다.") }
+                }
+            }
+            is DiaryIntent.SetAppLockedState -> {
+                _state.update { it.copy(isAppLocked = intent.locked && lockManager.isLockEnabled) }
+            }
+            is DiaryIntent.DismissLockDialogs -> {
+                _state.update {
+                    it.copy(
+                        showLockWarningDialog = false,
+                        showLockPinSetupDialog = false,
+                        showLockPinDisableDialog = false,
+                        lockErrorText = null
+                    )
+                }
+            }
+
             is DiaryIntent.LoadDiaries -> {
                 loadFirstDiaryPage()
             }
