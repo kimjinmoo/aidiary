@@ -33,10 +33,8 @@ android {
             manifestPlaceholders["ADMOB_APP_ID"] = "ca-app-pub-2803985305864806~3228866354"
             buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-2803985305864806/3228866354\"")
             buildConfigField("String", "ADMOB_NATIVE_ID", "\"ca-app-pub-2803985305864806/3228866354\"")
-            optimization {
-                enable = false
-            }
-            isMinifyEnabled = false
+            isMinifyEnabled = true      // R8 코드 축소 + 난독화 활성화
+            isShrinkResources = true    // 미사용 리소스 자동 제거
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
