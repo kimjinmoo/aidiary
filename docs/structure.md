@@ -544,4 +544,10 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
   - **개발 vs 운영 빌드 변이 분기 (`build.gradle.kts`)**:
     - `debug`: 구글 공식 테스트 App ID(`ca-app-pub-3940256099942544~3347511713`) 및 테스트 배너 ID 적용.
     - `release` (AAB/운영 서명 빌드): 실 운영 App ID 및 배너 ID(`ca-app-pub-2803985305864806~3228866354`) 자동 적용 (`manifestPlaceholders` & `BuildConfig.ADMOB_BANNER_ID`).
-  - **AdMobBanner 컴포넌트 (`AdMobBanner.kt`)**: Compose 내 재사용 가능한 `AdView` 래퍼. `DiaryListScreen` 하단에 플로팅 UI를 침범하지 않고 깔끔하게 배치.
+  - **AdMobBanner & AdMobNativeAd 컴포넌트**: Compose 내 `AdView` 및 `NativeAdView` 래퍼 컴포넌트.
+  - **하단 전용 광고 독 (Ad Dock) & 우측 하단 FAB 배치 개선**:
+    - 하단 플로팅 알약 버튼과의 오클릭 및 시각적 겹침 문제를 해결하기 위해 `Scaffold.bottomBar`를 배너 광고 전용 고정 독(`Surface`)으로 전환.
+    - 기록 작성 버튼은 우측 하단(`FabPosition.End`)의 세련된 `ExtendedFloatingActionButton`("+ 기록 작성")으로 분리 배치하여 최상의 모바일 UI/UX 확보.
+  - **블로그 피드 카드 상업용 레벨 UI/UX 고도화 (v4.7 - Threads/iOS 스타일)**:
+    - `BlogThreadPostCard`의 투박한 4면 사각형 테두리를 제거하고, 초슬림 헤어라인 테두리(`0.5.dp`, `alpha = 0.20f`) 및 은은한 배경(`surfaceVariant`)으로 교체.
+    - 카드 좌측 모서리에 3.5dp 세로 **좌측 포인트 엠블럼 바(Left Accent Strip)**를 도입하여 일기(📝 인디고), 계획(✅ 에메랄드), 목표(🎯 로즈 코랄) 타입을 답답함 없이 0.1초 만에 깔끔하게 인지 가능하도록 스캐너빌리티 및 시각적 세련미 극대화.

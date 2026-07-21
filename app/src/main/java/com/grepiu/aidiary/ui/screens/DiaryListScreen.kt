@@ -414,9 +414,33 @@ fun DiaryListScreen(
                 }
             )
         },
-        bottomBar = {
+        floatingActionButtonPosition = FabPosition.End,
+        floatingActionButton = {
             if (!isHeaderHidden && (globalViewMode != DiaryViewMode.LIST || state.activeTab == "DIARY")) {
-                FloatingWritePill(onWriteDiary = onWriteDiary)
+                ExtendedFloatingActionButton(
+                    onClick = { onWriteDiary(ContentType.DIARY) },
+                    icon = { Icon(Icons.Default.EditNote, contentDescription = "기록 작성", tint = Color.White) },
+                    text = { Text("기록 작성", color = Color.White, fontWeight = FontWeight.Bold) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White,
+                    shape = RoundedCornerShape(24.dp)
+                )
+            }
+        },
+        bottomBar = {
+            if (!isHeaderHidden) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    com.grepiu.aidiary.ui.components.AdMobBanner(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                    )
+                }
             }
         },
         containerColor = Color.Transparent,
@@ -677,12 +701,6 @@ fun DiaryListScreen(
                 }
             }
 
-            // 하단 구글 AdMob 배너 광고 (검색 모드가 아닐 때 화면 하단에 깔끔하게 배치)
-            if (!isHeaderHidden) {
-                com.grepiu.aidiary.ui.components.AdMobBanner(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
-                )
-            }
 
             // 자체 커스텀 날짜 선택 달력 모달 (DatePickerDialog 대체)
             if (showDatePickerModal) {
@@ -4583,13 +4601,13 @@ private fun BlogThreadPostCard(
 
         Spacer(Modifier.width(8.dp))
 
-        // 2. 우측 쓰레드 포스트 카드 본문
+        // 2. 우측 쓰레드 포스트 카드 본문 (상업용 Threads/iOS 레벨: 좌측 포인트 엠블럼 바 + 초슬림 헤어라인)
         val isDetailAvailable = dayItem is DayItem.DiaryItem
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)),
-            shadowElevation = if (isDetailAvailable) 0.5.dp else 0.dp,
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
+            shadowElevation = 0.dp,
             modifier = Modifier
                 .weight(1f)
                 .padding(bottom = 10.dp)
@@ -4601,7 +4619,25 @@ private fun BlogThreadPostCard(
                     else Modifier
                 )
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+            ) {
+                // 좌측 포인트 세로 바 (3.5dp 타입별 컬러 스트립)
+                Box(
+                    modifier = Modifier
+                        .width(3.5.dp)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
+                        .background(typeAccent)
+                )
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 14.dp, vertical = 13.dp)
+                ) {
                 // (1) 핸들 헤더 (@my.diary · 뱃지)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -4825,6 +4861,7 @@ private fun BlogThreadPostCard(
             }
         }
     }
+}
 }
 
 /** 통합 피드/달력의 계획(할 일) 행 — 터치 시 상태 변경 지원 */
