@@ -124,6 +124,19 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("app_theme", theme.name).apply()
     }
 
+    /** SharedPreferences에서 저장된 다크 모드 옵션을 읽어 [DarkThemeOption]으로 변환합니다. */
+    private fun loadSavedDarkThemeOption(): com.grepiu.aidiary.ui.theme.DarkThemeOption {
+        val saved = prefs.getString("dark_theme_option", com.grepiu.aidiary.ui.theme.DarkThemeOption.SYSTEM.name)
+            ?: com.grepiu.aidiary.ui.theme.DarkThemeOption.SYSTEM.name
+        return runCatching { com.grepiu.aidiary.ui.theme.DarkThemeOption.valueOf(saved) }
+            .getOrDefault(com.grepiu.aidiary.ui.theme.DarkThemeOption.SYSTEM)
+    }
+
+    /** 선택한 다크 모드 옵션을 SharedPreferences에 저장합니다. */
+    private fun saveDarkThemeOption(option: com.grepiu.aidiary.ui.theme.DarkThemeOption) {
+        prefs.edit().putString("dark_theme_option", option.name).apply()
+    }
+
     // MVI 부수 효과 채널
     private val _effect = Channel<DiaryEffect>(Channel.BUFFERED)
     val effect = _effect.receiveAsFlow()
@@ -136,15 +149,18 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
 
         // 저장된 테마 복원 및 자물쇠(비밀번호 잠금) 영속화 상태 복원
         val savedTheme = loadSavedTheme()
+        val savedDarkOption = loadSavedDarkThemeOption()
         val isLockedEnabled = lockManager.isLockEnabled
         _state.update {
             it.copy(
                 appTheme = savedTheme,
+                darkThemeOption = savedDarkOption,
                 phase = initialPhase,
                 isAppLockEnabled = isLockedEnabled,
                 isAppLocked = isLockedEnabled
             )
         }
+
 
 
         // 앱 구동 시 일기 메타 페이지 1 로드 (Flow 자동 갱신은 별도 collect)
@@ -235,6 +251,12 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(appTheme = intent.theme) }
                 AnalyticsManager.logEvent(AnalyticsEvents.SETTINGS_THEME_CHANGE, mapOf("theme" to intent.theme.name))
             }
+            is DiaryIntent.ChangeDarkThemeOption -> {
+                saveDarkThemeOption(intent.option)
+                _state.update { it.copy(darkThemeOption = intent.option) }
+                AnalyticsManager.logEvent(AnalyticsEvents.SETTINGS_THEME_CHANGE, mapOf("dark_option" to intent.option.name))
+            }
+
             is DiaryIntent.SelectViewMode -> {
                 _state.update { it.copy(viewMode = intent.mode) }
                 AnalyticsManager.logEvent(AnalyticsEvents.NAV_VIEW_MODE, mapOf(AnalyticsEvents.PARAM_VIEW_MODE to intent.mode.name))

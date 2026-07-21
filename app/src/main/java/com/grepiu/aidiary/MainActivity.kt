@@ -97,7 +97,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: DiaryViewModel = viewModel()
             val state by viewModel.state.collectAsState()
-            AIDiaryTheme(appTheme = state.appTheme) {
+            val isSystemDark = androidx.compose.foundation.isSystemInDarkTheme()
+            val useDarkTheme = when (state.darkThemeOption) {
+                com.grepiu.aidiary.ui.theme.DarkThemeOption.SYSTEM -> isSystemDark
+                com.grepiu.aidiary.ui.theme.DarkThemeOption.LIGHT -> false
+                com.grepiu.aidiary.ui.theme.DarkThemeOption.DARK -> true
+            }
+            AIDiaryTheme(
+                appTheme = state.appTheme,
+                darkTheme = useDarkTheme
+            ) {
+
+
                 val context = LocalContext.current
                 val view = androidx.compose.ui.platform.LocalView.current
 

@@ -2,6 +2,7 @@ package com.grepiu.aidiary.ui.screens
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +26,10 @@ import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
+import com.grepiu.aidiary.ui.theme.AppTheme
+import com.grepiu.aidiary.ui.theme.DarkThemeOption
+
+
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -47,7 +52,7 @@ import com.grepiu.aidiary.mvi.intent.DiaryIntent
 import com.grepiu.aidiary.mvi.state.DiaryState
 import com.grepiu.aidiary.ui.components.OpenSourceLicenseModalDialog
 import com.grepiu.aidiary.ui.components.AppWarningDialog
-import com.grepiu.aidiary.ui.theme.AppTheme
+
 
 /**
  * 2030 세대 타깃의 프리미엄 전문가 수준 설정(Settings) 페이지입니다.
@@ -211,7 +216,17 @@ fun DiarySettingsScreen(
                 onThemeSelected = { onIntent(DiaryIntent.ChangeAppTheme(it)) }
             )
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 0.5. 화면 모드 (시스템 자동/라이트/다크) 섹션
+            SettingsSectionHeader(title = "화면 모드 (다크 테마) 🌗")
+            DarkThemeModePickerSection(
+                currentOption = state.darkThemeOption,
+                onOptionSelected = { onIntent(DiaryIntent.ChangeDarkThemeOption(it)) }
+            )
+
             Spacer(modifier = Modifier.height(24.dp))
+
 
             // 1. 데이터 백업 및 복원 섹션
             SettingsSectionHeader(title = "데이터 백업 및 복원 📦")
@@ -753,7 +768,92 @@ private fun themeSwatchColors(theme: AppTheme): Triple<Color, Color, Color> = wh
 }
 
 @Composable
+private fun DarkThemeModePickerSection(
+    currentOption: DarkThemeOption,
+    onOptionSelected: (DarkThemeOption) -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            DarkThemeOption.entries.forEach { option ->
+                val isSelected = option == currentOption
+                val borderColor by animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    label = "darkThemeBorder"
+                )
+                val backgroundColor by animateColorAsState(
+                    targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                    label = "darkThemeBg"
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = backgroundColor,
+                    border = BorderStroke(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) borderColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onOptionSelected(option) }
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(vertical = 14.dp, horizontal = 4.dp)
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                )
+                        ) {
+                            Text(
+                                text = option.emoji,
+                                fontSize = 18.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = option.label,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = when (option) {
+                                DarkThemeOption.SYSTEM -> "자동 맞춤"
+                                DarkThemeOption.LIGHT -> "밝은 화면"
+                                DarkThemeOption.DARK -> "어두운 화면"
+                            },
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun ThemePickerSection(
+
     currentTheme: AppTheme,
     onThemeSelected: (AppTheme) -> Unit
 ) {

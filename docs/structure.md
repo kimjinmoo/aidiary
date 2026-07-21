@@ -32,7 +32,9 @@
 | **콘텐츠 타입** | `ContentType` (DIARY / POST / NOTE) — AI 분석은 DIARY 에서만 |
 | **인라인 텍스트 서식** | `TextFormatting` (bold/italic/underline/strikethrough/color/size 6종) |
 | **기본 폰트** | Pretendard (Regular/Medium/SemiBold/Bold OTF) |
-| **색상 테마 (v4)** | `AppTheme` enum 3종 (ATLAS 기본 / BLOSSOM / ECLIPSE). 설정 화면 선택 + SharedPreferences 영속화 |
+| **색상 테마 (v4)** | `AppTheme` enum (ATLAS 기본 / AURORA_GLASS / BLOSSOM / ECLIPSE / KIDS). 설정 화면 선택 + SharedPreferences 영속화 |
+| **화면 모드 (v5.8)** | `DarkThemeOption` enum 3종 (SYSTEM 자동 / LIGHT 수동 / DARK 수동). 설정 화면 고급 3카드 선택 + SharedPreferences 영속화 |
+
 | **온디바이스 AI** | 텍스트 분석: Gemma 4 (`gemma-4-E2B-it`, ~2.3GB, LiteRT-LM) |
 | | 음성 인식: Sherpa-Onnx SenseVoice (오프라인, 다국어: ko/en/ja/zh/yue + auto) |
 | **온디바이스 AI 챗봇** | 5종 원터치 프리셋 (이번주 써머리 / 이번달 감정 / 최근 기록 / 다음주 계획 / 현재 목표 현황) + 가로 슬라이더 & 복사/스트리밍 고도화 UI |

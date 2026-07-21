@@ -7,6 +7,8 @@ import com.grepiu.aidiary.data.model.DiaryEntry
 import com.grepiu.aidiary.data.model.TitleStyle
 import com.grepiu.aidiary.mvi.state.DiaryPhase
 import com.grepiu.aidiary.ui.theme.AppTheme
+import com.grepiu.aidiary.ui.theme.DarkThemeOption
+
 
 /**
  * 사용자가 유발하는 의도(Action/Event)들을 정의한 봉인 인터페이스입니다.
@@ -54,6 +56,9 @@ sealed interface DiaryIntent {
     data class ShowLicenseDialog(val show: Boolean) : DiaryIntent
     /** 사용자가 설정에서 색상 테마를 변경합니다. SharedPreferences 에 영속화됩니다. */
     data class ChangeAppTheme(val theme: AppTheme) : DiaryIntent
+    /** 사용자가 설정에서 다크 모드 옵션을 변경합니다 (SYSTEM/LIGHT/DARK). SharedPreferences 에 영속화됩니다. */
+    data class ChangeDarkThemeOption(val option: DarkThemeOption) : DiaryIntent
+
     data object StartSherpaDownload : DiaryIntent
     data object StartRecording : DiaryIntent
     data object StopRecording : DiaryIntent

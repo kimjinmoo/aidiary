@@ -27,6 +27,16 @@ enum class AppTheme(val label: String, val emoji: String, val description: Strin
     KIDS(        "키즈 캔디", "🧸", "8~13세 아이들을 위한 톡톡 튀는 캔디 무지개 파스텔 테마")
 }
 
+/**
+ * 다크 테마 모드 옵션 종류 (시스템 자동, 수동 라이트, 수동 다크).
+ */
+enum class DarkThemeOption(val label: String, val emoji: String, val description: String) {
+    SYSTEM("시스템 설정", "📱", "디바이스 설정에 자동 맞춤"),
+    LIGHT("라이트 모드", "☀️", "밝고 선명한 화이트 테마"),
+    DARK("다크 모드", "🌙", "눈이 편안한 아늑한 다크 테마")
+}
+
+
 // =============================================================================
 // BLOSSOM ColorScheme (기존 더스티 로즈 팔레트)
 // =============================================================================

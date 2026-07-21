@@ -9,6 +9,8 @@ import com.grepiu.aidiary.data.repository.DiaryMeta
 import com.grepiu.aidiary.data.repository.Goal
 import com.grepiu.aidiary.data.repository.PlannerTask
 import com.grepiu.aidiary.ui.theme.AppTheme
+import com.grepiu.aidiary.ui.theme.DarkThemeOption
+
 
 /**
  * 일기 앱의 화면 단계(Phase)를 정의하는 열거형입니다.
@@ -70,6 +72,9 @@ data class DiaryState(
     val isSettingsOpen: Boolean = false,                     // 설정 페이지 화면 표시 여부
     /** 사용자가 선택한 색상 테마. SharedPreferences 에 영속화. */
     val appTheme: AppTheme = AppTheme.ATLAS,
+    /** 사용자가 선택한 다크 모드 옵션 (SYSTEM/LIGHT/DARK). SharedPreferences 에 영속화. */
+    val darkThemeOption: DarkThemeOption = DarkThemeOption.SYSTEM,
+
     val lastBackupDate: String? = null,                      // 마지막 성공 백업 일시
     val showLicenseDialog: Boolean = false,                  // 오픈소스 라이선스 고지 모달 표시 여부
     val isModelInitializing: Boolean = false,                // 모델 메모리 로드 진행 여부
