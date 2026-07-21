@@ -296,22 +296,6 @@ private fun DetailTopBar(
                     }
                 },
                 actions = {
-                    IconButton(onClick = onEdit) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.Edit,
-                                    contentDescription = "수정하기",
-                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    }
                     IconButton(onClick = onDelete) {
                         Surface(
                             shape = CircleShape,
