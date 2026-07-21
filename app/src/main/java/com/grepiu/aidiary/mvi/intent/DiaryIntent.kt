@@ -90,6 +90,8 @@ sealed interface DiaryIntent {
     data class RemoveBlock(val blockId: String) : DiaryIntent
     /** 블록을 위/아래로 이동합니다. direction = -1 (위) / +1 (아래) */
     data class MoveBlock(val blockId: String, val direction: Int) : DiaryIntent
+    /** 작성 중인 본문 블록들을 구조적 우선순위(제목->미디어->본문->표/위치->구분선->태그)로 AI 자동 정렬합니다. */
+    data object AutoArrangeBlocks : DiaryIntent
     /** 개별 블록의 텍스트를 클립보드에 복사합니다. */
     data class CopyBlockToClipboard(val blockId: String) : DiaryIntent
     /** 개별 블록의 텍스트를 AI로 한국어 번역합니다. */

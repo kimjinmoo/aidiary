@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -762,9 +764,10 @@ private fun TableRowEditor(
     headerBg: Color,
     onCellChange: (Int, Int, String) -> Unit
 ) {
-    Row {
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
         row.forEachIndexed { colIdx, cellText ->
             val cellModifier = Modifier
+                .fillMaxHeight()
                 .widthIn(min = 100.dp)
                 .background(if (isHeader) headerBg else Color.Transparent)
                 .border(width = 0.5.dp, color = border)
@@ -1137,11 +1140,23 @@ fun AddBlockBar(
     onAddLocation: () -> Unit,
     onPickVideo: (() -> Unit)? = null,
     onPickCloud: (() -> Unit)? = null,
+    onAutoArrange: (() -> Unit)? = null,
     hasHashtag: Boolean = false,
     hasLocation: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
+        if (onAutoArrange != null) {
+            BlockCategoryRow(caption = "AI 도구") {
+                AddChip(
+                    icon = Icons.Default.AutoAwesome,
+                    label = "✨ AI 블록 자동 정렬",
+                    accent = MaterialTheme.colorScheme.primary,
+                    onClick = onAutoArrange
+                )
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
         BlockCategoryRow(caption = "텍스트") {
             AddChip(
                 icon = Icons.Default.Title,

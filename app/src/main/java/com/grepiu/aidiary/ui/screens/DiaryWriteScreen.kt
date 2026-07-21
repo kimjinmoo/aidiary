@@ -48,10 +48,12 @@ import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.AlertDialog
 import com.grepiu.aidiary.ui.components.AppDialog
 import com.grepiu.aidiary.ui.components.AppWarningDialog
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,6 +78,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
+import android.content.Context
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -138,10 +143,16 @@ fun DiaryWriteScreen(
 ) {
     val scrollState = rememberScrollState()
     val view = LocalView.current
+    val context = LocalContext.current
     view.keepScreenOn = state.isRecording || state.isDownloadingModel || state.isExtractingModel
 
-    var showAiGuide by remember { mutableStateOf(true) }
-    var showDownloadDialog by remember { mutableStateOf(false) }
+    val prefs = remember(context) { context.getSharedPreferences("aidiary_prefs", android.content.Context.MODE_PRIVATE) }
+    var isPermanentlyDismissed by remember {
+        mutableStateOf(prefs.getBoolean("ai_writing_guide_permanently_dismissed", false))
+    }
+    var showAiPermanentDismissDialog by remember { mutableStateOf(false) }
+    var showAiGuide by rememberSaveable { mutableStateOf(!isPermanentlyDismissed) }
+    var showDownloadDialog by rememberSaveable { mutableStateOf(false) }
 
     val canSave = state.sessionTitle.isNotBlank() &&
         state.draftBlocks.any { block ->
@@ -200,6 +211,44 @@ fun DiaryWriteScreen(
                 if (!isLowRam) onStartDownload()
             },
             dismissText = if (isLowRam) null else "닫기"
+        )
+    }
+
+    // AI 글쓰기 도우미 영구 닫기 설명 확인 모달 다이얼로그
+    if (showAiPermanentDismissDialog) {
+        val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
+        AppDialog(
+            onDismiss = { showAiPermanentDismissDialog = false },
+            title = "AI 글쓰기 도우미 영구 닫기",
+            icon = Icons.Default.Psychology,
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "AI 글쓰기 도우미 카드를 영구적으로 닫으시겠습니까?\n\n" +
+                        "카드를 닫아도 아래 AI 기능들은 에디터 및 메뉴에서 언제든지 그대로 이용하실 수 있습니다.",
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 4.dp)) {
+                        FeatureItem("✨", "AI 자동 정렬", "버튼 하나로 본문 블록을 보기 좋게 자동 정렬")
+                        FeatureItem("🔤", "AI 자동 분류", "작성된 내용으로 일기/글/메모 자동 지정")
+                        FeatureItem("✨", "AI 제목 추천", "본문을 분석해 어울리는 제목 자동 생성")
+                        FeatureItem("✦", "AI 블록 도구", "각 블록의 ✦ 메뉴에서 번역·보정·꾸미기")
+                    }
+                }
+            },
+            confirmText = "확인 (영구 닫기)",
+            onConfirm = {
+                showAiPermanentDismissDialog = false
+                isPermanentlyDismissed = true
+                showAiGuide = false
+                prefs.edit().putBoolean("ai_writing_guide_permanently_dismissed", true).apply()
+                if (isLowRam) {
+                    onIntent(DiaryIntent.UnsupportedDeviceClose)
+                }
+            },
+            dismissText = "취소"
         )
     }
 
@@ -280,7 +329,7 @@ fun DiaryWriteScreen(
             )
 
             val isLowRam = state.isLowRamDevice || state.isDeviceUnsupported
-            val shouldShowGuide = showAiGuide && (if (isLowRam) state.isDeviceUnsupported else true)
+            val shouldShowGuide = showAiGuide && !isPermanentlyDismissed && (if (isLowRam) state.isDeviceUnsupported else true)
             if (shouldShowGuide) {
                 Spacer(Modifier.height(16.dp))
                 AiWritingGuideCard(
@@ -288,10 +337,7 @@ fun DiaryWriteScreen(
                     isLowRam = isLowRam,
                     isDownloading = state.isDownloadingModel || state.isExtractingModel,
                     onDismiss = {
-                        showAiGuide = false
-                        if (isLowRam) {
-                            onIntent(DiaryIntent.UnsupportedDeviceClose)
-                        }
+                        showAiPermanentDismissDialog = true
                     },
                     onShowDownloadDialog = { showDownloadDialog = true }
                 )
@@ -324,10 +370,27 @@ fun DiaryWriteScreen(
 
             // 4) 본문 섹션
             Spacer(Modifier.height(24.dp))
-            SectionLabel(
-                icon = Icons.Filled.EditNote,
-                label = "본문"
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SectionLabel(
+                    icon = Icons.Filled.EditNote,
+                    label = "본문"
+                )
+                if (state.draftBlocks.size >= 2) {
+                    FilledTonalButton(
+                        onClick = { onIntent(DiaryIntent.AutoArrangeBlocks) },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("✨ AI 자동 정렬", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             BodySection(
                 state = state,
@@ -359,6 +422,7 @@ fun DiaryWriteScreen(
                 onAddLocation = { onIntent(DiaryIntent.RequestLocationBlock) },
                 onPickVideo = onPickVideo,
                 onPickCloud = onPickCloud,
+                onAutoArrange = { onIntent(DiaryIntent.AutoArrangeBlocks) },
                 hasHashtag = state.hasHashtagBlock,
                 hasLocation = state.hasLocationBlock,
                 modifier = Modifier.padding(horizontal = 24.dp)

@@ -548,6 +548,12 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
   - **하단 전용 광고 독 (Ad Dock) & 우측 하단 FAB 배치 개선**:
     - 하단 플로팅 알약 버튼과의 오클릭 및 시각적 겹침 문제를 해결하기 위해 `Scaffold.bottomBar`를 배너 광고 전용 고정 독(`Surface`)으로 전환.
     - 기록 작성 버튼은 우측 하단(`FabPosition.End`)의 세련된 `ExtendedFloatingActionButton`("+ 기록 작성")으로 분리 배치하여 최상의 모바일 UI/UX 확보.
-  - **블로그 피드 카드 상업용 레벨 UI/UX 고도화 (v4.7 - Threads/iOS 스타일)**:
-    - `BlogThreadPostCard`의 투박한 4면 사각형 테두리를 제거하고, 초슬림 헤어라인 테두리(`0.5.dp`, `alpha = 0.20f`) 및 은은한 배경(`surfaceVariant`)으로 교체.
-    - 카드 좌측 모서리에 3.5dp 세로 **좌측 포인트 엠블럼 바(Left Accent Strip)**를 도입하여 일기(📝 인디고), 계획(✅ 에메랄드), 목표(🎯 로즈 코랄) 타입을 답답함 없이 0.1초 만에 깔끔하게 인지 가능하도록 스캐너빌리티 및 시각적 세련미 극대화.
+  - **스마트 AI 본문 블록 자동 정렬 & AI 도우미 배너 영구 닫기 (v4.8)**:
+    - **스마트 AI 자동 정렬 (`DiaryIntent.AutoArrangeBlocks`)**: 무작위 순서로 입력된 본문 블록들을 구조적 우선순위(`Heading` → `SpatialMedia/Image` → `Text/Quote` → `Table/Location` → `Divider` → `Hashtag/TagAi`)로 일괄 자동 재정렬하며 동일 타입 내 상대적 입력 순서는 보존. 본문 섹션 타이틀 우측 및 `AddBlockBar` AI 도구 칩으로 접근성 확보.
+    - **AI 글쓰기 도우미 배너 영구 닫기 다이얼로그**: 작성 화면 상단 `AiWritingGuideCard` 의 'X' 닫기 버튼 터치 시 AI 관련 주요 기능들을 한 번 더 친절히 안내하는 다이얼로그를 표출하며, `확인 (영구 닫기)` 터치 시 `SharedPreferences`(`ai_writing_guide_permanently_dismissed`)에 동기화하여 해당 안드로이드 기기에서 영구 숨김 처리.
+  - **표 블록(TableBlock) 동일 행 셀 높이 동기화 (v4.9)**:
+    - `TableBlockEditor`(편집기) 및 `TableBlockView`(보기)의 행 레이아웃에 `Row(modifier = Modifier.height(IntrinsicSize.Min))` 및 셀 `fillMaxHeight()`를 적용하여, 한 셀의 텍스트 줄 수가 늘어나 높이가 확장되더라도 같은 행의 모든 셀이 가장 높이가 큰 셀에 맞춰 일괄적으로 동기화되도록 그리드 정렬 개선.
+  - **새 글 작성 시 본문 기본 텍스트 블록 1개 자동 생성 (v5.0)**:
+    - `DiaryState.kt` 및 `DiaryViewModel.kt`의 신규 작성 진입 처리(`NavigateTo(DiaryPhase.WRITE)`) 시, 본문 블록(`draftBlocks`)을 기본적으로 1개의 빈 텍스트 블록(`ContentBlock.TextBlock("")`)으로 초기화하여 사용자가 진입 즉시 탭 한번으로 바로 본문을 입력할 수 있도록 작성 편의성 향상.
+  - **리스트 모드 기록 카드 UI/UX 미니멀리즘 리팩토링 (v5.1)**:
+    - `DiaryListItemCard` 카드 상단/좌측의 둔탁한 선 요소를 전면 제거하고, `0.5.dp` 초슬림 헤어라인 보더와 `16.dp` 라운딩 처리된 `Surface` 카드 바디 내부에 깔끔한 타입 뱃지(📝 일기, ✅ 계획, 🎯 목표, 📝 메모)만 정돈하여 시각적 피로감 없는 미니멀리즘 디자인 적용.

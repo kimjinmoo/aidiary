@@ -280,7 +280,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                         selectedDiary = intent.selectedDiary ?: currentState.selectedDiary,
                         editingDiaryId = if (targetPhase == DiaryPhase.WRITE) null else currentState.editingDiaryId,
                         draftTitle = if (targetPhase == DiaryPhase.WRITE) "" else currentState.draftTitle,
-                        draftBlocks = if (targetPhase == DiaryPhase.WRITE) emptyList() else currentState.draftBlocks,
+                        draftBlocks = if (targetPhase == DiaryPhase.WRITE) listOf(ContentBlock.TextBlock(text = "")) else currentState.draftBlocks,
                         draftTitleStyle = if (targetPhase == DiaryPhase.WRITE) TitleStyle.Default else currentState.draftTitleStyle,
                         draftEmotion = if (targetPhase == DiaryPhase.WRITE) "Neutral" else currentState.draftEmotion,
                         // initialContentType이 지정된 경우 해당 타입으로, 아니면 DIARY 기본값
@@ -611,6 +611,9 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                     list.add(newIdx, item)
                     current.copy(draftBlocks = list)
                 }
+            }
+            is DiaryIntent.AutoArrangeBlocks -> {
+                autoArrangeBlocks()
             }
             is DiaryIntent.CopyBlockToClipboard -> {
                 copyBlockToClipboard(intent.blockId)
@@ -1843,6 +1846,37 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
                 _state.update { it.copy(isSuggestingPlannerTask = false) }
             }
         }
+    }
+
+    /**
+     * 작성 중인 본문 블록들을 구조적 우선순위
+     * (Heading -> Media -> Text/Quote -> Table/Location -> Divider -> Hashtag/TagAi)
+     * 순서로 스마트 AI 자동 정렬합니다.
+     */
+    private fun autoArrangeBlocks() {
+        val blocks = _state.value.draftBlocks
+        if (blocks.size <= 1) {
+            viewModelScope.launch {
+                sendEffect(DiaryEffect.ShowToast("정렬할 블록이 2개 이상 필요합니다."))
+            }
+            return
+        }
+
+        fun getBlockPriority(block: ContentBlock): Int = when (block) {
+            is ContentBlock.HeadingBlock -> 1
+            is ContentBlock.SpatialMediaBlock, is ContentBlock.ImageBlock -> 2
+            is ContentBlock.TextBlock, is ContentBlock.QuoteBlock -> 3
+            is ContentBlock.TableBlock, is ContentBlock.LocationBlock -> 4
+            is ContentBlock.DividerBlock -> 5
+            is ContentBlock.HashtagBlock, is ContentBlock.TagAiBlock -> 6
+        }
+
+        val sortedBlocks = blocks.sortedWith(compareBy { getBlockPriority(it) })
+        _state.update { it.copy(draftBlocks = sortedBlocks) }
+        viewModelScope.launch {
+            sendEffect(DiaryEffect.ShowToast("✨ AI가 일기 블록 순서를 최적으로 정렬했습니다!"))
+        }
+        AnalyticsManager.logEvent("write_auto_arrange_blocks")
     }
 
     /**

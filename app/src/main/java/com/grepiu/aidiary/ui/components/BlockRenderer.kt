@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
@@ -369,11 +371,12 @@ private fun TableBlockView(
         Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
             Column {
                 block.cells.forEachIndexed { rowIdx, row ->
-                    Row {
+                    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
                         row.forEachIndexed { colIdx, cellText ->
                             val isHeader = rowIdx == 0
                             Box(
                                 modifier = Modifier
+                                    .fillMaxHeight()
                                     .widthIn(min = 100.dp)
                                     .background(if (isHeader) headerBg else Color.Transparent)
                                     .border(

@@ -3772,46 +3772,35 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
         runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull()
     } ?: MaterialTheme.colorScheme.onSurface
 
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
+            width = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)
         )
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(typeColor, typeColor.copy(alpha = 0.5f))
-                        )
-                    )
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, end = 18.dp, top = 16.dp, bottom = 16.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = typeColor.copy(alpha = 0.1f),
+                        color = typeColor.copy(alpha = 0.10f),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Icon(
                                 imageVector = typeIcon,
@@ -3819,7 +3808,7 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                                 tint = typeColor,
                                 modifier = Modifier.size(12.dp)
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = typeLabel,
                                 fontSize = 11.sp,
@@ -3836,31 +3825,34 @@ fun DiaryListItemCard(diary: DiaryMeta, onClick: () -> Unit) {
                         fontWeight = FontWeight.Medium
                     )
                 }
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = diary.title.ifBlank { "(제목 없음)" },
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = titleColor,
-                    lineHeight = 23.sp
-                )
-                if (previewText.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = previewText,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 19.sp
-                    )
-                }
+
                 if (diary.emotion.isNotBlank() && diary.emotion != "Neutral") {
-                    Spacer(modifier = Modifier.height(10.dp))
                     EmotionChipSmall(diary.emotion)
                 }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = diary.title.ifBlank { "(제목 없음)" },
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = titleColor,
+                lineHeight = 22.sp
+            )
+
+            if (previewText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = previewText,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 19.sp
+                )
             }
         }
     }

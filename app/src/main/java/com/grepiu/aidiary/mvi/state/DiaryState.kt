@@ -50,7 +50,7 @@ data class DiaryState(
     // 작성/수정 중인 임시 일기 상태
     val editingDiaryId: String? = null,                     // 수정 중인 기존 일기 ID (null 이면 신규 작성)
     val draftTitle: String = "",                            // 상단 입력란의 글 제목 (키보드/AI 모두 이 필드로 갱신)
-    val draftBlocks: List<ContentBlock> = emptyList(),      // 블록 기반 작성 본문 (HeadingBlock 은 본문 내 '섹션 제목' 용도)
+    val draftBlocks: List<ContentBlock> = listOf(ContentBlock.TextBlock(text = "")),      // 블록 기반 작성 본문 (신규 작성 시 1개 기본 배치)
     val draftTitleStyle: TitleStyle = TitleStyle.Default,   // 제목 스타일 (색상/크기)
     val draftEmotion: String = "Neutral",
     val draftContentType: ContentType = ContentType.DIARY,
