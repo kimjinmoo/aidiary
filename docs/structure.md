@@ -555,5 +555,5 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
     - `TableBlockEditor`(편집기) 및 `TableBlockView`(보기)의 행 레이아웃에 `Row(modifier = Modifier.height(IntrinsicSize.Min))` 및 셀 `fillMaxHeight()`를 적용하여, 한 셀의 텍스트 줄 수가 늘어나 높이가 확장되더라도 같은 행의 모든 셀이 가장 높이가 큰 셀에 맞춰 일괄적으로 동기화되도록 그리드 정렬 개선.
   - **새 글 작성 시 본문 기본 텍스트 블록 1개 자동 생성 (v5.0)**:
     - `DiaryState.kt` 및 `DiaryViewModel.kt`의 신규 작성 진입 처리(`NavigateTo(DiaryPhase.WRITE)`) 시, 본문 블록(`draftBlocks`)을 기본적으로 1개의 빈 텍스트 블록(`ContentBlock.TextBlock("")`)으로 초기화하여 사용자가 진입 즉시 탭 한번으로 바로 본문을 입력할 수 있도록 작성 편의성 향상.
-  - **리스트 모드 기록 카드 UI/UX 미니멀리즘 리팩토링 (v5.1)**:
-    - `DiaryListItemCard` 카드 상단/좌측의 둔탁한 선 요소를 전면 제거하고, `0.5.dp` 초슬림 헤어라인 보더와 `16.dp` 라운딩 처리된 `Surface` 카드 바디 내부에 깔끔한 타입 뱃지(📝 일기, ✅ 계획, 🎯 목표, 📝 메모)만 정돈하여 시각적 피로감 없는 미니멀리즘 디자인 적용.
+  - **리스트 & 블로그 모드 카드 좌측 포인트 선 전면 제거 (v5.3)**:
+    - `DiaryListItemCard` 및 `BlogThreadPostCard` 모두에서 카드 좌측의 세로 포인트 선(`Box`)을 완전히 제거하여, 리스트 모드와 블로그 모드 전체에 걸쳐 선 장식 없는 `0.5.dp` 초슬림 헤어라인 테두리 기반 미니멀리즘 디자인 시스템 통일.

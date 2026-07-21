@@ -377,9 +377,22 @@ fun DiaryListScreen(
     val collapseScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                // 아래로 스크롤(콘텐츠가 위로 이동, y<0) → 접기 / 위로 스크롤(y>0) → 펼치기
-                if (available.y < -4f) headerCollapsed.value = true
-                else if (available.y > 4f) headerCollapsed.value = false
+                // 아래로 스크롤 (목록 내림, y < -10f) -> 헤더 접기
+                if (available.y < -10f) {
+                    headerCollapsed.value = true
+                }
+                return Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                // 목록이 최상단에 도달하여 더 이상 스크롤할 수 없을 때(available.y > 5f) 추가로 위로 끌어당기면 펼치기
+                if (available.y > 5f) {
+                    headerCollapsed.value = false
+                }
                 return Offset.Zero
             }
         }
@@ -4611,25 +4624,11 @@ private fun BlogThreadPostCard(
                     else Modifier
                 )
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
+                    .padding(horizontal = 14.dp, vertical = 13.dp)
             ) {
-                // 좌측 포인트 세로 바 (3.5dp 타입별 컬러 스트립)
-                Box(
-                    modifier = Modifier
-                        .width(3.5.dp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(topStart = 18.dp, bottomStart = 18.dp))
-                        .background(typeAccent)
-                )
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 14.dp, vertical = 13.dp)
-                ) {
                 // (1) 핸들 헤더 (@my.diary · 뱃지)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -4853,7 +4852,6 @@ private fun BlogThreadPostCard(
             }
         }
     }
-}
 }
 
 /** 통합 피드/달력의 계획(할 일) 행 — 터치 시 상태 변경 지원 */
