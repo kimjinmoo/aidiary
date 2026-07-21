@@ -219,7 +219,7 @@ fun DiarySettingsScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             // 0.5. 화면 모드 (시스템 자동/라이트/다크) 섹션
-            SettingsSectionHeader(title = "화면 모드 (다크 테마) 🌗")
+            SettingsSectionHeader(title = "화면 모드 🌗")
             DarkThemeModePickerSection(
                 currentOption = state.darkThemeOption,
                 onOptionSelected = { onIntent(DiaryIntent.ChangeDarkThemeOption(it)) }
@@ -532,7 +532,7 @@ fun DiarySettingsScreen(
                         title = "개인정보 처리방침 🔒",
                         badgeText = "온디바이스 100%",
                         badgeColor = MaterialTheme.colorScheme.secondary,
-                        value = "grepiu.com/ai_diary_privacy.html (터치하여 열기)",
+                        value = "터치하여 열기",
                         onClick = {
                             runCatching {
                                 val intent = android.content.Intent(
