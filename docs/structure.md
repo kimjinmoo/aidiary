@@ -534,8 +534,8 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
   - `UnifiedBlogView`를 수직 쓰레드 연결선(`Thread Line`), 소셜 아바타 배지(`✨`, `📌`, `🎯`), 소셜 반응 바(💬 AI대화, ❤️ 좋아요, 📋 복사, 📤 공유)를 포함한 트렌디한 피드로 전면 개편.
 - **해시태그 블록 가로 스크롤 & 자동 스크롤**:
   - 작성 및 읽기 화면의 해시태그 목록에 `horizontalScroll` 및 `LaunchedEffect` 기반 신규 태그 입력 시 우측 끝 자동 스크롤 기능 적용.
-- **보기 모드(LIST ↔ BLOG ↔ CALENDAR) 전환 애니메이션 (v4.4)**:
-  - `DiaryListScreen` 의 `when (globalViewMode)` 블록을 `AnimatedContent` 로 래핑하여 모드 전환 시 부드러운 페이지 전환 적용.
-  - 방향성 슬라이드: 모드 순서(LIST=0, BLOG=1, CALENDAR=2) 인덱스 비교로 전진/후진 방향을 결정. 전진은 우→좌 슬라이드, 후진은 좌→우 슬라이드 (Material 3 Navigation 전환 패턴).
-  - 페이드 + 미세 스케일(진입 0.96, 퇴장 0.98) 동시 적용으로 깊이감 있는 전환감 제공. Easing 은 `FastOutSlowInEasing` 통일.
-  - `ViewModeToggle` 의 활성 항목에 spring 기반 미세 바운스 스케일(1.0 → 1.08) + `animateColorAsState` 배경/아이콘 tint 보간을 추가해 토글 자체에도 '누르는 듯한' 자연스러운 마이크로 인터랙션 부여. 스케일은 `graphicsLayer` 로 적용해 재합성 비용 최소화.
+- **달력 모드 상업용 레벨 UI/UX 고도화 & 캘린더 셀 내 기록 텍스트 프리뷰 (v4.5)**:
+  - `UnifiedCalendarView`를 기존 도트 전용 셀에서 상업용 인포그래픽 달력으로 전면 리팩토링.
+  - **월간 통계 요약 카드**: 이번 달 작성 일기 수(📝), 계획 완료 건수 및 완료율 프로그레스 바(✅ N/M, N%), 목표 수(🎯) 및 '오늘' 빠른 이동 숏컷 제공.
+  - **캘린더 셀 내 인포 프리뷰 칩**: 날짜 셀 내부 공간을 확장하여 등록된 일기 제목(📝), 계획 텍스트 및 완료 상태(✓/○), 목표(🎯) 텍스트 프리뷰 칩을 각 타입별 테마 색상으로 최대 2개 직접 표출하며, 초과 건수는 `+N` 배지로 안내.
+  - **인터랙티브 타임라인 스크랩북**: 선택한 날짜 하단 스크랩북에서 계획/목표의 완료 상태를 직접 클릭해 바로 토글(`TogglePlannerTask`, `ToggleGoal`) 가능하며, 빠른 '일기 작성' CTA 제공.
