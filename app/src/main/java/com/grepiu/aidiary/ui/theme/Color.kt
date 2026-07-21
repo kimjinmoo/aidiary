@@ -67,58 +67,59 @@ val BlossomBackgroundLight = Color(0xFFFBF6F5)  // 블러시 웜화이트
 val BlossomBackgroundDark  = Color(0xFF1A1618)  // 웜 니어블랙
 
 // =============================================================================
-// ── ATLAS (남녀 공용 Default, 스틸 블루 + 앰버 + 틸 그린) ────────────────────
-// Primary — 스틸 블루 (Steel Blue): 신뢰, 안정, 중성적
 // =============================================================================
-val AtlasPrimaryLight            = Color(0xFF3D7BB5)
+// ── ATLAS (Default, 로열 블루 + 선버스트 앰버 + 에메랄드 그린 + 슬레이트) ─────────
+// Primary — 로열 블루 (Royal Navy Blue): 높은 가시성, 가독성, 신뢰감
+// =============================================================================
+val AtlasPrimaryLight            = Color(0xFF1D5D9B)
 val AtlasOnPrimaryLight          = Color(0xFFFFFFFF)
-val AtlasPrimaryContainerLight   = Color(0xFFD4E8F7)
-val AtlasOnPrimaryContainerLight = Color(0xFF001E33)
+val AtlasPrimaryContainerLight   = Color(0xFFD8E6F5)
+val AtlasOnPrimaryContainerLight = Color(0xFF0C2B4B)
 
-val AtlasPrimaryDark             = Color(0xFF7EB8E8)
-val AtlasOnPrimaryDark           = Color(0xFF001E33)
-val AtlasPrimaryContainerDark    = Color(0xFF1A4F78)
-val AtlasOnPrimaryContainerDark  = Color(0xFFD4E8F7)
+val AtlasPrimaryDark             = Color(0xFF5C9CE6)
+val AtlasOnPrimaryDark           = Color(0xFF061E38)
+val AtlasPrimaryContainerDark    = Color(0xFF14416D)
+val AtlasOnPrimaryContainerDark  = Color(0xFFD8E6F5)
 
-// Secondary — 앰버 (Warm Amber): 활력, 포인트
-val AtlasSecondaryLight            = Color(0xFFB07D2A)
+// Secondary — 선버스트 앰버 골드 (Sunburst Amber): 명확한 서브 액센트 및 포인트
+val AtlasSecondaryLight            = Color(0xFFD97706)
 val AtlasOnSecondaryLight          = Color(0xFFFFFFFF)
-val AtlasSecondaryContainerLight   = Color(0xFFF5E6C3)
-val AtlasOnSecondaryContainerLight = Color(0xFF2C1E00)
+val AtlasSecondaryContainerLight   = Color(0xFFFEF3C7)
+val AtlasOnSecondaryContainerLight = Color(0xFF78350F)
 
-val AtlasSecondaryDark             = Color(0xFFDFBA6A)
-val AtlasOnSecondaryDark           = Color(0xFF2C1E00)
-val AtlasSecondaryContainerDark    = Color(0xFF614800)
-val AtlasOnSecondaryContainerDark  = Color(0xFFF5E6C3)
+val AtlasSecondaryDark             = Color(0xFFFBBF24)
+val AtlasOnSecondaryDark           = Color(0xFF451A03)
+val AtlasSecondaryContainerDark    = Color(0xFF78350F)
+val AtlasOnSecondaryContainerDark  = Color(0xFFFEF3C7)
 
-// Tertiary — 틸 그린 (Teal): 균형, 집중, 목표
-val AtlasTertiaryLight            = Color(0xFF2A8C7B)
+// Tertiary — 에메랄드 그린 (Emerald Teal): 목표 및 진행률 선명한 시각화
+val AtlasTertiaryLight            = Color(0xFF059669)
 val AtlasOnTertiaryLight          = Color(0xFFFFFFFF)
-val AtlasTertiaryContainerLight   = Color(0xFFBEEDE5)
-val AtlasOnTertiaryContainerLight = Color(0xFF002920)
+val AtlasTertiaryContainerLight   = Color(0xFFD1FAE5)
+val AtlasOnTertiaryContainerLight = Color(0xFF064E3B)
 
-val AtlasTertiaryDark             = Color(0xFF72CFC0)
-val AtlasOnTertiaryDark           = Color(0xFF002920)
-val AtlasTertiaryContainerDark    = Color(0xFF004B3F)
-val AtlasOnTertiaryContainerDark  = Color(0xFFBEEDE5)
+val AtlasTertiaryDark             = Color(0xFF34D399)
+val AtlasOnTertiaryDark           = Color(0xFF022C22)
+val AtlasTertiaryContainerDark    = Color(0xFF064E3B)
+val AtlasOnTertiaryContainerDark  = Color(0xFFD1FAE5)
 
-// Surface / Background — 쿨 뉴트럴 (Cool Neutral)
+// Surface / Background — 슬레이트 계열 높은 대비 (High-Contrast Slate)
 val AtlasSurfaceLight          = Color(0xFFFFFFFF)
-val AtlasOnSurfaceLight        = Color(0xFF1A1C1E)
-val AtlasSurfaceVariantLight   = Color(0xFFE8EEF3)
-val AtlasOnSurfaceVariantLight = Color(0xFF3F4751)
-val AtlasOutlineLight          = Color(0xFF6F7B86)
-val AtlasOutlineVariantLight   = Color(0xFFBEC8D2)
+val AtlasOnSurfaceLight        = Color(0xFF0F172A) // 딥 슬레이트 블랙 (가독성 100%)
+val AtlasSurfaceVariantLight   = Color(0xFFF1F5F9) // 서브 카드 백그라운드
+val AtlasOnSurfaceVariantLight = Color(0xFF334155) // 슬레이트 딥 차콜 (또렷한 본문/보조 텍스트)
+val AtlasOutlineLight          = Color(0xFF94A3B8) // 명확한 경계선
+val AtlasOutlineVariantLight   = Color(0xFFE2E8F0)
 
-val AtlasSurfaceDark           = Color(0xFF181C1F)
-val AtlasOnSurfaceDark         = Color(0xFFE2E3E5)
-val AtlasSurfaceVariantDark    = Color(0xFF2B333A)
-val AtlasOnSurfaceVariantDark  = Color(0xFFBEC8D2)
-val AtlasOutlineDark           = Color(0xFF8A9299)
-val AtlasOutlineVariantDark    = Color(0xFF3A444C)
+val AtlasSurfaceDark           = Color(0xFF1E293B) // 딥 슬레이트 카드 표면
+val AtlasOnSurfaceDark         = Color(0xFFF8FAFC) // 순백 텍스트
+val AtlasSurfaceVariantDark    = Color(0xFF334155)
+val AtlasOnSurfaceVariantDark  = Color(0xFFCBD5E1)
+val AtlasOutlineDark           = Color(0xFF64748B)
+val AtlasOutlineVariantDark    = Color(0xFF334155)
 
-val AtlasBackgroundLight = Color(0xFFF4F6F9)  // 쿨 화이트-그레이
-val AtlasBackgroundDark  = Color(0xFF111416)  // 딥 차콜
+val AtlasBackgroundLight = Color(0xFFF8FAFC)  // 슬레이트 펄 화이트
+val AtlasBackgroundDark  = Color(0xFF0F172A)  // 딥 슬레이트 미드나잇
 
 // =============================================================================
 // ── ECLIPSE (블랙 다크 테마, 딥 다크 + 인디고/바이올렛 네온) ──────────────────
@@ -152,6 +153,60 @@ val EclipseOutlineVariant   = Color(0xFF333360)
 
 val EclipseBackground       = Color(0xFF0F0F1A)   // 거의 블랙
 
+// =============================================================================
+// ── AURORA_GLASS (북극광처럼 화려한 오로라 글래스 — 바이올렛 + 네온 사안 + 코스믹 핑크) ──
+// Primary — 오로라 바이올렛 (Electric Aurora Violet)
+// =============================================================================
+val AuroraGlassPrimaryLight            = Color(0xFFA855F7)
+val AuroraGlassOnPrimaryLight          = Color(0xFFFFFFFF)
+val AuroraGlassPrimaryContainerLight   = Color(0xFFF3E8FF)
+val AuroraGlassOnPrimaryContainerLight = Color(0xFF581C87)
+
+val AuroraGlassPrimaryDark             = Color(0xFFC084FC)
+val AuroraGlassOnPrimaryDark           = Color(0xFF3B0764)
+val AuroraGlassPrimaryContainerDark    = Color(0xFF6B21A8)
+val AuroraGlassOnPrimaryContainerDark  = Color(0xFFF3E8FF)
+
+// Secondary — 네온 사이버 사안 (Cyber Cyan Neon)
+val AuroraGlassSecondaryLight            = Color(0xFF06B6D4)
+val AuroraGlassOnSecondaryLight          = Color(0xFFFFFFFF)
+val AuroraGlassSecondaryContainerLight   = Color(0xFFCFFAFE)
+val AuroraGlassOnSecondaryContainerLight = Color(0xFF155E75)
+
+val AuroraGlassSecondaryDark             = Color(0xFF22D3EE)
+val AuroraGlassOnSecondaryDark           = Color(0xFF083344)
+val AuroraGlassSecondaryContainerDark    = Color(0xFF0E7490)
+val AuroraGlassOnSecondaryContainerDark  = Color(0xFFCFFAFE)
+
+// Tertiary — 코스믹 핑크 글로우 (Radiant Cosmic Pink)
+val AuroraGlassTertiaryLight            = Color(0xFFF43F5E)
+val AuroraGlassOnTertiaryLight          = Color(0xFFFFFFFF)
+val AuroraGlassTertiaryContainerLight   = Color(0xFFFFE4E6)
+val AuroraGlassOnTertiaryContainerLight = Color(0xFF881337)
+
+val AuroraGlassTertiaryDark             = Color(0xFFFB7185)
+val AuroraGlassOnTertiaryDark           = Color(0xFF4C0519)
+val AuroraGlassTertiaryContainerDark    = Color(0xFF9F1239)
+val AuroraGlassOnTertiaryContainerDark  = Color(0xFFFFE4E6)
+
+// Surface / Background — 라벤더 오팔 & 딥 코스믹 미드나잇
+val AuroraGlassSurfaceLight          = Color(0xFFFFFFFF)
+val AuroraGlassOnSurfaceLight        = Color(0xFF1E1535)
+val AuroraGlassSurfaceVariantLight   = Color(0xFFF3E8FF)
+val AuroraGlassOnSurfaceVariantLight = Color(0xFF4C3B6E)
+val AuroraGlassOutlineLight          = Color(0xFFC084FC)
+val AuroraGlassOutlineVariantLight   = Color(0xFFE9D5FF)
+
+val AuroraGlassSurfaceDark           = Color(0xFF1A103C)
+val AuroraGlassOnSurfaceDark         = Color(0xFFF5F3FF)
+val AuroraGlassSurfaceVariantDark    = Color(0xFF2E1F5C)
+val AuroraGlassOnSurfaceVariantDark  = Color(0xFFDDD6FE)
+val AuroraGlassOutlineDark           = Color(0xFFA855F7)
+val AuroraGlassOutlineVariantDark    = Color(0xFF4C1D95)
+
+val AuroraGlassBackgroundLight = Color(0xFFFAF5FF)  // 프레시 프로스티드 오팔 라벤더
+val AuroraGlassBackgroundDark  = Color(0xFF0F0728)  // 딥 코스믹 스페이스 미드나잇
+
 // Error (공통)
 val ErrorLight   = Color(0xFFBA1A1A)
 val OnErrorLight = Color(0xFFFFFFFF)
@@ -164,31 +219,35 @@ val OnErrorDark  = Color(0xFF690005)
 // =============================================================================
 
 fun themeDiaryAccent(theme: AppTheme): Color = when (theme) {
-    AppTheme.ATLAS   -> Color(0xFF3D7BB5) // 스틸 블루
-    AppTheme.BLOSSOM -> Color(0xFFC67A8E) // 더스티 로즈
-    AppTheme.ECLIPSE -> Color(0xFF8B8FF8) // 라이트 인디고 네온
-    AppTheme.KIDS    -> Color(0xFFFF6B81) // 캔디 버블검 핑크
+    AppTheme.ATLAS        -> Color(0xFF1D5D9B) // 로열 네이비 블루
+    AppTheme.AURORA_GLASS -> Color(0xFFA855F7) // 오로라 바이올렛
+    AppTheme.BLOSSOM      -> Color(0xFFC67A8E) // 더스티 로즈
+    AppTheme.ECLIPSE      -> Color(0xFF8B8FF8) // 라이트 인디고 네온
+    AppTheme.KIDS         -> Color(0xFFFF6B81) // 캔디 버블검 핑크
 }
 
 fun themePlannerAccent(theme: AppTheme): Color = when (theme) {
-    AppTheme.ATLAS   -> Color(0xFFB07D2A) // 앰버 골드
-    AppTheme.BLOSSOM -> Color(0xFFE8945C) // 웜 피치
-    AppTheme.ECLIPSE -> Color(0xFFFFB74D) // 앰버 글로우
-    AppTheme.KIDS    -> Color(0xFFFFA502) // 캔디 바나나 오렌지
+    AppTheme.ATLAS        -> Color(0xFFD97706) // 선버스트 앰버 골드
+    AppTheme.AURORA_GLASS -> Color(0xFFFB923C) // 오로라 코스믹 오렌지
+    AppTheme.BLOSSOM      -> Color(0xFFE8945C) // 웜 피치
+    AppTheme.ECLIPSE      -> Color(0xFFFFB74D) // 앰버 글로우
+    AppTheme.KIDS         -> Color(0xFFFFA502) // 캔디 바나나 오렌지
 }
 
 fun themeGoalsAccent(theme: AppTheme): Color = when (theme) {
-    AppTheme.ATLAS   -> Color(0xFF2A8C7B) // 틸 그린
-    AppTheme.BLOSSOM -> Color(0xFF5FA37E) // 세이지 그린
-    AppTheme.ECLIPSE -> Color(0xFF4DCFB0) // 아쿠아 민트
-    AppTheme.KIDS    -> Color(0xFF2ED573) // 캔디 라임 민트
+    AppTheme.ATLAS        -> Color(0xFF059669) // 에메랄드 그린
+    AppTheme.AURORA_GLASS -> Color(0xFF22D3EE) // 사이버 사안 네온
+    AppTheme.BLOSSOM      -> Color(0xFF5FA37E) // 세이지 그린
+    AppTheme.ECLIPSE      -> Color(0xFF4DCFB0) // 아쿠아 민트
+    AppTheme.KIDS         -> Color(0xFF2ED573) // 캔디 라임 민트
 }
 
 fun themeChatAccent(theme: AppTheme): Color = when (theme) {
-    AppTheme.ATLAS   -> Color(0xFF5C6BC0) // 스마트 인디고
-    AppTheme.BLOSSOM -> Color(0xFF8B87C7) // 모브
-    AppTheme.ECLIPSE -> Color(0xFFBB86FC) // 네온 바이올렛
-    AppTheme.KIDS    -> Color(0xFF70A1FF) // 캔디 스카이 블루
+    AppTheme.ATLAS        -> Color(0xFF4F46E5) // 로열 인디고
+    AppTheme.AURORA_GLASS -> Color(0xFFF43F5E) // 코스믹 핑크 글로우
+    AppTheme.BLOSSOM      -> Color(0xFF8B87C7) // 모브
+    AppTheme.ECLIPSE      -> Color(0xFFBB86FC) // 네온 바이올렛
+    AppTheme.KIDS         -> Color(0xFF70A1FF) // 캔디 스카이 블루
 }
 
 // =============================================================================

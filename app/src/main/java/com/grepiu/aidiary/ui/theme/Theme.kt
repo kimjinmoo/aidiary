@@ -20,10 +20,11 @@ import androidx.compose.ui.platform.LocalContext
  * @param description 테마 무드 설명
  */
 enum class AppTheme(val label: String, val emoji: String, val description: String) {
-    ATLAS(  "아틀라스", "🗺️", "차분하고 중성적인 블루 톤"),
-    BLOSSOM("블라섬", "🌸", "소프트 & 따뜻한 로즈 톤"),
-    ECLIPSE("이클립스", "🌑", "세련된 딥 다크 블랙 테마"),
-    KIDS(   "키즈 캔디", "🧸", "8~13세 아이들을 위한 톡톡 튀는 캔디 무지개 파스텔 테마")
+    ATLAS(       "아틀라스", "🗺️", "차분하고 중성적인 블루 톤"),
+    AURORA_GLASS("오로라 글래스", "🌌", "북극광처럼 화려하고 오묘한 오로라 글래스 테마"),
+    BLOSSOM(     "블라섬", "🌸", "소프트 & 따뜻한 로즈 톤"),
+    ECLIPSE(     "이클립스", "🌑", "세련된 딥 다크 블랙 테마"),
+    KIDS(        "키즈 캔디", "🧸", "8~13세 아이들을 위한 톡톡 튀는 캔디 무지개 파스텔 테마")
 }
 
 // =============================================================================
@@ -210,6 +211,59 @@ private val KidsDarkColorScheme = darkColorScheme(
     outlineVariant      = androidx.compose.ui.graphics.Color(0xFF57606F),
 )
 
+// =============================================================================
+// AURORA_GLASS ColorScheme (오로라 글래스 — 바이올렛 + 사이버 사안 + 코스믹 핑크)
+// =============================================================================
+private val AuroraGlassLightColorScheme = lightColorScheme(
+    primary             = AuroraGlassPrimaryLight,
+    onPrimary           = AuroraGlassOnPrimaryLight,
+    primaryContainer    = AuroraGlassPrimaryContainerLight,
+    onPrimaryContainer  = AuroraGlassOnPrimaryContainerLight,
+    secondary           = AuroraGlassSecondaryLight,
+    onSecondary         = AuroraGlassOnSecondaryLight,
+    secondaryContainer  = AuroraGlassSecondaryContainerLight,
+    onSecondaryContainer= AuroraGlassOnSecondaryContainerLight,
+    tertiary            = AuroraGlassTertiaryLight,
+    onTertiary          = AuroraGlassOnTertiaryLight,
+    tertiaryContainer   = AuroraGlassTertiaryContainerLight,
+    onTertiaryContainer = AuroraGlassOnTertiaryContainerLight,
+    error               = ErrorLight,
+    onError             = OnErrorLight,
+    background          = AuroraGlassBackgroundLight,
+    onBackground        = AuroraGlassOnSurfaceLight,
+    surface             = AuroraGlassSurfaceLight,
+    onSurface           = AuroraGlassOnSurfaceLight,
+    surfaceVariant      = AuroraGlassSurfaceVariantLight,
+    onSurfaceVariant    = AuroraGlassOnSurfaceVariantLight,
+    outline             = AuroraGlassOutlineLight,
+    outlineVariant      = AuroraGlassOutlineVariantLight,
+)
+
+private val AuroraGlassDarkColorScheme = darkColorScheme(
+    primary             = AuroraGlassPrimaryDark,
+    onPrimary           = AuroraGlassOnPrimaryDark,
+    primaryContainer    = AuroraGlassPrimaryContainerDark,
+    onPrimaryContainer  = AuroraGlassOnPrimaryContainerDark,
+    secondary           = AuroraGlassSecondaryDark,
+    onSecondary         = AuroraGlassOnSecondaryDark,
+    secondaryContainer  = AuroraGlassSecondaryContainerDark,
+    onSecondaryContainer= AuroraGlassOnSecondaryContainerDark,
+    tertiary            = AuroraGlassTertiaryDark,
+    onTertiary          = AuroraGlassOnTertiaryDark,
+    tertiaryContainer   = AuroraGlassTertiaryContainerDark,
+    onTertiaryContainer = AuroraGlassOnTertiaryContainerDark,
+    error               = ErrorDark,
+    onError             = OnErrorDark,
+    background          = AuroraGlassBackgroundDark,
+    onBackground        = AuroraGlassOnSurfaceDark,
+    surface             = AuroraGlassSurfaceDark,
+    onSurface           = AuroraGlassOnSurfaceDark,
+    surfaceVariant      = AuroraGlassSurfaceVariantDark,
+    onSurfaceVariant    = AuroraGlassOnSurfaceVariantDark,
+    outline             = AuroraGlassOutlineDark,
+    outlineVariant      = AuroraGlassOutlineVariantDark,
+)
+
 /** 현재 앱 테마를 Composable 트리에 전달하는 CompositionLocal */
 val LocalAppTheme = compositionLocalOf { AppTheme.ATLAS }
 
@@ -233,10 +287,11 @@ fun AIDiaryTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        appTheme == AppTheme.ECLIPSE -> EclipseColorScheme
-        appTheme == AppTheme.KIDS    -> if (darkTheme) KidsDarkColorScheme else KidsLightColorScheme
-        appTheme == AppTheme.ATLAS   -> if (darkTheme) AtlasDarkColorScheme else AtlasLightColorScheme
-        else                         -> if (darkTheme) BlossomDarkColorScheme else BlossomLightColorScheme
+        appTheme == AppTheme.ECLIPSE      -> EclipseColorScheme
+        appTheme == AppTheme.AURORA_GLASS -> if (darkTheme) AuroraGlassDarkColorScheme else AuroraGlassLightColorScheme
+        appTheme == AppTheme.KIDS         -> if (darkTheme) KidsDarkColorScheme else KidsLightColorScheme
+        appTheme == AppTheme.ATLAS        -> if (darkTheme) AtlasDarkColorScheme else AtlasLightColorScheme
+        else                              -> if (darkTheme) BlossomDarkColorScheme else BlossomLightColorScheme
     }
 
     CompositionLocalProvider(LocalAppTheme provides appTheme) {

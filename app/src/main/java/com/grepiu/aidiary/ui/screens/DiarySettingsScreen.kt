@@ -616,10 +616,11 @@ private fun SettingsInfoRow(
 
 /** 각 테마의 프리뷰 색상 스와치 3종 (primary, secondary, tertiary 순) */
 private fun themeSwatchColors(theme: AppTheme): Triple<Color, Color, Color> = when (theme) {
-    AppTheme.BLOSSOM -> Triple(Color(0xFFC67A8E), Color(0xFF8B87C7), Color(0xFF5FA37E))
-    AppTheme.ATLAS   -> Triple(Color(0xFF3D7BB5), Color(0xFFB07D2A), Color(0xFF2A8C7B))
-    AppTheme.ECLIPSE -> Triple(Color(0xFF8B8FF8), Color(0xFFBB86FC), Color(0xFF4DCFB0))
-    AppTheme.KIDS    -> Triple(Color(0xFFFF6B81), Color(0xFFFFA502), Color(0xFF2ED573))
+    AppTheme.BLOSSOM      -> Triple(Color(0xFFC67A8E), Color(0xFF8B87C7), Color(0xFF5FA37E))
+    AppTheme.ATLAS        -> Triple(Color(0xFF1D5D9B), Color(0xFFD97706), Color(0xFF059669))
+    AppTheme.AURORA_GLASS -> Triple(Color(0xFFA855F7), Color(0xFF22D3EE), Color(0xFFF43F5E))
+    AppTheme.ECLIPSE      -> Triple(Color(0xFF8B8FF8), Color(0xFFBB86FC), Color(0xFF4DCFB0))
+    AppTheme.KIDS         -> Triple(Color(0xFFFF6B81), Color(0xFFFFA502), Color(0xFF2ED573))
 }
 
 @Composable
