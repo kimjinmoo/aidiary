@@ -539,3 +539,9 @@ exifinterface = "1.3.7"   # ImageFormatDetector (ExifInterface)
   - **월간 통계 요약 카드**: 이번 달 작성 일기 수(📝), 계획 완료 건수 및 완료율 프로그레스 바(✅ N/M, N%), 목표 수(🎯) 및 '오늘' 빠른 이동 숏컷 제공.
   - **캘린더 셀 내 인포 프리뷰 칩**: 날짜 셀 내부 공간을 확장하여 등록된 일기 제목(📝), 계획 텍스트 및 완료 상태(✓/○), 목표(🎯) 텍스트 프리뷰 칩을 각 타입별 테마 색상으로 최대 2개 직접 표출하며, 초과 건수는 `+N` 배지로 안내.
   - **인터랙티브 타임라인 스크랩북**: 선택한 날짜 하단 스크랩북에서 계획/목표의 완료 상태를 직접 클릭해 바로 토글(`TogglePlannerTask`, `ToggleGoal`) 가능하며, 빠른 '일기 작성' CTA 제공.
+- **Google AdMob & AD_ID 권한 연동 (v4.6)**:
+  - `AndroidManifest.xml`에 `com.google.android.gms.permission.AD_ID` 권한 명시 (Android 13+ / Target API 33+ 준수).
+  - **개발 vs 운영 빌드 변이 분기 (`build.gradle.kts`)**:
+    - `debug`: 구글 공식 테스트 App ID(`ca-app-pub-3940256099942544~3347511713`) 및 테스트 배너 ID 적용.
+    - `release` (AAB/운영 서명 빌드): 실 운영 App ID 및 배너 ID(`ca-app-pub-2803985305864806~3228866354`) 자동 적용 (`manifestPlaceholders` & `BuildConfig.ADMOB_BANNER_ID`).
+  - **AdMobBanner 컴포넌트 (`AdMobBanner.kt`)**: Compose 내 재사용 가능한 `AdView` 래퍼. `DiaryListScreen` 하단에 플로팅 UI를 침범하지 않고 깔끔하게 배치.

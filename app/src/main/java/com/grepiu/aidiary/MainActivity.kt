@@ -92,6 +92,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AnalyticsManager.init(this)
+        com.google.android.gms.ads.MobileAds.initialize(this)
 
         setContent {
             val viewModel: DiaryViewModel = viewModel()

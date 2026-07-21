@@ -677,6 +677,13 @@ fun DiaryListScreen(
                 }
             }
 
+            // 하단 구글 AdMob 배너 광고 (검색 모드가 아닐 때 화면 하단에 깔끔하게 배치)
+            if (!isHeaderHidden) {
+                com.grepiu.aidiary.ui.components.AdMobBanner(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+                )
+            }
+
             // 자체 커스텀 날짜 선택 달력 모달 (DatePickerDialog 대체)
             if (showDatePickerModal) {
                 CustomDatePickerModal(
@@ -4481,7 +4488,7 @@ private fun UnifiedBlogView(
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         modifier = Modifier.fillMaxSize()
     ) {
-        groups.forEach { (date, items) ->
+        groups.forEachIndexed { groupIdx, (date, items) ->
             item(key = "uh_$date") { BlogDateHeader(date) }
             items(items.size, key = { dayItemKey(items[it]) }) { index ->
                 val item = items[index]
@@ -4491,6 +4498,14 @@ private fun UnifiedBlogView(
                     isLastInGroup = isLast,
                     onSelectDiary = onSelectDiary
                 )
+            }
+            // 2번째 날짜 그룹마다 네이티브 피드 광고 카드를 스무스하게 삽입
+            if ((groupIdx + 1) % 2 == 0) {
+                item(key = "native_ad_$date") {
+                    com.grepiu.aidiary.ui.components.AdMobNativeAd(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    )
+                }
             }
         }
     }

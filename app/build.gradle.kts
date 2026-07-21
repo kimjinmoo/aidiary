@@ -24,7 +24,15 @@ android {
     }
 
     buildTypes {
-        release {
+        getByName("debug") {
+            manifestPlaceholders["ADMOB_APP_ID"] = "ca-app-pub-3940256099942544~3347511713"
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
+            buildConfigField("String", "ADMOB_NATIVE_ID", "\"ca-app-pub-3940256099942544/2247696110\"")
+        }
+        getByName("release") {
+            manifestPlaceholders["ADMOB_APP_ID"] = "ca-app-pub-2803985305864806~3228866354"
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"ca-app-pub-2803985305864806/3228866354\"")
+            buildConfigField("String", "ADMOB_NATIVE_ID", "\"ca-app-pub-2803985305864806/3228866354\"")
             optimization {
                 enable = false
             }
@@ -104,6 +112,9 @@ dependencies {
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
     implementation("com.google.firebase:firebase-analytics")
+
+    // Google AdMob (Mobile Ads SDK)
+    implementation(libs.play.services.ads)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

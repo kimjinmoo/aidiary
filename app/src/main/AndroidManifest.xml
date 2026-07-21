@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Google Play Advertising ID (API 33+ 필수) -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <!-- OpenGL ES 3.2 이상 요구 -->
@@ -31,6 +34,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.AIDiary">
+
+        <!-- Google AdMob 앱 ID 메타데이터 (빌드 변이별로 manifestPlaceholders 적용: debug=테스트 ID, release=운영 ID) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${ADMOB_APP_ID}" />
 
         <!-- Native libraries for OpenCL acceleration on Android 12+ -->
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
