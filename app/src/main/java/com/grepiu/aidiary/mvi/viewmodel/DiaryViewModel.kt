@@ -128,9 +128,14 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
     val effect = _effect.receiveAsFlow()
 
     init {
+        // 약관 동의 여부에 따라 초기 Phase 결정:
+        // 이미 동의한 사용자(재방문/백그라운드 복귀)는 스플래시 없이 LIST에서 시작.
+        // 최초 실행 사용자만 SPLASH → WELCOME → LIST 플로우를 거침.
+        val initialPhase = if (isTermsAccepted()) DiaryPhase.LIST else DiaryPhase.SPLASH
+
         // 저장된 테마 복원
         val savedTheme = loadSavedTheme()
-        _state.update { it.copy(appTheme = savedTheme) }
+        _state.update { it.copy(appTheme = savedTheme, phase = initialPhase) }
 
         // 앱 구동 시 일기 메타 페이지 1 로드 (Flow 자동 갱신은 별도 collect)
         processIntent(DiaryIntent.LoadDiaries)
