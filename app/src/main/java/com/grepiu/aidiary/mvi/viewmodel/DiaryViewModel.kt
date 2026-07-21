@@ -3461,7 +3461,7 @@ class DiaryViewModel(application: Application) : AndroidViewModel(application) {
         private const val PRESET_ENTRY_LIMIT = 12
 
         private const val MODEL_DOWNLOAD_URL =
-            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+            "https://conf.grepiu.com/common-api/v1/r2/presigned-url/download?key=sllm/gemma-4-E2B-it.litertlm"
         private const val SHERPA_DOWNLOAD_URL =
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
 

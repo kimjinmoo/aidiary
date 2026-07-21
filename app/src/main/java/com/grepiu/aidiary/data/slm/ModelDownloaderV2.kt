@@ -337,12 +337,12 @@ class ModelDownloaderV2(private val context: Context) {
                 // 기존 다운로드 진행 중이던 임시 파일의 크기를 확인 (이어받기 기준점)
                 val existingLength = if (tempFile.exists()) tempFile.length() else 0L
 
-                // 1단계: API 서버에 요청하여 정식 임시 다운로드 URL을 획득 (S3 다운로드 시 활용, 현재는 Hugging Face 직접 다운로드 사용)
-                // val presignedUrl = fetchPresignedUrl(apiUrl)
-                // val downloadUrl = presignedUrl
-
-                // Hugging Face 직접 다운로드 URL 사용
-                val downloadUrl = url
+                // 1단계: API 서버에 요청하여 정식 임시 다운로드 URL을 획득 (Presigned URL API인 경우)
+                val downloadUrl = if (url.contains("/presigned-url/download") || url.contains("/common-api/")) {
+                    fetchPresignedUrl(url)
+                } else {
+                    url
+                }
                 Log.d(TAG, "Starting stream download from: $downloadUrl, existingLength: $existingLength")
 
                 // 2단계: 실제 모델 파일 스트림 다운로드 (이어받기 요청 헤더 추가)

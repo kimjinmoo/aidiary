@@ -419,7 +419,7 @@ class VideoStorageManager(context: Context) {
 | `DiaryViewModel` | 인텐트 라우팅, 모델/엔진 초기화, 미디어 import 라이프사이클, AI 액션 트리거 | `WakeLock`, `AudioRecord`, `LLM`, `Sherpa` 자원 해제 |
 | `DiaryLLMEngine` | LiteRT-LM 세션, 토큰 스트리밍 | `dispose()` 전 메모리 누수 |
 | `SherpaEngine` | 오프라인 음성→텍스트, 16kHz mono PCM, 다국어(`auto`/`ko`/`en`/`ja`/`zh`/`yue`) | `SherpaEngine.create(modelDir, language)` |
-| `ModelDownloaderV2` | HuggingFace 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 |
+| `ModelDownloaderV2` | Cloudflare R2 Presigned URL 다운로드, tar.bz2 압축 해제, 에셋/로컬 폴백 | 토큰 단위 진행률 |
 | `DiaryState` | 모든 UI 상태 immutable 스냅샷 | `draftBlocks` 가 본문 단일 진실 |
 | `PlannerRepository` | 할 일/목표 로컬 JSON 영속화. `seriesId` 로 반복 시리즈 그룹 | 시리즈 단위 삭제 가능 |
 

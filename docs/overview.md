@@ -120,7 +120,7 @@
 
 | 통신 목적 | 대상 서버 | 전송 데이터 |
 |---|---|---|
-| Gemma AI 모델 다운로드 (~2.3GB) | Hugging Face (`huggingface.co`) | HTTP User-Agent: `AIDiary/1.0` |
+| Gemma AI 모델 다운로드 (~2.3GB) | Cloudflare R2 (`conf.grepiu.com`) Presigned URL | HTTP User-Agent: `AIDiary/1.0` |
 | Sherpa 음성인식 모델 다운로드 (~900MB) | GitHub Releases (`github.com`) | HTTP User-Agent: `AIDiary/1.0` |
 
 - Wi-Fi 연결 확인 후 다운로드 (셀룰러 시 경고)
@@ -197,4 +197,4 @@
 | 백업 (내보내기) | 모든 DB + 첨부 파일 + 플래너/목표 | ZIP 압축 | ZIP 파일 | 사용자 지정 위치 |
 | 복원 (가져오기) | 사용자 선택 ZIP 파일 | ZIP 해제 → DB·파일 복원 | - | 원본 저장소 |
 | 검색 (FTS5) | 검색 키워드 | Room DB FTS5 인덱스 검색 | 일치하는 다이어리 목록 | - |
-| 모델 다운로드 | - | HuggingFace/GitHub HTTP GET | Gemma/Sherpa 모델 파일 | `models/`, `sherpa/` |
+| 모델 다운로드 | - | Cloudflare R2 / GitHub HTTP GET | Gemma/Sherpa 모델 파일 | `models/`, `sherpa/` |

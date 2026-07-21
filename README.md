@@ -40,7 +40,7 @@ Sherpa-ONNX의 SenseVoice 모델(`sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-0
    - 이미 다운로드된 모델 확인 (Gemma: ~2.3GB, Sherpa: ~1.0GB)
    - APK 에셋에 번들된 모델 확인 후 복사
    - `/sdcard/Download/` 수동 복사 확인
-   - Hugging Face에서 직접 다운로드
+    - Cloudflare R2 Presigned URL에서 직접 다운로드
 3. 디바이스 사양 체크 (RAM 6GB 이상, GPU OpenCL 권장)
 
 > Wi-Fi 미연결 시 대용량 다운로드 경고 다이얼로그를 표시하며, 다운로드 중 화면이 꺼지면 처음부터 재시작됨을 안내합니다.
