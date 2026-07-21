@@ -357,8 +357,15 @@ fun DiaryListScreen(
     // AI 비서 바텀시트 표시 여부 — 헤더 좌측 AI 버튼으로 열림. 어느 보기 모드에서든 접근.
     var showAiSheet by rememberSaveable { mutableStateOf(false) }
 
+    // 검색 가능 여부: LIST(다이어리 탭만), BLOG(항상), CALENDAR(안함)
+    val isSearchEligible = when (globalViewMode) {
+        DiaryViewMode.LIST -> state.activeTab == "DIARY"
+        DiaryViewMode.BLOG -> true
+        DiaryViewMode.CALENDAR -> false
+    }
+
     var isSearchFocused by remember { mutableStateOf(false) }
-    val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && state.activeTab == "DIARY"
+    val isSearchActive = (state.searchQuery.isNotBlank() || isSearchFocused) && isSearchEligible
     // 헤더/캘린더/탭셀렉터 숨김 (검색 포커스 시). AI는 바텀시트라 헤더에 영향 없음. TopAppBar는 항상 표시.
     val isHeaderHidden = isSearchActive
 
@@ -392,9 +399,9 @@ fun DiaryListScreen(
                 onIntent = onIntent,
                 onShowBackupDialog = { showBackupDialog = it },
                 context = context,
-                isSearchActive = isSearchActive || isSearchFocused,
+                isSearchActive = isSearchActive,
                 isChatFocused = false,
-                isDiaryTab = state.activeTab == "DIARY",
+                isDiaryTab = isSearchEligible,
                 onSearchClick = {
                     isSearchFocused = true
                 },
@@ -451,7 +458,16 @@ fun DiaryListScreen(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                    ViewModeToggle(mode = globalViewMode, onModeChange = { onIntent(DiaryIntent.SelectViewMode(it)) })
+                    ViewModeToggle(
+                        mode = globalViewMode,
+                        onModeChange = { newMode ->
+                            if (newMode == DiaryViewMode.CALENDAR) {
+                                isSearchFocused = false
+                                onIntent(DiaryIntent.ClearDiarySearch)
+                            }
+                            onIntent(DiaryIntent.SelectViewMode(newMode))
+                        }
+                    )
                 }
             }
 
@@ -625,11 +641,23 @@ fun DiaryListScreen(
                         }
                     }
                     DiaryViewMode.BLOG -> {
+                        val blogDiaries = if (state.searchQuery.isNotBlank()) state.diaries else state.allDiaryMetas
+                        val blogTasks = if (state.searchQuery.isNotBlank()) {
+                            state.plannerTasks.filter { it.text.contains(state.searchQuery, ignoreCase = true) }
+                        } else {
+                            state.plannerTasks
+                        }
+                        val blogGoals = if (state.searchQuery.isNotBlank()) {
+                            state.goals.filter { it.text.contains(state.searchQuery, ignoreCase = true) }
+                        } else {
+                            state.goals
+                        }
                         UnifiedBlogView(
-                            diaries = state.allDiaryMetas,
-                            tasks = state.plannerTasks,
-                            goals = state.goals,
-                            onSelectDiary = onSelectDiary
+                            diaries = blogDiaries,
+                            tasks = blogTasks,
+                            goals = blogGoals,
+                            onSelectDiary = onSelectDiary,
+                            searchQuery = state.searchQuery
                         )
                     }
                     DiaryViewMode.CALENDAR -> {
@@ -4374,7 +4402,8 @@ private fun UnifiedBlogView(
     diaries: List<DiaryMeta>,
     tasks: List<PlannerTask>,
     goals: List<Goal>,
-    onSelectDiary: (DiaryMeta) -> Unit
+    onSelectDiary: (DiaryMeta) -> Unit,
+    searchQuery: String = ""
 ) {
     val groups = remember(diaries, tasks, goals) {
         com.grepiu.aidiary.ui.util.buildUnifiedByDate(diaries, tasks, goals)
@@ -4420,12 +4449,24 @@ private fun UnifiedBlogView(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
                     modifier = Modifier.size(64.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) { Text("🧵", fontSize = 28.sp) }
+                    Box(contentAlignment = Alignment.Center) {
+                        if (searchQuery.isNotBlank()) {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(28.dp))
+                        } else {
+                            Text("🧵", fontSize = 28.sp)
+                        }
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
-                Text("아직 작성된 쓰레드 피드가 없어요", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(4.dp))
-                Text("일기, 계획, 목표를 등록하면 타임라인이 시작됩니다", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (searchQuery.isNotBlank()) {
+                    Text("검색 결과가 없어요", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.height(4.dp))
+                    Text("'$searchQuery'에 해당하는 기록이 없습니다.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text("아직 작성된 쓰레드 피드가 없어요", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.height(4.dp))
+                    Text("일기, 계획, 목표를 등록하면 타임라인이 시작됩니다", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         return
